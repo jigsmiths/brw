@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 var (
@@ -89,6 +90,30 @@ func (r *Root) writeTemp(dir string, data []byte, perm fs.FileMode) (string, err
 		return "", err
 	}
 	return tmp, nil
+}
+
+// OpenLock opens name for locking, creating it if needed. Not journaled.
+func (r *Root) OpenLock(name string) (*os.File, error) {
+	rel, err := r.rel(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
+		return nil, err
+	}
+	// os.Root follows symlinks inside the root even with O_NOFOLLOW.
+	if fi, err := r.root.Lstat(rel); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		return nil, fmt.Errorf("%s: is a symlink", rel)
+	}
+	return r.root.OpenFile(rel, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o644)
+}
+
+func (r *Root) Lstat(name string) (fs.FileInfo, error) {
+	rel, err := r.rel(name)
+	if err != nil {
+		return nil, err
+	}
+	return r.root.Lstat(rel)
 }
 
 // Symlink creates name -> target. The target must stay inside the root;

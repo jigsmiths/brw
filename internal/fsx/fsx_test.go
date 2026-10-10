@@ -183,3 +183,52 @@ func TestJournal(t *testing.T) {
 		t.Errorf("journal =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+func TestOpenLock(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	f, err := r.OpenLock("var/homebrew/locks/jq.formula.lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if _, err := os.Stat(filepath.Join(dir, "var/homebrew/locks/jq.formula.lock")); err != nil {
+		t.Fatal(err)
+	}
+	g, err := r.OpenLock("var/homebrew/locks/jq.formula.lock")
+	if err != nil {
+		t.Fatalf("reopening an existing lock file: %v", err)
+	}
+	g.Close()
+}
+
+func TestOpenLockRefusesSymlinkAndEscape(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	if err := os.WriteFile(filepath.Join(dir, "real"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real", filepath.Join(dir, "link.lock")); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := r.OpenLock("link.lock"); err == nil {
+		f.Close()
+		t.Error("followed a symlink")
+	}
+	if f, err := r.OpenLock("../outside.lock"); err == nil {
+		f.Close()
+		t.Error("escaped the root")
+	}
+}
+
+func TestLstat(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	if err := os.WriteFile(filepath.Join(dir, "x"), []byte("abc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := r.Lstat("x")
+	if err != nil || fi.Size() != 3 {
+		t.Errorf("Lstat = %v, %v", fi, err)
+	}
+	if _, err := r.Lstat("../x"); err == nil {
+		t.Error("Lstat escaped the root")
+	}
+}
