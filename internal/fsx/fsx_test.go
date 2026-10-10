@@ -18,7 +18,11 @@ func newRoot(t *testing.T) (*Root, string, *bytes.Buffer) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() {
+		if err := r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return r, dir, &journal
 }
 
@@ -190,7 +194,9 @@ func TestOpenLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "var/homebrew/locks/jq.formula.lock")); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +204,9 @@ func TestOpenLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopening an existing lock file: %v", err)
 	}
-	g.Close()
+	if err := g.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestOpenLockRefusesSymlinkAndEscape(t *testing.T) {
@@ -210,11 +218,11 @@ func TestOpenLockRefusesSymlinkAndEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f, err := r.OpenLock("link.lock"); err == nil {
-		f.Close()
+		_ = f.Close()
 		t.Error("followed a symlink")
 	}
 	if f, err := r.OpenLock("../outside.lock"); err == nil {
-		f.Close()
+		_ = f.Close()
 		t.Error("escaped the root")
 	}
 }

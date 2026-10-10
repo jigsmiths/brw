@@ -114,7 +114,7 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusNotModified:
@@ -162,7 +162,7 @@ func writeAtomic(path string, data []byte) error {
 		err = cerr
 	}
 	if err != nil {
-		os.Remove(tmp.Name()) //fsx:allow cache file
+		_ = os.Remove(tmp.Name()) //fsx:allow cache file
 		return err
 	}
 	return os.Rename(tmp.Name(), path) //fsx:allow cache file

@@ -32,7 +32,7 @@ func Acquire(root *fsx.Root, name string) (*Lock, error) {
 			return nil, err
 		}
 		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-			f.Close()
+			_ = f.Close()
 			if errors.Is(err, syscall.EWOULDBLOCK) {
 				return nil, fmt.Errorf("%s: %w", name, ErrInProgress)
 			}
@@ -44,7 +44,7 @@ func Acquire(root *fsx.Root, name string) (*Lock, error) {
 		if err1 == nil && err2 == nil && os.SameFile(held, onDisk) {
 			return &Lock{f: f}, nil
 		}
-		f.Close()
+		_ = f.Close()
 	}
 }
 

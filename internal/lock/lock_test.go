@@ -18,8 +18,19 @@ func openRoot(t *testing.T) (*fsx.Root, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() {
+		if err := r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return r, dir
+}
+
+func release(t *testing.T, l *Lock) {
+	t.Helper()
+	if err := l.Release(); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestMain(m *testing.M) {
@@ -39,8 +50,10 @@ func holdAndWait(dir, name string) {
 	if _, err := Acquire(r, name); err != nil {
 		os.Exit(3)
 	}
-	os.Stdout.WriteString("locked\n")
-	bufio.NewReader(os.Stdin).ReadByte() // wait for the parent to close stdin
+	if _, err := os.Stdout.WriteString("locked\n"); err != nil {
+		os.Exit(4)
+	}
+	_, _ = bufio.NewReader(os.Stdin).ReadByte() // wait for the parent to close stdin
 }
 
 func TestAcquirePath(t *testing.T) {
@@ -49,7 +62,7 @@ func TestAcquirePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Release()
+	defer release(t, l)
 	if _, err := os.Stat(filepath.Join(dir, "var/homebrew/locks/openssl@3.formula.lock")); err != nil {
 		t.Errorf("lock file not at brew's path: %v", err)
 	}
@@ -71,7 +84,7 @@ func TestSecondAcquireFailsFast(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire after release: %v", err)
 	}
-	l2.Release()
+	release(t, l2)
 }
 
 func TestDifferentNamesAreIndependent(t *testing.T) {
@@ -80,12 +93,12 @@ func TestDifferentNamesAreIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer a.Release()
+	defer release(t, a)
 	b, err := Acquire(r, "git")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b.Release()
+	release(t, b)
 }
 
 func TestReleaseTwice(t *testing.T) {
@@ -132,7 +145,9 @@ func TestOtherProcessHoldsLock(t *testing.T) {
 	if _, err := Acquire(r, "jq"); !errors.Is(err, ErrInProgress) {
 		t.Errorf("while other process holds it: error = %v, want ErrInProgress", err)
 	}
-	stdin.Close()
+	if err := stdin.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if err := cmd.Wait(); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +155,7 @@ func TestOtherProcessHoldsLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("after other process exited: %v", err)
 	}
-	l.Release()
+	release(t, l)
 }
 
 // rubyFlock tries a non-blocking exclusive flock on path, as brew does.
@@ -163,7 +178,7 @@ func TestInteropWithRubyLocking(t *testing.T) {
 	if err := exec.Command(ruby, "-e", rubyFlock, path).Run(); err == nil {
 		t.Error("ruby got a lock that we hold")
 	}
-	l.Release()
+	release(t, l)
 	if err := exec.Command(ruby, "-e", rubyFlock, path).Run(); err != nil {
 		t.Errorf("ruby could not lock after we released: %v", err)
 	}
@@ -176,8 +191,8 @@ puts "locked"; $stdout.flush; $stdin.read`, path)
 	if err := hold.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer hold.Wait()
-	defer stdin.Close()
+	defer func() { _ = hold.Wait() }()
+	defer func() { _ = stdin.Close() }()
 	if line, _ := bufio.NewReader(stdout).ReadString('\n'); line != "locked\n" {
 		t.Fatalf("ruby said %q", line)
 	}

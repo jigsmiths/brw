@@ -54,7 +54,7 @@ func (r *Root) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer r.root.Remove(tmp)
+	defer func() { _ = r.root.Remove(tmp) }()
 	// Link fails if rel exists, unlike Rename, which would replace it.
 	if err := r.root.Link(tmp, rel); err != nil {
 		if errors.Is(err, fs.ErrExist) {
@@ -86,7 +86,7 @@ func (r *Root) writeTemp(dir string, data []byte, perm fs.FileMode) (string, err
 		err = r.root.Chmod(tmp, perm)
 	}
 	if err != nil {
-		r.root.Remove(tmp)
+		_ = r.root.Remove(tmp)
 		return "", err
 	}
 	return tmp, nil

@@ -112,7 +112,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", `"v1"`)
-	w.Write(s.body)
+	_, _ = w.Write(s.body)
 }
 
 func TestFormulaeCachesWithETag(t *testing.T) {

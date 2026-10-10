@@ -30,7 +30,11 @@ func newPrefix(t *testing.T) (string, *fsx.Root) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() {
+		if err := r.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	return dir, r
 }
 
@@ -109,7 +113,11 @@ func TestCreateKegNeedsTheLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Release()
+	t.Cleanup(func() {
+		if err := l.Release(); err != nil {
+			t.Error(err)
+		}
+	})
 	before := snapshot(t, dir)
 	if err := CreateKeg(r, "x", "1", now); !errors.Is(err, lock.ErrInProgress) {
 		t.Errorf("error = %v, want ErrInProgress", err)

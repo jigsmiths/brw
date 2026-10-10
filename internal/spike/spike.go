@@ -2,6 +2,7 @@
 package spike
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,12 +57,12 @@ func linkTargets(name, version string) links {
 }
 
 // CreateKeg installs a fake keg with receipt and links, holding name's lock.
-func CreateKeg(root *fsx.Root, name, version string, now time.Time) error {
+func CreateKeg(root *fsx.Root, name, version string, now time.Time) (err error) {
 	l, err := lock.Acquire(root, name)
 	if err != nil {
 		return err
 	}
-	defer l.Release()
+	defer func() { err = errors.Join(err, l.Release()) }()
 
 	arch := "arm64"
 	if runtime.GOARCH == "amd64" {
@@ -97,12 +98,12 @@ func CreateKeg(root *fsx.Root, name, version string, now time.Time) error {
 
 // RemoveKeg removes a keg made by CreateKeg. It refuses, changing nothing, if
 // any of its links points somewhere else.
-func RemoveKeg(root *fsx.Root, prefix cellar.Prefix, name, version string) error {
+func RemoveKeg(root *fsx.Root, prefix cellar.Prefix, name, version string) (err error) {
 	l, err := lock.Acquire(root, name)
 	if err != nil {
 		return err
 	}
-	defer l.Release()
+	defer func() { err = errors.Join(err, l.Release()) }()
 
 	t := linkTargets(name, version)
 	paths := []struct{ path, want string }{

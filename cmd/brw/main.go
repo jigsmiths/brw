@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -32,12 +33,14 @@ func main() {
 }
 
 func run(cmd string, args []string) error {
-	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
+	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	prefix := fs.String("prefix", "/opt/homebrew", "Homebrew prefix")
 	name := fs.String("name", "brw-spike-test", "formula name")
 	version := fs.String("version", "0.0.1", "keg version")
 	journal := fs.String("journal", "", "append changes to this file")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
 	switch cmd {
 	case "list":
@@ -64,10 +67,9 @@ func run(cmd string, args []string) error {
 			if err != nil {
 				return err
 			}
-			defer l.Release()
 			fmt.Println("locked")
-			bufio.NewReader(os.Stdin).ReadByte() // hold until stdin closes
-			return nil
+			_, _ = bufio.NewReader(os.Stdin).ReadByte() // hold until stdin closes
+			return l.Release()
 		})
 	default:
 		return fmt.Errorf("unknown command %q\n%s", cmd, usage)
@@ -75,21 +77,21 @@ func run(cmd string, args []string) error {
 	return nil
 }
 
-func withRoot(prefix, journalPath string, fn func(*fsx.Root) error) error {
+func withRoot(prefix, journalPath string, fn func(*fsx.Root) error) (err error) {
 	var journal io.Writer
 	if journalPath != "" {
-		f, err := os.OpenFile(journalPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //fsx:allow journal lives outside the prefix
-		if err != nil {
-			return err
+		f, openErr := os.OpenFile(journalPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //fsx:allow journal lives outside the prefix
+		if openErr != nil {
+			return openErr
 		}
-		defer f.Close()
+		defer func() { err = errors.Join(err, f.Close()) }()
 		journal = f
 	}
 	root, err := fsx.Open(prefix, journal)
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { err = errors.Join(err, root.Close()) }()
 	return fn(root)
 }
 

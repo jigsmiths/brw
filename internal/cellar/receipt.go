@@ -87,7 +87,7 @@ func ParseReceipt(b []byte) (*Receipt, error) {
 // Marshal writes brew's format: two-space indent, no trailing newline.
 func (r *Receipt) Marshal() ([]byte, error) {
 	if r.unknown != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUnknownKeys, r.unknown)
+		return nil, fmt.Errorf("%w: %w", ErrUnknownKeys, r.unknown)
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
