@@ -826,5 +826,526 @@
    "patched": [],
    "fixed_count": 7
   }
+ },
+ {
+  "name": "zsh-lovers",
+  "full_name": "zsh-lovers",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Tips, tricks, and examples for zsh",
+  "license": "GPL-2.0-only",
+  "homepage": "https://grml.org/zsh/#zshlovers",
+  "versions": {
+   "stable": "0.11.0",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://deb.grml.org/pool/main/z/zsh-lovers/zsh-lovers_0.11.0_all.deb",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "893e5785df2c1a2109b364473937ea77d63ddf2ba088b4cd87c8e74c1d26d192"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": null,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "all": {
+      "cellar": ":any_skip_relocation",
+      "url": "https://ghcr.io/v2/homebrew/core/zsh-lovers/blobs/sha256:78b619a87a59fb167481f7dbca50c19e8f09048faa3a09359d54345b4f503652",
+      "sha256": "78b619a87a59fb167481f7dbca50c19e8f09048faa3a09359d54345b4f503652"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   {
+    "xz": "build"
+   }
+  ],
+  "uses_from_macos_bounds": [
+   {}
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/z/zsh-lovers.rb",
+  "ruby_source_checksum": {
+   "sha256": "1908b0e6b2ffcdbd16c828d8c9e0eeaaf8504b6ab844c49a45f366647420743a"
+  },
+  "variations": {},
+  "executables": []
+ },
+ {
+  "name": "utf8cpp",
+  "full_name": "utf8cpp",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "UTF-8 with C++ in a Portable Way",
+  "license": "BSL-1.0",
+  "homepage": "https://github.com/nemtrif/utfcpp",
+  "versions": {
+   "stable": "4.2.1",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://github.com/nemtrif/utfcpp/archive/refs/tags/v4.2.1.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "6d6a5493a111884cc085ee31babfe6d9960c8fb08fc80a64852eaeea8323dbc1"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 1,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "all": {
+      "cellar": ":any_skip_relocation",
+      "url": "https://ghcr.io/v2/homebrew/core/utf8cpp/blobs/sha256:91979507787b320aa978b9fe793d1d72b5c50c7e73529897dbe5f09c75fb0e90",
+      "sha256": "91979507787b320aa978b9fe793d1d72b5c50c7e73529897dbe5f09c75fb0e90"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [
+   "cmake"
+  ],
+  "dependencies": [],
+  "test_dependencies": [
+   "cmake"
+  ],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/u/utf8cpp.rb",
+  "ruby_source_checksum": {
+   "sha256": "8dea71754ab38b68c81eb651c466c488aef6fcfcf64d72674fcbaf92cbcd2c76"
+  },
+  "variations": {},
+  "executables": []
+ },
+ {
+  "name": "crystal",
+  "full_name": "crystal",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Fast and statically typed, compiled language with Ruby-like syntax",
+  "license": "Apache-2.0",
+  "homepage": "https://crystal-lang.org/",
+  "versions": {
+   "stable": "1.21.1",
+   "head": "HEAD",
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://github.com/crystal-lang/crystal/archive/refs/tags/1.21.1.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "174ad41131a155d0407fb9f66fac4e4baabc5b5d7d030fef9c631a43f553e112"
+   },
+   "head": {
+    "url": "https://github.com/crystal-lang/crystal.git",
+    "branch": "master",
+    "using": null
+   }
+  },
+  "patches": [
+   {
+    "strip": "p1",
+    "url": "https://github.com/crystal-lang/crystal/commit/92773ed31c59f1a70c3b8ec0643fa4cf57362a9e.patch?full_index=1",
+    "sha256": "de507d6eff80c0ef7d2309911aaf11b321d1ec960e3ada4b45c6c1cf3dc4a26a",
+    "type": "backport",
+    "resolves": [
+     {
+      "type": "defect",
+      "id": "https://github.com/crystal-lang/crystal/pull/17432"
+     }
+    ]
+   }
+  ],
+  "revision": 1,
+  "version_scheme": 0,
+  "compatibility_version": 2,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/crystal/blobs/sha256:59ce85b849ea2e9efedfaa8e7990a441f656bf52e45616deadb59a7a0d7e5a73",
+      "sha256": "59ce85b849ea2e9efedfaa8e7990a441f656bf52e45616deadb59a7a0d7e5a73"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/crystal/blobs/sha256:3efe943a1e958b1cb86360bdff2a025ad9854bbaed992a8d690a142465fdd25d",
+      "sha256": "3efe943a1e958b1cb86360bdff2a025ad9854bbaed992a8d690a142465fdd25d"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/crystal/blobs/sha256:30b8d9e04b84760db7e3f14713a573f69c3e404e0d9b867865d0e69ab17afb58",
+      "sha256": "30b8d9e04b84760db7e3f14713a573f69c3e404e0d9b867865d0e69ab17afb58"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/crystal/blobs/sha256:fa0a7594dff38917696ed25433139da9ab95fd16613a38383561b9dee238f61d",
+      "sha256": "fa0a7594dff38917696ed25433139da9ab95fd16613a38383561b9dee238f61d"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/crystal/blobs/sha256:b43270c362edf209e1ea6a41e8646031dbe8daf78af8c28ec10cbecc38d8184e",
+      "sha256": "b43270c362edf209e1ea6a41e8646031dbe8daf78af8c28ec10cbecc38d8184e"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [
+   "asciidoctor"
+  ],
+  "dependencies": [
+   "bdw-gc",
+   "gmp",
+   "libyaml",
+   "llvm",
+   "openssl@4",
+   "pcre2",
+   "pkgconf"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   "libffi"
+  ],
+  "uses_from_macos_bounds": [
+   {}
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/c/crystal.rb",
+  "ruby_source_checksum": {
+   "sha256": "a9df1a61e1c235b28b420177e32f89bfa797ab05904b7d728dd1280dc7117399"
+  },
+  "variations": {
+   "golden_gate": {
+    "dependencies": [
+     "bdw-gc",
+     "gmp",
+     "libyaml",
+     "llvm",
+     "openssl@4",
+     "pcre2",
+     "pkgconf",
+     "libffi"
+    ]
+   },
+   "tahoe": {
+    "dependencies": [
+     "bdw-gc",
+     "gmp",
+     "libyaml",
+     "llvm",
+     "openssl@4",
+     "pcre2",
+     "pkgconf",
+     "libffi"
+    ]
+   },
+   "sequoia": {
+    "dependencies": [
+     "bdw-gc",
+     "gmp",
+     "libyaml",
+     "llvm",
+     "openssl@4",
+     "pcre2",
+     "pkgconf",
+     "libffi"
+    ]
+   },
+   "sonoma": {
+    "dependencies": [
+     "bdw-gc",
+     "gmp",
+     "libyaml",
+     "llvm",
+     "openssl@4",
+     "pcre2",
+     "pkgconf",
+     "libffi"
+    ]
+   },
+   "ventura": {
+    "dependencies": [
+     "bdw-gc",
+     "gmp",
+     "libyaml",
+     "llvm",
+     "openssl@4",
+     "pcre2",
+     "pkgconf",
+     "libffi"
+    ]
+   },
+   "monterey": {
+    "dependencies": [
+     "bdw-gc",
+     "gmp",
+     "libyaml",
+     "llvm",
+     "openssl@4",
+     "pcre2",
+     "pkgconf",
+     "libffi"
+    ]
+   },
+   "big_sur": {
+    "dependencies": [
+     "bdw-gc",
+     "gmp",
+     "libyaml",
+     "llvm",
+     "openssl@4",
+     "pcre2",
+     "pkgconf",
+     "libffi"
+    ]
+   },
+   "x86_64_linux": {
+    "dependencies": [
+     "bdw-gc",
+     "gmp",
+     "libyaml",
+     "llvm",
+     "openssl@4",
+     "pcre2",
+     "pkgconf",
+     "libffi"
+    ]
+   }
+  },
+  "executables": [
+   "crystal",
+   "shards"
+  ]
+ },
+ {
+  "name": "semtag",
+  "full_name": "semtag",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Semantic tagging script for git",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/nico2sh/semtag",
+  "versions": {
+   "stable": "0.2.0",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://github.com/nico2sh/semtag/archive/refs/tags/v0.2.0.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "37890fc5bbdeba923b51ff615c4e99b002c95d922925ed1efefd117ad7934548"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": null,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "all": {
+      "cellar": ":any_skip_relocation",
+      "url": "https://ghcr.io/v2/homebrew/core/semtag/blobs/sha256:604f7f8fae481b73da08c4c4465852d2b955954df5401961bd4a2c16ad7918af",
+      "sha256": "604f7f8fae481b73da08c4c4465852d2b955954df5401961bd4a2c16ad7918af"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [
+   "bash"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/s/semtag.rb",
+  "ruby_source_checksum": {
+   "sha256": "9abe676805fc55da63b67304802017d8a6701cb20ca9bce0e21b4792120880f7"
+  },
+  "variations": {
+   "x86_64_linux": {
+    "dependencies": []
+   },
+   "arm64_linux": {
+    "dependencies": []
+   }
+  },
+  "executables": [
+   "semtag"
+  ]
  }
 ]

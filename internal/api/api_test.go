@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,7 +33,7 @@ func parseFixture(t *testing.T) []Formula {
 
 func TestParse(t *testing.T) {
 	fs := parseFixture(t)
-	if len(fs) != 4 {
+	if len(fs) != 8 {
 		t.Fatalf("got %d formulae", len(fs))
 	}
 	jq := fs[0]
@@ -122,11 +123,11 @@ func TestFormulaeCachesWithETag(t *testing.T) {
 	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
 
 	first, err := c.Formulae(context.Background())
-	if err != nil || len(first) != 4 {
+	if err != nil || len(first) != 8 {
 		t.Fatalf("first fetch = %d formulae, %v", len(first), err)
 	}
 	second, err := c.Formulae(context.Background())
-	if err != nil || len(second) != 4 {
+	if err != nil || len(second) != 8 {
 		t.Fatalf("second fetch = %d formulae, %v", len(second), err)
 	}
 	if srv.hits.Load() != 2 || srv.conditional.Load() != 1 {
@@ -147,7 +148,7 @@ func TestFormulaeIgnoresETagWithoutBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	fs, err := c.Formulae(context.Background())
-	if err != nil || len(fs) != 4 {
+	if err != nil || len(fs) != 8 {
 		t.Fatalf("fetch with etag but no body = %d formulae, %v", len(fs), err)
 	}
 	if srv.conditional.Load() != 0 {
@@ -175,5 +176,115 @@ func TestFormulaeBadBodyNotCached(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Errorf("bad body was cached: %v", entries)
+	}
+}
+
+func forTag(t *testing.T, f Formula, tag string) Formula {
+	t.Helper()
+	got, err := f.ForTag(tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func byName(t *testing.T, name string) Formula {
+	t.Helper()
+	f, ok := NewIndex(parseFixture(t)).Lookup(name)
+	if !ok {
+		t.Fatalf("%s not in fixture", name)
+	}
+	return *f
+}
+
+func TestUsesFromMacOS(t *testing.T) {
+	node := byName(t, "node")
+	if len(node.UsesFromMacOS) != 1 || node.UsesFromMacOS[0].Name != "python" || !node.UsesFromMacOS[0].Runtime() {
+		t.Errorf("node uses = %+v", node.UsesFromMacOS)
+	}
+	xz := byName(t, "zsh-lovers").UsesFromMacOS
+	if len(xz) != 1 || xz[0].Name != "xz" || !reflect.DeepEqual(xz[0].Tags, []string{"build"}) || xz[0].Runtime() {
+		t.Errorf("zsh-lovers uses = %+v", xz)
+	}
+}
+
+func TestUsesFromMacOSShapes(t *testing.T) {
+	var got []UsesFromMacOS
+	in := `["a", {"b": "build"}, {"c": ["build", "test"]}, {"d": "test"}, {"e": "no_linkage"}]`
+	if err := json.Unmarshal([]byte(in), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		name    string
+		runtime bool
+	}{{"a", true}, {"b", false}, {"c", false}, {"d", false}, {"e", true}}
+	if len(got) != len(want) {
+		t.Fatalf("got %d entries", len(got))
+	}
+	for i, w := range want {
+		if got[i].Name != w.name || got[i].Runtime() != w.runtime {
+			t.Errorf("entry %d = %+v, want %s runtime=%v", i, got[i], w.name, w.runtime)
+		}
+	}
+	if err := json.Unmarshal([]byte(`[{"a": "build", "b": "test"}]`), &got); err == nil {
+		t.Error("an object with two names should be rejected")
+	}
+	if err := json.Unmarshal([]byte(`[3]`), &got); err == nil {
+		t.Error("a number should be rejected")
+	}
+}
+
+func TestVersionScheme(t *testing.T) {
+	if got := byName(t, "utf8cpp").VersionScheme; got == 0 {
+		t.Errorf("utf8cpp VersionScheme = %d", got)
+	}
+	if got := byName(t, "jq").VersionScheme; got != 0 {
+		t.Errorf("jq VersionScheme = %d", got)
+	}
+}
+
+func TestForTag(t *testing.T) {
+	crystal := byName(t, "crystal")
+	base := slices.Clone(crystal.Dependencies)
+
+	linux := forTag(t, crystal, "x86_64_linux")
+	if slices.Contains(base, "libffi") || len(linux.Dependencies) != len(base)+1 || !slices.Contains(linux.Dependencies, "libffi") {
+		t.Errorf("x86_64_linux dependencies = %v, want base %v plus libffi", linux.Dependencies, base)
+	}
+	if !reflect.DeepEqual(crystal.Dependencies, base) {
+		t.Errorf("ForTag changed the original: %v", crystal.Dependencies)
+	}
+	if got := forTag(t, crystal, "arm64_tahoe").Dependencies; !reflect.DeepEqual(got, base) {
+		t.Errorf("arm64_tahoe dependencies = %v, want the base list", got)
+	}
+	if got := forTag(t, crystal, "nonsense").Dependencies; !reflect.DeepEqual(got, base) {
+		t.Errorf("unknown tag dependencies = %v", got)
+	}
+	if got := forTag(t, crystal, "").Dependencies; !reflect.DeepEqual(got, base) {
+		t.Errorf("empty tag dependencies = %v", got)
+	}
+}
+
+func TestForTagCanEmptyDependencies(t *testing.T) {
+	semtag := byName(t, "semtag")
+	if len(semtag.Dependencies) == 0 {
+		t.Fatal("fixture should have a base dependency")
+	}
+	if got := forTag(t, semtag, "x86_64_linux").Dependencies; len(got) != 0 {
+		t.Errorf("override with [] should empty the list, got %v", got)
+	}
+}
+
+func TestForTagKegOnly(t *testing.T) {
+	f := Formula{Variations: map[string]json.RawMessage{"x": json.RawMessage(`{"keg_only": true}`)}}
+	if f.KegOnly || !forTag(t, f, "x").KegOnly {
+		t.Error("keg_only override not applied")
+	}
+}
+
+func TestForTagMalformedVariation(t *testing.T) {
+	f := Formula{Name: "x", Variations: map[string]json.RawMessage{"t": json.RawMessage(`{"dependencies": "oops"}`)}}
+	if _, err := f.ForTag("t"); err == nil {
+		t.Error("expected an error for a malformed variation")
 	}
 }

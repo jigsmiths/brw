@@ -18,17 +18,82 @@ import (
 const DefaultURL = "https://formulae.brew.sh/api/formula.json"
 
 type Formula struct {
-	Name             string                  `json:"name"`
-	FullName         string                  `json:"full_name"`
-	Tap              string                  `json:"tap"`
-	Aliases          []string                `json:"aliases"`
-	OldNames         []string                `json:"oldnames"`
-	Versions         struct{ Stable string } `json:"versions"`
-	Revision         int                     `json:"revision"`
-	Bottle           struct{ Stable Bottle } `json:"bottle"`
-	Dependencies     []string                `json:"dependencies"`
-	KegOnly          bool                    `json:"keg_only"`
-	PostInstallSteps []json.RawMessage       `json:"post_install_steps"`
+	Name             string                     `json:"name"`
+	FullName         string                     `json:"full_name"`
+	Tap              string                     `json:"tap"`
+	Aliases          []string                   `json:"aliases"`
+	OldNames         []string                   `json:"oldnames"`
+	Versions         struct{ Stable string }    `json:"versions"`
+	Revision         int                        `json:"revision"`
+	VersionScheme    int                        `json:"version_scheme"`
+	Bottle           struct{ Stable Bottle }    `json:"bottle"`
+	Dependencies     []string                   `json:"dependencies"`
+	UsesFromMacOS    []UsesFromMacOS            `json:"uses_from_macos"`
+	KegOnly          bool                       `json:"keg_only"`
+	PostInstallSteps []json.RawMessage          `json:"post_install_steps"`
+	Variations       map[string]json.RawMessage `json:"variations"`
+}
+
+// UsesFromMacOS is a dependency macOS provides itself. It is a plain name or
+// a one-entry object mapping the name to a tag or list of tags.
+type UsesFromMacOS struct {
+	Name string
+	Tags []string
+}
+
+func (u *UsesFromMacOS) UnmarshalJSON(b []byte) error {
+	var name string
+	if json.Unmarshal(b, &name) == nil {
+		*u = UsesFromMacOS{Name: name}
+		return nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(b, &obj); err != nil || len(obj) != 1 {
+		return fmt.Errorf("uses_from_macos entry %s: want a name or a one-entry object", b)
+	}
+	for name, raw := range obj {
+		var tags []string
+		var one string
+		switch {
+		case json.Unmarshal(raw, &one) == nil:
+			tags = []string{one}
+		case json.Unmarshal(raw, &tags) != nil:
+			return fmt.Errorf("uses_from_macos tags %s: want a string or list", raw)
+		}
+		*u = UsesFromMacOS{Name: name, Tags: tags}
+	}
+	return nil
+}
+
+// Runtime is false for build-only and test-only entries.
+func (u UsesFromMacOS) Runtime() bool {
+	return !slices.Contains(u.Tags, "build") && !slices.Contains(u.Tags, "test")
+}
+
+// ForTag returns a copy with the variation for the exact bottle tag applied.
+func (f Formula) ForTag(tag string) (Formula, error) {
+	raw, ok := f.Variations[tag]
+	if !ok {
+		return f, nil
+	}
+	var o struct {
+		Dependencies  *[]string        `json:"dependencies"`
+		UsesFromMacOS *[]UsesFromMacOS `json:"uses_from_macos"`
+		KegOnly       *bool            `json:"keg_only"`
+	}
+	if err := json.Unmarshal(raw, &o); err != nil {
+		return f, fmt.Errorf("%s variation %s: %w", f.Name, tag, err)
+	}
+	if o.Dependencies != nil {
+		f.Dependencies = *o.Dependencies
+	}
+	if o.UsesFromMacOS != nil {
+		f.UsesFromMacOS = *o.UsesFromMacOS
+	}
+	if o.KegOnly != nil {
+		f.KegOnly = *o.KegOnly
+	}
+	return f, nil
 }
 
 type Bottle struct {
