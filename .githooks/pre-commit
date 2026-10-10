@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Runs the same checks as CI.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+unformatted=$(gofmt -l .)
+if [ -n "$unformatted" ]; then
+  echo "pre-commit: run gofmt -w on:" >&2
+  echo "$unformatted" >&2
+  exit 1
+fi
+golangci-lint run ./...
+go test ./...

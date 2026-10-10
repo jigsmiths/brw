@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Rejects commit messages that break the repo commit rules.
+set -u
+
+fail() { echo "commit-msg: $1" >&2; exit 1; }
+
+msg=$(grep -v '^#' "$1")
+subject=$(printf '%s\n' "$msg" | head -n 1)
+[ -n "$subject" ] || fail "empty message"
+
+printf '%s' "$msg" | grep -q "$(printf '\xe2\x80\x94')" && fail "no em dashes"
+printf '%s' "$msg" | grep -Eiq '^(co-authored-by|claude-session):' && fail "no Co-Authored-By or Claude-Session trailers"
+
+case "$subject" in
+  "Merge "* | "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+
+types='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+printf '%s' "$subject" | grep -Eq "^($types)(\([a-z0-9._/-]+\))?!?: .+" ||
+  fail "subject must be '<type>(<scope>)?: <summary>', type one of: ${types//|/, }"
+[ "${#subject}" -le 72 ] || fail "subject is ${#subject} characters, max 72"
+
+rest=$(printf '%s\n' "$msg" | tail -n +2)
+if [ -n "$(printf '%s' "$rest" | tr -d '[:space:]')" ]; then
+  [ -z "$(printf '%s\n' "$rest" | head -n 1)" ] || fail "leave a blank line after the subject"
+  bullets=0
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in
+      "- "*) bullets=$((bullets + 1)) ;;
+      *) fail "body lines must be '- ' bullets: $line" ;;
+    esac
+  done <<<"$rest"
+  [ "$bullets" -le 3 ] || fail "at most 3 bullets, found $bullets"
+fi
