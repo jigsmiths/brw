@@ -1,0 +1,90 @@
+package cellar
+
+import (
+	"bytes"
+	"encoding/json"
+)
+
+// Receipt is the INSTALL_RECEIPT.json of a keg. Field order is the order brew
+// writes, so Marshal reproduces brew's files byte for byte.
+type Receipt struct {
+	HomebrewVersion       string          `json:"homebrew_version"`
+	UsedOptions           []string        `json:"used_options"`
+	UnusedOptions         []string        `json:"unused_options"`
+	BuiltAsBottle         bool            `json:"built_as_bottle"`
+	BuiltPrefix           string          `json:"built_prefix,omitempty"`
+	PouredFromBottle      bool            `json:"poured_from_bottle"`
+	LoadedFromAPI         bool            `json:"loaded_from_api"`
+	LoadedFromInternalAPI *bool           `json:"loaded_from_internal_api,omitempty"`
+	InstalledAsDependency *bool           `json:"installed_as_dependency,omitempty"`
+	InstalledOnRequest    bool            `json:"installed_on_request"`
+	ChangedFiles          []string        `json:"changed_files"`
+	LinkageFiles          []string        `json:"linkage_files,omitzero"`
+	BinaryRelocationFiles []string        `json:"binary_relocation_files,omitzero"`
+	Time                  int64           `json:"time"`
+	SourceModifiedTime    int64           `json:"source_modified_time"`
+	Compiler              string          `json:"compiler"`
+	Aliases               []string        `json:"aliases"`
+	RuntimeDependencies   []Dependency    `json:"runtime_dependencies"`
+	Source                Source          `json:"source"`
+	Arch                  string          `json:"arch"`
+	BuiltOn               json.RawMessage `json:"built_on"`
+}
+
+// Dependency is one entry of Receipt.RuntimeDependencies.
+type Dependency struct {
+	FullName             string          `json:"full_name"`
+	Version              string          `json:"version"`
+	Revision             int             `json:"revision"`
+	BottleRebuild        int             `json:"bottle_rebuild"`
+	PkgVersion           string          `json:"pkg_version"`
+	DeclaredDirectly     bool            `json:"declared_directly"`
+	CompatibilityVersion json.RawMessage `json:"compatibility_version,omitempty"`
+}
+
+// Source is the receipt's "source" object. Its key order varies, so the raw
+// JSON is kept and written back unchanged.
+type Source struct {
+	Tap string
+	raw json.RawMessage
+}
+
+func (s *Source) UnmarshalJSON(b []byte) error {
+	var v struct {
+		Tap string `json:"tap"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	s.Tap = v.Tap
+	s.raw = append(s.raw[:0], b...)
+	return nil
+}
+
+func (s Source) MarshalJSON() ([]byte, error) {
+	if s.raw == nil {
+		return json.Marshal(map[string]string{"tap": s.Tap})
+	}
+	return s.raw, nil
+}
+
+// ParseReceipt decodes an INSTALL_RECEIPT.json.
+func ParseReceipt(b []byte) (*Receipt, error) {
+	var r Receipt
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// Marshal encodes r in brew's format: two-space indent, no trailing newline.
+func (r *Receipt) Marshal() ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(r); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}

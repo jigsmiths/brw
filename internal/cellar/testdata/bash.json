@@ -1,0 +1,131 @@
+{
+  "homebrew_version": "7.0.1-21-gef55185",
+  "used_options": [],
+  "unused_options": [],
+  "built_as_bottle": true,
+  "built_prefix": "/opt/homebrew",
+  "poured_from_bottle": true,
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "installed_on_request": false,
+  "changed_files": [
+    "bin/bashbug",
+    "include/bash/pathnames.h",
+    "lib/pkgconfig/bash.pc",
+    "share/bash/Makefile.inc",
+    "share/bash/Makefile.sample"
+  ],
+  "linkage_files": [
+    "bin/bash",
+    "lib/bash/accept",
+    "lib/bash/basename",
+    "lib/bash/chmod",
+    "lib/bash/csv",
+    "lib/bash/cut",
+    "lib/bash/dirname",
+    "lib/bash/dsv",
+    "lib/bash/fdflags",
+    "lib/bash/finfo",
+    "lib/bash/fltexpr",
+    "lib/bash/getconf",
+    "lib/bash/head",
+    "lib/bash/id",
+    "lib/bash/kv",
+    "lib/bash/ln",
+    "lib/bash/logname",
+    "lib/bash/mkdir",
+    "lib/bash/mkfifo",
+    "lib/bash/mktemp",
+    "lib/bash/mypid",
+    "lib/bash/pathchk",
+    "lib/bash/print",
+    "lib/bash/printenv",
+    "lib/bash/push",
+    "lib/bash/realpath",
+    "lib/bash/rm",
+    "lib/bash/rmdir",
+    "lib/bash/seq",
+    "lib/bash/setpgid",
+    "lib/bash/sleep",
+    "lib/bash/stat",
+    "lib/bash/strftime",
+    "lib/bash/strptime",
+    "lib/bash/sync",
+    "lib/bash/tee",
+    "lib/bash/truefalse",
+    "lib/bash/tty",
+    "lib/bash/uname",
+    "lib/bash/unlink",
+    "lib/bash/whoami"
+  ],
+  "binary_relocation_files": [
+    "bin/bash"
+  ],
+  "time": 1789543814,
+  "source_modified_time": 1753882072,
+  "compiler": "clang",
+  "aliases": [],
+  "runtime_dependencies": [
+    {
+      "full_name": "ncurses",
+      "version": "6.6",
+      "revision": 0,
+      "bottle_rebuild": 0,
+      "pkg_version": "6.6",
+      "declared_directly": true
+    },
+    {
+      "full_name": "readline",
+      "version": "8.3.6",
+      "revision": 0,
+      "bottle_rebuild": 0,
+      "pkg_version": "8.3.6",
+      "declared_directly": true
+    },
+    {
+      "full_name": "json-c",
+      "version": "0.19",
+      "revision": 0,
+      "bottle_rebuild": 1,
+      "pkg_version": "0.19",
+      "declared_directly": false
+    },
+    {
+      "full_name": "libunistring",
+      "version": "1.4.2",
+      "revision": 0,
+      "bottle_rebuild": 0,
+      "pkg_version": "1.4.2",
+      "declared_directly": false
+    },
+    {
+      "full_name": "gettext",
+      "version": "1.0",
+      "revision": 0,
+      "bottle_rebuild": 1,
+      "pkg_version": "1.0",
+      "declared_directly": true
+    }
+  ],
+  "source": {
+    "spec": "stable",
+    "versions": {
+      "stable": "5.3.20",
+      "head": null,
+      "version_scheme": 0,
+      "compatibility_version": null
+    },
+    "path": "/Users/bvdwalt/Library/Caches/Homebrew/api/internal/packages.arm64_tahoe.jws.json",
+    "tap_git_head": null,
+    "tap": "homebrew/core"
+  },
+  "arch": "arm64",
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 26.6",
+    "cpu_family": "dunno",
+    "xcode": "27.0",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}
