@@ -2,6 +2,7 @@ package cellar
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -209,5 +210,35 @@ func TestLinked(t *testing.T) {
 		if got := p.Linked(tt.name, tt.version); got != tt.want {
 			t.Errorf("Linked(%s, %s) = %v, want %v", tt.name, tt.version, got, tt.want)
 		}
+	}
+}
+
+func TestReceiptUnknownKeys(t *testing.T) {
+	mutations := map[string]func(m map[string]any){
+		"top-level key": func(m map[string]any) { m["future_key"] = true },
+		"dependency key": func(m map[string]any) {
+			deps := m["runtime_dependencies"].([]any)
+			deps[0].(map[string]any)["future_dep_key"] = 1
+		},
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			var m map[string]any
+			if err := json.Unmarshal(fixture(t, "jq"), &m); err != nil {
+				t.Fatal(err)
+			}
+			mutate(m)
+			b, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := ParseReceipt(b)
+			if err != nil {
+				t.Fatalf("reading must tolerate unknown keys: %v", err)
+			}
+			if _, err := r.Marshal(); !errors.Is(err, ErrUnknownKeys) {
+				t.Errorf("Marshal error = %v, want ErrUnknownKeys", err)
+			}
+		})
 	}
 }

@@ -3,10 +3,14 @@ package cellar
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 )
 
-// Receipt is the INSTALL_RECEIPT.json of a keg. Field order is the order brew
-// writes, so Marshal reproduces brew's files byte for byte.
+// ErrUnknownKeys is returned by Marshal when a receipt has keys we don't model.
+var ErrUnknownKeys = errors.New("receipt has unknown keys")
+
+// Receipt is an INSTALL_RECEIPT.json. Field order matches brew's output.
 type Receipt struct {
 	HomebrewVersion       string          `json:"homebrew_version"`
 	UsedOptions           []string        `json:"used_options"`
@@ -29,9 +33,10 @@ type Receipt struct {
 	Source                Source          `json:"source"`
 	Arch                  string          `json:"arch"`
 	BuiltOn               json.RawMessage `json:"built_on"`
+
+	unknown error
 }
 
-// Dependency is one entry of Receipt.RuntimeDependencies.
 type Dependency struct {
 	FullName             string          `json:"full_name"`
 	Version              string          `json:"version"`
@@ -42,8 +47,7 @@ type Dependency struct {
 	CompatibilityVersion json.RawMessage `json:"compatibility_version,omitempty"`
 }
 
-// Source is the receipt's "source" object. Its key order varies, so the raw
-// JSON is kept and written back unchanged.
+// Source keeps its raw JSON because brew's key order varies.
 type Source struct {
 	Tap string
 	raw json.RawMessage
@@ -68,17 +72,23 @@ func (s Source) MarshalJSON() ([]byte, error) {
 	return s.raw, nil
 }
 
-// ParseReceipt decodes an INSTALL_RECEIPT.json.
 func ParseReceipt(b []byte) (*Receipt, error) {
 	var r Receipt
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, err
 	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	var strict Receipt
+	r.unknown = dec.Decode(&strict)
 	return &r, nil
 }
 
-// Marshal encodes r in brew's format: two-space indent, no trailing newline.
+// Marshal writes brew's format: two-space indent, no trailing newline.
 func (r *Receipt) Marshal() ([]byte, error) {
+	if r.unknown != nil {
+		return nil, fmt.Errorf("%w: %v", ErrUnknownKeys, r.unknown)
+	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
