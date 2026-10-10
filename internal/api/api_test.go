@@ -13,6 +13,8 @@ import (
 	"testing"
 )
 
+const fixtureSize = 9
+
 func fixture(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", "formulae.json"))
@@ -33,7 +35,7 @@ func parseFixture(t *testing.T) []Formula {
 
 func TestParse(t *testing.T) {
 	fs := parseFixture(t)
-	if len(fs) != 8 {
+	if len(fs) != fixtureSize {
 		t.Fatalf("got %d formulae", len(fs))
 	}
 	jq := fs[0]
@@ -123,11 +125,11 @@ func TestFormulaeCachesWithETag(t *testing.T) {
 	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
 
 	first, err := c.Formulae(context.Background())
-	if err != nil || len(first) != 8 {
+	if err != nil || len(first) != fixtureSize {
 		t.Fatalf("first fetch = %d formulae, %v", len(first), err)
 	}
 	second, err := c.Formulae(context.Background())
-	if err != nil || len(second) != 8 {
+	if err != nil || len(second) != fixtureSize {
 		t.Fatalf("second fetch = %d formulae, %v", len(second), err)
 	}
 	if srv.hits.Load() != 2 || srv.conditional.Load() != 1 {
@@ -148,7 +150,7 @@ func TestFormulaeIgnoresETagWithoutBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	fs, err := c.Formulae(context.Background())
-	if err != nil || len(fs) != 8 {
+	if err != nil || len(fs) != fixtureSize {
 		t.Fatalf("fetch with etag but no body = %d formulae, %v", len(fs), err)
 	}
 	if srv.conditional.Load() != 0 {
@@ -286,5 +288,15 @@ func TestForTagMalformedVariation(t *testing.T) {
 	f := Formula{Name: "x", Variations: map[string]json.RawMessage{"t": json.RawMessage(`{"dependencies": "oops"}`)}}
 	if _, err := f.ForTag("t"); err == nil {
 		t.Error("expected an error for a malformed variation")
+	}
+}
+
+func TestUsesFromMacOSSince(t *testing.T) {
+	dzr := byName(t, "dzr").UsesFromMacOS
+	if len(dzr) != 1 || dzr[0].Name != "jq" || dzr[0].Since != "sequoia" {
+		t.Errorf("dzr uses = %+v", dzr)
+	}
+	if got := byName(t, "node").UsesFromMacOS[0].Since; got != "" {
+		t.Errorf("node python Since = %q, want none", got)
 	}
 }

@@ -73,3 +73,25 @@ func TestSelect(t *testing.T) {
 		})
 	}
 }
+
+func TestReleaseMajor(t *testing.T) {
+	for name, want := range map[string]int{"golden_gate": 27, "tahoe": 26, "ventura": 13, "big_sur": 11} {
+		if got, ok := ReleaseMajor(name); !ok || got != want {
+			t.Errorf("ReleaseMajor(%q) = %d, %v; want %d", name, got, ok, want)
+		}
+	}
+	if _, ok := ReleaseMajor("catalina"); ok {
+		t.Error("catalina is not supported")
+	}
+}
+
+func TestMacMajor(t *testing.T) {
+	if got, err := MacMajor("27.0.1"); err != nil || got != 27 {
+		t.Errorf("MacMajor(27.0.1) = %d, %v", got, err)
+	}
+	for _, bad := range []string{"10.15", "banana", ""} {
+		if _, err := MacMajor(bad); err == nil {
+			t.Errorf("MacMajor(%q) should fail", bad)
+		}
+	}
+}

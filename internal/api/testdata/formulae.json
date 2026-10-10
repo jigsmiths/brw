@@ -1347,5 +1347,112 @@
   "executables": [
    "semtag"
   ]
+ },
+ {
+  "name": "dzr",
+  "full_name": "dzr",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Command-line Deezer.com player",
+  "license": "Unlicense",
+  "homepage": "https://github.com/yne/dzr",
+  "versions": {
+   "stable": "260315",
+   "head": "HEAD",
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://github.com/yne/dzr/archive/refs/tags/260315.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "3bf9f3121cbbd35a4d3fb83d1869d3047abe32db157705a4d68aaf441c6ea0fe"
+   },
+   "head": {
+    "url": "https://github.com/yne/dzr.git",
+    "branch": "master",
+    "using": null
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": null,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "all": {
+      "cellar": ":any_skip_relocation",
+      "url": "https://ghcr.io/v2/homebrew/core/dzr/blobs/sha256:3cb40f558bc5c55bb3dcde6b46dccd1073e7a72e218646471f261b409be09a15",
+      "sha256": "3cb40f558bc5c55bb3dcde6b46dccd1073e7a72e218646471f261b409be09a15"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [
+   "dialog",
+   "mpv"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   "jq"
+  ],
+  "uses_from_macos_bounds": [
+   {
+    "since": "sequoia"
+   }
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/d/dzr.rb",
+  "ruby_source_checksum": {
+   "sha256": "879b30047290b693e17b364c9d295ddc51462b6419c348b11dd0259d38b7846f"
+  },
+  "variations": {},
+  "executables": [
+   "dzr",
+   "dzr-dec",
+   "dzr-id3",
+   "dzr-srt",
+   "dzr-url"
+  ]
  }
 ]

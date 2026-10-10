@@ -29,6 +29,7 @@ type Formula struct {
 	Bottle           struct{ Stable Bottle }    `json:"bottle"`
 	Dependencies     []string                   `json:"dependencies"`
 	UsesFromMacOS    []UsesFromMacOS            `json:"uses_from_macos"`
+	UsesBounds       []struct{ Since string }   `json:"uses_from_macos_bounds"`
 	KegOnly          bool                       `json:"keg_only"`
 	PostInstallSteps []json.RawMessage          `json:"post_install_steps"`
 	Variations       map[string]json.RawMessage `json:"variations"`
@@ -37,8 +38,9 @@ type Formula struct {
 // UsesFromMacOS is a dependency macOS provides itself. It is a plain name or
 // a one-entry object mapping the name to a tag or list of tags.
 type UsesFromMacOS struct {
-	Name string
-	Tags []string
+	Name  string
+	Tags  []string
+	Since string // macOS release that provides it; older macOS needs the real dependency
 }
 
 func (u *UsesFromMacOS) UnmarshalJSON(b []byte) error {
@@ -122,6 +124,14 @@ func Parse(b []byte) ([]Formula, error) {
 	var formulae []Formula
 	if err := json.Unmarshal(b, &formulae); err != nil {
 		return nil, err
+	}
+	for i := range formulae {
+		f := &formulae[i]
+		for j := range f.UsesFromMacOS {
+			if j < len(f.UsesBounds) {
+				f.UsesFromMacOS[j].Since = f.UsesBounds[j].Since
+			}
+		}
 	}
 	return formulae, nil
 }
