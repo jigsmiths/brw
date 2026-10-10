@@ -1,0 +1,830 @@
+[
+ {
+  "name": "jq",
+  "full_name": "jq",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Lightweight and flexible command-line JSON processor",
+  "license": "MIT",
+  "homepage": "https://jqlang.github.io/jq/",
+  "versions": {
+   "stable": "1.8.2",
+   "head": "HEAD",
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-1.8.2.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "71b8d6e8f5fe81f6c6d0d110e3892251f6ce76ed095abd315e26e6e1193af3af"
+   },
+   "head": {
+    "url": "https://github.com/jqlang/jq.git",
+    "branch": "master",
+    "using": null
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 1,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:d048dd4c28d867e939065a3bc8209f37e2a5be3e2c18d18c8c7da8f4d1629a4a",
+      "sha256": "d048dd4c28d867e939065a3bc8209f37e2a5be3e2c18d18c8c7da8f4d1629a4a"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:ca67c64d0aaf1e5472790ec2cc081ff7972316f27095d8a8aab81b3321247036",
+      "sha256": "ca67c64d0aaf1e5472790ec2cc081ff7972316f27095d8a8aab81b3321247036"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:ef70e236f58a8a781436ee400f9bdf847ad7d12e75115871fb6a94b9214a1a41",
+      "sha256": "ef70e236f58a8a781436ee400f9bdf847ad7d12e75115871fb6a94b9214a1a41"
+     },
+     "arm64_sonoma": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:39f30266edd431962b606353091035a9cec9a61437252f448a3a8cf69dbc0551",
+      "sha256": "39f30266edd431962b606353091035a9cec9a61437252f448a3a8cf69dbc0551"
+     },
+     "sonoma": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:af9ddba2379910ceed96961891002b1c8c133f6f3f290ccb3d7c7d877dd4e9e9",
+      "sha256": "af9ddba2379910ceed96961891002b1c8c133f6f3f290ccb3d7c7d877dd4e9e9"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:d67a00e578f6684163660fed1accb56ef87b01651e37dec737d362d09ece9eab",
+      "sha256": "d67a00e578f6684163660fed1accb56ef87b01651e37dec737d362d09ece9eab"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:631787d9b19df5e5557cc83f972080e541f543f8df2d1f212ca4290ff23e9764",
+      "sha256": "631787d9b19df5e5557cc83f972080e541f543f8df2d1f212ca4290ff23e9764"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [
+   "oniguruma"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/j/jq.rb",
+  "ruby_source_checksum": {
+   "sha256": "0081a3a8d8afaa165b4bfa9b222723916b56f4d04b975d7aad35e8cdad0b0296"
+  },
+  "head_dependencies": {
+   "build_dependencies": [
+    "autoconf",
+    "automake",
+    "libtool"
+   ],
+   "dependencies": [
+    "oniguruma"
+   ],
+   "test_dependencies": [],
+   "recommended_dependencies": [],
+   "optional_dependencies": [],
+   "uses_from_macos": [],
+   "uses_from_macos_bounds": []
+  },
+  "variations": {},
+  "executables": [
+   "jq"
+  ]
+ },
+ {
+  "name": "openssl@3",
+  "full_name": "openssl@3",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [
+   "openssl@3.6"
+  ],
+  "versioned_formulae": [
+   "openssl@4",
+   "openssl@3.5",
+   "openssl@3.0"
+  ],
+  "desc": "Cryptography and SSL/TLS Toolkit",
+  "license": "Apache-2.0",
+  "homepage": "https://openssl-library.org",
+  "versions": {
+   "stable": "3.6.5",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/openssl/3/blobs/sha256:fd8ea89de8c9d5390eb17041609842f61986b43932fabdcba9b43bacddc63c84",
+      "sha256": "fd8ea89de8c9d5390eb17041609842f61986b43932fabdcba9b43bacddc63c84"
+     },
+     "arm64_tahoe": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/openssl/3/blobs/sha256:a1ef3283ad41feaedac5d41dafc4c2a71db6492c3a45a4d1755cfb19d02afc7b",
+      "sha256": "a1ef3283ad41feaedac5d41dafc4c2a71db6492c3a45a4d1755cfb19d02afc7b"
+     },
+     "arm64_sequoia": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/openssl/3/blobs/sha256:0994a8029175af4578c3b93b3020e58dffa638ca21dc22d862c6bc02fea7e73b",
+      "sha256": "0994a8029175af4578c3b93b3020e58dffa638ca21dc22d862c6bc02fea7e73b"
+     },
+     "arm64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/openssl/3/blobs/sha256:5074ccc96209b4a63a1aed9eaa226b0c2976dfaa62f4b0c04eb3344c7ea8d005",
+      "sha256": "5074ccc96209b4a63a1aed9eaa226b0c2976dfaa62f4b0c04eb3344c7ea8d005"
+     },
+     "x86_64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/openssl/3/blobs/sha256:d1059270d1dfaae5e945745c7d5930c76a178b270a964ff450c16a2f2cda5ad2",
+      "sha256": "d1059270d1dfaae5e945745c7d5930c76a178b270a964ff450c16a2f2cda5ad2"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": true,
+  "keg_only_reason": {
+   "reason": ":versioned_formula",
+   "explanation": ""
+  },
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [
+   "ca-certificates"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": "To add additional certificates, place .pem files in\n  $HOMEBREW_PREFIX/etc/openssl@3/certs\n\nand run\n  $HOMEBREW_PREFIX/opt/openssl@3/bin/c_rehash\n\nOpenSSL 3.6 is only supported until 2026-11-01 so the `openssl@3`\nformula will be downgraded to OpenSSL 3.5 (LTS) in a future update.\n",
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [
+   {
+    "source": {
+     "path": "{{etc}}/ca-certificates/cert.pem"
+    },
+    "target": {
+     "path": "{{pkgetc}}/cert.pem"
+    },
+    "force": true,
+    "type": "symlink"
+   }
+  ],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/o/openssl@3.rb",
+  "ruby_source_checksum": {
+   "sha256": "53136fa50edf4783384360626c1f30404879cd989e0dc4ae4d7713228b68dda7"
+  },
+  "variations": {},
+  "executables": [
+   "c_rehash",
+   "openssl"
+  ]
+ },
+ {
+  "name": "node",
+  "full_name": "node",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [
+   "node.js",
+   "node@26",
+   "nodejs",
+   "npm"
+  ],
+  "versioned_formulae": [
+   "node@24",
+   "node@22",
+   "node@20",
+   "node@18"
+  ],
+  "desc": "Open-source, cross-platform JavaScript runtime environment",
+  "license": "MIT",
+  "homepage": "https://nodejs.org/",
+  "versions": {
+   "stable": "26.11.1",
+   "head": "HEAD",
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://nodejs.org/dist/v26.11.1/node-v26.11.1.tar.xz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "2c79a3c1095c7da4c549c84e90b2d28df5479315ab6d0aff9bc71dcf4c9df1e0"
+   },
+   "head": {
+    "url": "https://github.com/nodejs/node.git",
+    "branch": "main",
+    "using": null
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": null,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/node/blobs/sha256:f00f5a12c1bbfa5394d145c7bbf44d616fd461187cd9d5817161d1b59ae0a4da",
+      "sha256": "f00f5a12c1bbfa5394d145c7bbf44d616fd461187cd9d5817161d1b59ae0a4da"
+     },
+     "arm64_tahoe": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/node/blobs/sha256:4b8c64e38b7731f6c7ed78b900c8debceca49aacaa15c38fa7e8932e2d0c3a05",
+      "sha256": "4b8c64e38b7731f6c7ed78b900c8debceca49aacaa15c38fa7e8932e2d0c3a05"
+     },
+     "arm64_sequoia": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/node/blobs/sha256:c70c39adf635f3d783c80d011df0fa7db0f6ddb34b2d5c15dd4d1c72a8dd1870",
+      "sha256": "c70c39adf635f3d783c80d011df0fa7db0f6ddb34b2d5c15dd4d1c72a8dd1870"
+     },
+     "arm64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/node/blobs/sha256:659250cd9f7d49266e94ba88b83c55e3e4cb2287029d74eb960ec831361d77a9",
+      "sha256": "659250cd9f7d49266e94ba88b83c55e3e4cb2287029d74eb960ec831361d77a9"
+     },
+     "x86_64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/node/blobs/sha256:90db6667a574d63f9eae445921aa500906c28be35bf53c91ca50d9f4aecf8cad",
+      "sha256": "90db6667a574d63f9eae445921aa500906c28be35bf53c91ca50d9f4aecf8cad"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [
+   "pkgconf",
+   "python@3.14",
+   "rust"
+  ],
+  "dependencies": [
+   "abseil",
+   "ada-url",
+   "brotli",
+   "c-ares",
+   "hdrhistogram_c",
+   "icu4c@78",
+   "libffi",
+   "libnghttp2",
+   "libuv",
+   "llhttp",
+   "merve",
+   "nbytes",
+   "openssl@4",
+   "simdjson",
+   "simdutf",
+   "sqlite",
+   "uvwasi",
+   "zstd",
+   "highway"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   "python"
+  ],
+  "uses_from_macos_bounds": [
+   {}
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [
+   "bin/npm",
+   "bin/npx"
+  ],
+  "caveats": "Single Executable Application is disabled as it doesn't work with shared libnode.\n",
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [
+   {
+    "path": {
+     "path": "{{HOMEBREW_PREFIX}}/lib/node_modules"
+    },
+    "type": "mkdir_p"
+   },
+   {
+    "path": {
+     "path": "{{HOMEBREW_PREFIX}}/share/man/man1"
+    },
+    "type": "mkdir_p"
+   },
+   {
+    "path": {
+     "path": "{{HOMEBREW_PREFIX}}/share/man/man5"
+    },
+    "type": "mkdir_p"
+   },
+   {
+    "path": {
+     "path": "{{HOMEBREW_PREFIX}}/share/man/man7"
+    },
+    "type": "mkdir_p"
+   },
+   {
+    "paths": [
+     {
+      "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm"
+     }
+    ],
+    "recursive": true,
+    "guards": [
+     {
+      "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm",
+      "condition": "if_exists",
+      "id": "1"
+     }
+    ],
+    "type": "remove"
+   },
+   {
+    "source": {
+     "path": "{{libexec}}/lib/node_modules/npm"
+    },
+    "target": {
+     "path": "{{HOMEBREW_PREFIX}}/lib/node_modules"
+    },
+    "recursive": true,
+    "type": "copy"
+   },
+   {
+    "source": {
+     "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/bin/npm-cli.js"
+    },
+    "target": {
+     "path": "{{bin}}/npm"
+    },
+    "force": true,
+    "type": "symlink"
+   },
+   {
+    "source": {
+     "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/bin/npx-cli.js"
+    },
+    "target": {
+     "path": "{{bin}}/npx"
+    },
+    "force": true,
+    "type": "symlink"
+   },
+   {
+    "source": {
+     "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/man/man1/{npm,npx,package-}*"
+    },
+    "target": {
+     "path": "{{HOMEBREW_PREFIX}}/share/man/man1"
+    },
+    "force": true,
+    "source_glob": true,
+    "type": "symlink"
+   },
+   {
+    "source": {
+     "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/man/man5/{npm,npx,package-}*"
+    },
+    "target": {
+     "path": "{{HOMEBREW_PREFIX}}/share/man/man5"
+    },
+    "force": true,
+    "source_glob": true,
+    "type": "symlink"
+   },
+   {
+    "source": {
+     "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/man/man7/{npm,npx,package-}*"
+    },
+    "target": {
+     "path": "{{HOMEBREW_PREFIX}}/share/man/man7"
+    },
+    "force": true,
+    "source_glob": true,
+    "type": "symlink"
+   }
+  ],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/n/node.rb",
+  "ruby_source_checksum": {
+   "sha256": "9b78a529be14e7a6a1d78fcc62240880e5a37bba98cfc00fcbe7fa764c7f27f5"
+  },
+  "variations": {
+   "x86_64_linux": {
+    "build_dependencies": [
+     "pkgconf",
+     "python@3.14",
+     "rust",
+     "highway"
+    ],
+    "dependencies": [
+     "abseil",
+     "ada-url",
+     "brotli",
+     "c-ares",
+     "hdrhistogram_c",
+     "icu4c@78",
+     "libffi",
+     "libnghttp2",
+     "libuv",
+     "llhttp",
+     "merve",
+     "nbytes",
+     "openssl@4",
+     "simdjson",
+     "simdutf",
+     "sqlite",
+     "uvwasi",
+     "zstd",
+     "zlib-ng-compat"
+    ]
+   },
+   "arm64_linux": {
+    "build_dependencies": [
+     "pkgconf",
+     "python@3.14",
+     "rust",
+     "highway"
+    ],
+    "dependencies": [
+     "abseil",
+     "ada-url",
+     "brotli",
+     "c-ares",
+     "hdrhistogram_c",
+     "icu4c@78",
+     "libffi",
+     "libnghttp2",
+     "libuv",
+     "llhttp",
+     "merve",
+     "nbytes",
+     "openssl@4",
+     "simdjson",
+     "simdutf",
+     "sqlite",
+     "uvwasi",
+     "zstd",
+     "zlib-ng-compat"
+    ]
+   }
+  },
+  "executables": [
+   "node",
+   "npm",
+   "npx"
+  ],
+  "vulnerabilities": {
+   "open": [],
+   "patched": [],
+   "fixed_count": 8
+  }
+ },
+ {
+  "name": "python@3.13",
+  "full_name": "python@3.13",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [
+   "python@3.15",
+   "python@3.14",
+   "python@3.12",
+   "python@3.11",
+   "python@3.10",
+   "python@3.9"
+  ],
+  "desc": "Interpreted, interactive, object-oriented programming language",
+  "license": "Python-2.0",
+  "homepage": "https://www.python.org/",
+  "versions": {
+   "stable": "3.13.16",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://www.python.org/ftp/python/3.13.16/Python-3.13.16.tgz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "cfac63bddf956deafb1172ca131ae5dcaafd6f95056086e233fca205593ed427"
+   }
+  },
+  "patches": [
+   {
+    "strip": "p1",
+    "file": "Patches/python/3.13-sysconfig.diff",
+    "type": "unofficial",
+    "resolves": [
+     {
+      "type": "defect",
+      "id": "https://bugs.python.org/issue43976"
+     }
+    ]
+   }
+  ],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/python/3.13/blobs/sha256:b62261cf377c58d5c1fdd16886ff563c26825239eba9b1e187a511819ddf2565",
+      "sha256": "b62261cf377c58d5c1fdd16886ff563c26825239eba9b1e187a511819ddf2565"
+     },
+     "arm64_tahoe": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/python/3.13/blobs/sha256:f37cb3f3f84cb552ee52e50f6b88c45817cf188c870c38e59f511aa644f07e95",
+      "sha256": "f37cb3f3f84cb552ee52e50f6b88c45817cf188c870c38e59f511aa644f07e95"
+     },
+     "arm64_sequoia": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/python/3.13/blobs/sha256:4092a0e35ed492a6bb1004a672bebb4b336a5ca8c2bf1f9ebaff618fad887bc4",
+      "sha256": "4092a0e35ed492a6bb1004a672bebb4b336a5ca8c2bf1f9ebaff618fad887bc4"
+     },
+     "arm64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/python/3.13/blobs/sha256:2381bfe3cac375017508f7d4aa8ce7427ad5ef495bac92791c55f7ac05f8beb7",
+      "sha256": "2381bfe3cac375017508f7d4aa8ce7427ad5ef495bac92791c55f7ac05f8beb7"
+     },
+     "x86_64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/python/3.13/blobs/sha256:69b468332906f6627f99664b668eaea6c182c8f0f736cc0d918fd14cc167e998",
+      "sha256": "69b468332906f6627f99664b668eaea6c182c8f0f736cc0d918fd14cc167e998"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [
+   "pkgconf"
+  ],
+  "dependencies": [
+   "mpdecimal",
+   "openssl@3",
+   "sqlite",
+   "xz"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   "bzip2",
+   "expat",
+   "libedit",
+   "libffi",
+   "ncurses"
+  ],
+  "uses_from_macos_bounds": [
+   {},
+   {
+    "since": "sequoia"
+   },
+   {},
+   {},
+   {}
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [
+   "lib/python3.13/site-packages/pip*",
+   "lib/python3.13/site-packages/wheel*"
+  ],
+  "caveats": "Python is installed as\n  $HOMEBREW_PREFIX/bin/python3.13\n\nUnversioned and major-versioned symlinks `python`, `python3`, `python-config`, `python3-config`, `pip`, `pip3`, etc. pointing to\n`python3.13`, `python3.13-config`, `pip3.13` etc., respectively, are installed into\n  $HOMEBREW_PREFIX/opt/python@3.13/libexec/bin\n\nIf you do not need a specific version of Python, and always want Homebrew's `python3` in your PATH:\n  brew install python3\n\n`idle3.13` requires tkinter, which is available separately:\n  brew install python-tk@3.13\n\n`dbm.gnu` is available separately:\n  brew install python-gdbm@3.13\n\nFor more information about Homebrew and Python, see: https://docs.brew.sh/Homebrew-and-Python\n",
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": "2029-11-01",
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": {
+   "date": "2029-11-01",
+   "because": "deprecated_upstream",
+   "replacement_formula": null,
+   "replacement_cask": null
+  },
+  "disabled": false,
+  "disable_date": "2030-11-01",
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": {
+   "date": "2030-11-01",
+   "because": "deprecated_upstream",
+   "replacement_formula": null,
+   "replacement_cask": null
+  },
+  "post_install_steps": [
+   {
+    "paths": [
+     {
+      "base": "frameworks",
+      "path": "Python.framework/Versions/{{version.major_minor}}/lib/python{{version.major_minor}}/venv/scripts/**/*"
+     }
+    ],
+    "permissions": "u+w",
+    "non_recursive": true,
+    "guards": [
+     {
+      "condition": "on",
+      "value": "macos",
+      "id": "1"
+     }
+    ],
+    "type": "set_permissions"
+   },
+   {
+    "paths": [
+     {
+      "base": "lib",
+      "path": "python{{version.major_minor}}/venv/scripts/**/*"
+     }
+    ],
+    "permissions": "u+w",
+    "non_recursive": true,
+    "guards": [
+     {
+      "condition": "on",
+      "value": "linux",
+      "id": "2"
+     }
+    ],
+    "type": "set_permissions"
+   }
+  ],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/p/python@3.13.rb",
+  "ruby_source_checksum": {
+   "sha256": "f20ec99e0fcc3d15f6fd82868e3a62f9874e89ff7ebb53bc643d89290f080365"
+  },
+  "variations": {
+   "x86_64_linux": {
+    "dependencies": [
+     "mpdecimal",
+     "openssl@3",
+     "sqlite",
+     "xz",
+     "zlib-ng-compat"
+    ],
+    "caveats": "Python is installed as\n  $HOMEBREW_PREFIX/bin/python3.13\n\nUnversioned and major-versioned symlinks `python`, `python3`, `python-config`, `python3-config`, `pip`, `pip3`, etc. pointing to\n`python3.13`, `python3.13-config`, `pip3.13` etc., respectively, are installed into\n  $HOMEBREW_PREFIX/opt/python@3.13/libexec/bin\n\nIf you do not need a specific version of Python, and always want Homebrew's `python3` in your PATH:\n  brew install python3\n\n`idle3.13` requires tkinter, which is available separately:\n  brew install python-tk@3.13\n\n`dbm.gnu` and `dbm.ndbm` are available separately:\n  brew install python-gdbm@3.13\n\nFor more information about Homebrew and Python, see: https://docs.brew.sh/Homebrew-and-Python\n"
+   },
+   "arm64_linux": {
+    "dependencies": [
+     "mpdecimal",
+     "openssl@3",
+     "sqlite",
+     "xz",
+     "zlib-ng-compat"
+    ],
+    "caveats": "Python is installed as\n  $HOMEBREW_PREFIX/bin/python3.13\n\nUnversioned and major-versioned symlinks `python`, `python3`, `python-config`, `python3-config`, `pip`, `pip3`, etc. pointing to\n`python3.13`, `python3.13-config`, `pip3.13` etc., respectively, are installed into\n  $HOMEBREW_PREFIX/opt/python@3.13/libexec/bin\n\nIf you do not need a specific version of Python, and always want Homebrew's `python3` in your PATH:\n  brew install python3\n\n`idle3.13` requires tkinter, which is available separately:\n  brew install python-tk@3.13\n\n`dbm.gnu` and `dbm.ndbm` are available separately:\n  brew install python-gdbm@3.13\n\nFor more information about Homebrew and Python, see: https://docs.brew.sh/Homebrew-and-Python\n"
+   }
+  },
+  "executables": [
+   "idle3.13",
+   "pip3.13",
+   "pydoc3.13",
+   "python3.13",
+   "python3.13-config",
+   "wheel3.13"
+  ],
+  "vulnerabilities": {
+   "open": [],
+   "patched": [],
+   "fixed_count": 7
+  }
+ }
+]
