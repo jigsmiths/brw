@@ -71,6 +71,19 @@ func (p Prefix) OptVersion(name string) (string, bool) {
 	return filepath.Base(path), true
 }
 
+// Pinned returns the version a pin record for name points at.
+func (p Prefix) Pinned(name string) (string, bool) {
+	record := filepath.Join(string(p), "var", "homebrew", "pinned", name)
+	if fi, err := os.Lstat(record); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return "", false
+	}
+	path, ok := p.resolveKeg(record)
+	if !ok {
+		return "", false
+	}
+	return filepath.Base(path), true
+}
+
 // Linked is false if the record points at another version.
 func (p Prefix) Linked(name, version string) bool {
 	record := filepath.Join(string(p), "var", "homebrew", "linked", name)

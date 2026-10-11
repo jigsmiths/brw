@@ -173,11 +173,13 @@ func Parse(s string) (Version, error) {
 
 func (v Version) String() string { return v.s }
 
+func (v Version) IsHead() bool { return head.MatchString(v.s) }
+
 func (v Version) Compare(o Version) int {
 	if v.s == o.s {
 		return 0
 	}
-	vh, oh := head.MatchString(v.s), head.MatchString(o.s)
+	vh, oh := v.IsHead(), o.IsHead()
 	switch {
 	case vh && oh:
 		return 0

@@ -144,3 +144,11 @@ func TestPkgVersionCompare(t *testing.T) {
 		t.Errorf("NewPkg = %q, %v", p, err)
 	}
 }
+
+func TestIsHead(t *testing.T) {
+	for s, want := range map[string]bool{"HEAD": true, "HEAD-abc123": true, "HEAD-": true, "1.0": false, "HEADER": false, "head": false, "1.0-HEAD": false} {
+		if got := mustParse(t, s).IsHead(); got != want {
+			t.Errorf("IsHead(%q) = %v, want %v", s, got, want)
+		}
+	}
+}

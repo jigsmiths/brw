@@ -242,3 +242,47 @@ func TestReceiptUnknownKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestVersionScheme(t *testing.T) {
+	r, err := ParseReceipt(fixture(t, "jq"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.VersionScheme(); got != 0 {
+		t.Errorf("jq VersionScheme = %d", got)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(fixture(t, "jq"), &m); err != nil {
+		t.Fatal(err)
+	}
+	m["source"].(map[string]any)["versions"].(map[string]any)["version_scheme"] = 2
+	b, _ := json.Marshal(m)
+	r, err = ParseReceipt(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.VersionScheme(); got != 2 {
+		t.Errorf("VersionScheme = %d, want 2", got)
+	}
+	if got := (&Receipt{}).VersionScheme(); got != 0 {
+		t.Errorf("empty receipt VersionScheme = %d", got)
+	}
+}
+
+func TestPinned(t *testing.T) {
+	root := t.TempDir()
+	p := Prefix(root)
+	writeFile(t, filepath.Join(root, "Cellar/jq/1.8.2/bin/jq"), "")
+	writeFile(t, filepath.Join(root, "Cellar/git/2.0/bin/git"), "")
+	symlink(t, "../../../Cellar/jq/1.8.2", filepath.Join(root, "var/homebrew/pinned/jq"))
+	symlink(t, "../../../Cellar/gone/1.0", filepath.Join(root, "var/homebrew/pinned/gone"))
+
+	if v, ok := p.Pinned("jq"); !ok || v != "1.8.2" {
+		t.Errorf("Pinned(jq) = %q, %v", v, ok)
+	}
+	for _, name := range []string{"git", "gone", "missing"} {
+		if _, ok := p.Pinned(name); ok {
+			t.Errorf("Pinned(%s) should be false", name)
+		}
+	}
+}

@@ -49,18 +49,22 @@ type Dependency struct {
 
 // Source keeps its raw JSON because brew's key order varies.
 type Source struct {
-	Tap string
-	raw json.RawMessage
+	Tap    string
+	scheme int
+	raw    json.RawMessage
 }
 
 func (s *Source) UnmarshalJSON(b []byte) error {
 	var v struct {
-		Tap string `json:"tap"`
+		Tap      string `json:"tap"`
+		Versions struct {
+			Scheme int `json:"version_scheme"`
+		} `json:"versions"`
 	}
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
-	s.Tap = v.Tap
+	s.Tap, s.scheme = v.Tap, v.Versions.Scheme
 	s.raw = append(s.raw[:0], b...)
 	return nil
 }
@@ -71,6 +75,9 @@ func (s Source) MarshalJSON() ([]byte, error) {
 	}
 	return s.raw, nil
 }
+
+// VersionScheme is the formula's version scheme when the keg was installed.
+func (r *Receipt) VersionScheme() int { return r.Source.scheme }
 
 func ParseReceipt(b []byte) (*Receipt, error) {
 	var r Receipt
