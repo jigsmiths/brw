@@ -168,10 +168,12 @@ func (i *Index) Lookup(name string) (*Formula, bool) {
 }
 
 // Client fetches the formula listing and caches it in CacheDir by ETag.
+// When the fetch fails and a cache exists, the cache is used and Warn is called.
 type Client struct {
 	URL      string
 	CacheDir string
 	HTTP     *http.Client
+	Warn     func(msg string)
 }
 
 func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
@@ -193,7 +195,7 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return nil, err
+		return c.stale(cached, bodyErr, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -205,7 +207,7 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 		return Parse(cached)
 	case http.StatusOK:
 	default:
-		return nil, fmt.Errorf("GET %s: %s", c.URL, resp.Status)
+		return c.stale(cached, bodyErr, fmt.Errorf("GET %s: %s", c.URL, resp.Status))
 	}
 
 	data, err := io.ReadAll(resp.Body)
@@ -228,6 +230,21 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 		}
 	}
 	return formulae, err
+}
+
+// stale returns the cached listing after a failed fetch, or the fetch error if there is none.
+func (c *Client) stale(cached []byte, bodyErr, fetchErr error) ([]Formula, error) {
+	if bodyErr != nil {
+		return nil, fetchErr
+	}
+	formulae, err := Parse(cached)
+	if err != nil {
+		return nil, fetchErr
+	}
+	if c.Warn != nil {
+		c.Warn(fmt.Sprintf("using the cached formula list: %v", fetchErr))
+	}
+	return formulae, nil
 }
 
 func writeAtomic(path string, data []byte) error {

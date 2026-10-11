@@ -167,6 +167,54 @@ func TestFormulaeServerError(t *testing.T) {
 	}
 }
 
+func TestFormulaeStaleCacheWhenFetchFails(t *testing.T) {
+	srv := &server{body: fixture(t)}
+	ts := httptest.NewServer(srv)
+	dir := t.TempDir()
+	if _, err := (&Client{URL: ts.URL, CacheDir: dir}).Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	down := ts.URL
+	ts.Close()
+	failing := httptest.NewServer(&server{status: http.StatusInternalServerError})
+	defer failing.Close()
+
+	for name, url := range map[string]string{"unreachable": down, "server error": failing.URL} {
+		t.Run(name, func(t *testing.T) {
+			var warnings []string
+			c := &Client{URL: url, CacheDir: dir, Warn: func(msg string) { warnings = append(warnings, msg) }}
+			fs, err := c.Formulae(context.Background())
+			if err != nil || len(fs) != fixtureSize {
+				t.Fatalf("got %d formulae, %v; want the stale cache", len(fs), err)
+			}
+			if len(warnings) != 1 {
+				t.Errorf("warnings = %q, want one", warnings)
+			}
+		})
+	}
+}
+
+func TestFormulaeNoWarningWhenFresh(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	defer ts.Close()
+	c := &Client{URL: ts.URL, CacheDir: t.TempDir(), Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
+	for range 2 {
+		if _, err := c.Formulae(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestFormulaeUnreachableWithoutCache(t *testing.T) {
+	ts := httptest.NewServer(&server{})
+	url := ts.URL
+	ts.Close()
+	c := &Client{URL: url, CacheDir: t.TempDir(), Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
+	if _, err := c.Formulae(context.Background()); err == nil {
+		t.Error("expected error")
+	}
+}
+
 func TestFormulaeBadBodyNotCached(t *testing.T) {
 	srv := &server{body: []byte("[{")}
 	ts := httptest.NewServer(srv)
