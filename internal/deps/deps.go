@@ -73,6 +73,52 @@ func (r *Resolver) needsReal(u api.UsesFromMacOS) bool {
 	return ok && r.macMajor < since
 }
 
+// Typed is a formula's direct dependencies by kind, as written and in
+// declaration order. Test dependencies are left out.
+type Typed struct {
+	Build, Required, Recommended, Optional []string
+}
+
+// Typed splits name's declared dependencies by kind for this host.
+func (r *Resolver) Typed(name string) (Typed, error) {
+	f, err := r.formula(name)
+	if err != nil {
+		return Typed{}, err
+	}
+	g, err := f.ForTag(r.tag)
+	if err != nil {
+		return Typed{}, err
+	}
+	t := Typed{
+		Build:       slices.Clone(g.BuildDependencies),
+		Required:    slices.Clone(g.Dependencies),
+		Recommended: slices.Clone(g.RecommendedDependencies),
+		Optional:    slices.Clone(g.OptionalDependencies),
+	}
+	for _, u := range g.UsesFromMacOS {
+		if slices.Contains(u.Tags, "test") || !r.needsReal(u) {
+			continue
+		}
+		if slices.Contains(u.Tags, "build") {
+			t.Build = append(t.Build, u.Name)
+		} else {
+			t.Required = append(t.Required, u.Name)
+		}
+	}
+	t.Build, t.Required = uniq(t.Build), uniq(t.Required)
+	return t, nil
+}
+
+func uniq(names []string) []string {
+	var out []string
+	for _, n := range names {
+		if !slices.Contains(out, n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // declared returns name's direct dependencies as canonical names, in the order
 // they are declared.
 func (r *Resolver) declared(name string) ([]string, error) {

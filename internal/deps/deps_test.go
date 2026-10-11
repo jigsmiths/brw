@@ -343,3 +343,40 @@ func TestUsesFollowsAliases(t *testing.T) {
 		t.Errorf("Uses(alias) = %v, %v", got, err)
 	}
 }
+
+func TestTyped(t *testing.T) {
+	idx := index(t, formula{
+		"name":                     "app",
+		"dependencies":             []string{"lib", "tool", "lib"},
+		"build_dependencies":       []string{"cmake"},
+		"recommended_dependencies": []string{"rec"},
+		"optional_dependencies":    []string{"opt"},
+		"uses_from_macos":          []any{"zlib", map[string]string{"bison": "build"}, map[string]string{"check": "test"}},
+		"uses_from_macos_bounds":   []any{map[string]string{}, map[string]string{}, map[string]string{}},
+	})
+	// On Linux the system libraries are real dependencies, except test only ones.
+	got, err := resolver(t, idx, linuxHost).Typed("app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Typed{
+		Build:       []string{"cmake", "bison"},
+		Required:    []string{"lib", "tool", "zlib"},
+		Recommended: []string{"rec"},
+		Optional:    []string{"opt"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("linux = %+v, want %+v", got, want)
+	}
+	// macOS provides them itself.
+	got, err = resolver(t, idx, macHost).Typed("app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"lib", "tool"}; !reflect.DeepEqual(got.Required, want) || !reflect.DeepEqual(got.Build, []string{"cmake"}) {
+		t.Errorf("macOS = %+v", got)
+	}
+	if _, err := resolver(t, idx, macHost).Typed("nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("error = %v, want ErrNotFound", err)
+	}
+}
