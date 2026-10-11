@@ -39,7 +39,7 @@ func Check(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg) ([]Result, e
 		if !ok || f.Name != name {
 			continue
 		}
-		group = fromTap(group, f.Tap)
+		group = FromTap(group, f.Tap)
 		if len(group) == 0 {
 			continue
 		}
@@ -55,8 +55,8 @@ func Check(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg) ([]Result, e
 	return out, nil
 }
 
-// fromTap keeps the kegs installed from tap. A receipt without a tap counts as a match.
-func fromTap(kegs []cellar.Keg, tap string) []cellar.Keg {
+// FromTap keeps the kegs installed from tap. A receipt without a tap counts as a match.
+func FromTap(kegs []cellar.Keg, tap string) []cellar.Keg {
 	var out []cellar.Keg
 	for _, k := range kegs {
 		if k.Receipt == nil || k.Receipt.Source.Tap == "" || k.Receipt.Source.Tap == tap {
