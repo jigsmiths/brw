@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -354,5 +355,31 @@ func TestIndexFormulae(t *testing.T) {
 	all := idx.Formulae()
 	if len(all) != fixtureSize || all[0].Name != "jq" || all[1].Name != "openssl@3" {
 		t.Errorf("Formulae() = %d entries starting %q, %q", len(all), all[0].Name, all[1].Name)
+	}
+}
+
+func TestInfoFields(t *testing.T) {
+	git := byName(t, "git")
+	if git.Homepage != "https://git-scm.com" || git.RubySourcePath != "Formula/g/git.rb" {
+		t.Errorf("homepage = %q, path = %q", git.Homepage, git.RubySourcePath)
+	}
+	if git.Versions.Head != "HEAD" || byName(t, "jq").Versions.Head != "HEAD" || byName(t, "xz").Versions.Head != "" {
+		t.Error("head versions wrong")
+	}
+	if !strings.HasPrefix(git.Caveats, "The Tcl/Tk GUIs") || git.License == "" {
+		t.Errorf("caveats = %q, license = %q", git.Caveats, git.License)
+	}
+	if !slices.Equal(git.BuildDependencies, []string{"gettext", "pkgconf"}) {
+		t.Errorf("build deps = %v", git.BuildDependencies)
+	}
+	ossl := byName(t, "openssl@3")
+	if ossl.KegOnlyReason.Reason != ":versioned_formula" || !slices.Contains(ossl.VersionedFormulae, "openssl@4") {
+		t.Errorf("keg-only reason = %+v, versioned = %v", ossl.KegOnlyReason, ossl.VersionedFormulae)
+	}
+	if got := byName(t, "readline").KegOnlyReason.Explanation; got != "macOS provides BSD libedit" {
+		t.Errorf("explanation = %q", got)
+	}
+	if jq := byName(t, "jq"); jq.Deprecated || jq.Disabled || len(jq.OldNames) != 0 {
+		t.Errorf("jq flags = %v %v %v", jq.Deprecated, jq.Disabled, jq.OldNames)
 	}
 }

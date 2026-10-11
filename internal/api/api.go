@@ -18,22 +18,40 @@ import (
 const DefaultURL = "https://formulae.brew.sh/api/formula.json"
 
 type Formula struct {
-	Name             string                     `json:"name"`
-	FullName         string                     `json:"full_name"`
-	Desc             string                     `json:"desc"`
-	Tap              string                     `json:"tap"`
-	Aliases          []string                   `json:"aliases"`
-	OldNames         []string                   `json:"oldnames"`
-	Versions         struct{ Stable string }    `json:"versions"`
-	Revision         int                        `json:"revision"`
-	VersionScheme    int                        `json:"version_scheme"`
-	Bottle           struct{ Stable Bottle }    `json:"bottle"`
-	Dependencies     []string                   `json:"dependencies"`
-	UsesFromMacOS    []UsesFromMacOS            `json:"uses_from_macos"`
-	UsesBounds       []struct{ Since string }   `json:"uses_from_macos_bounds"`
-	KegOnly          bool                       `json:"keg_only"`
-	PostInstallSteps []json.RawMessage          `json:"post_install_steps"`
-	Variations       map[string]json.RawMessage `json:"variations"`
+	Name                    string                        `json:"name"`
+	FullName                string                        `json:"full_name"`
+	Desc                    string                        `json:"desc"`
+	Homepage                string                        `json:"homepage"`
+	License                 string                        `json:"license"`
+	Caveats                 string                        `json:"caveats"`
+	RubySourcePath          string                        `json:"ruby_source_path"`
+	Deprecated              bool                          `json:"deprecated"`
+	Disabled                bool                          `json:"disabled"`
+	VersionedFormulae       []string                      `json:"versioned_formulae"`
+	KegOnlyReason           KegOnlyReason                 `json:"keg_only_reason"`
+	Tap                     string                        `json:"tap"`
+	Aliases                 []string                      `json:"aliases"`
+	OldNames                []string                      `json:"oldnames"`
+	Versions                struct{ Stable, Head string } `json:"versions"`
+	Revision                int                           `json:"revision"`
+	VersionScheme           int                           `json:"version_scheme"`
+	Bottle                  struct{ Stable Bottle }       `json:"bottle"`
+	Dependencies            []string                      `json:"dependencies"`
+	BuildDependencies       []string                      `json:"build_dependencies"`
+	RecommendedDependencies []string                      `json:"recommended_dependencies"`
+	OptionalDependencies    []string                      `json:"optional_dependencies"`
+	UsesFromMacOS           []UsesFromMacOS               `json:"uses_from_macos"`
+	UsesBounds              []struct{ Since string }      `json:"uses_from_macos_bounds"`
+	KegOnly                 bool                          `json:"keg_only"`
+	PostInstallSteps        []json.RawMessage             `json:"post_install_steps"`
+	Variations              map[string]json.RawMessage    `json:"variations"`
+}
+
+// KegOnlyReason is why a formula is not linked. Reason is a symbol such as
+// ":versioned_formula" or free text.
+type KegOnlyReason struct {
+	Reason      string `json:"reason"`
+	Explanation string `json:"explanation"`
 }
 
 // UsesFromMacOS is a dependency macOS provides itself. It is a plain name or
