@@ -409,3 +409,13 @@ func TestRaw(t *testing.T) {
 		t.Error("expected an error for an unknown formula")
 	}
 }
+
+func TestConflictReasonsNullBecomesEmpty(t *testing.T) {
+	fs, err := Parse([]byte(`[{"name":"x","conflicts_with":["a","b"],"conflicts_with_reasons":["both install x",null]}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fs[0].ConflictsWithReasons; !reflect.DeepEqual(got, []string{"both install x", ""}) {
+		t.Errorf("reasons = %q", got)
+	}
+}

@@ -18,21 +18,21 @@ import (
 const DefaultURL = "https://formulae.brew.sh/api/formula.json"
 
 type Formula struct {
-	Name                 string    `json:"name"`
-	FullName             string    `json:"full_name"`
-	Desc                 string    `json:"desc"`
-	Homepage             string    `json:"homepage"`
-	License              string    `json:"license"`
-	Caveats              string    `json:"caveats"`
-	RubySourcePath       string    `json:"ruby_source_path"`
-	Deprecated           bool      `json:"deprecated"`
-	Disabled             bool      `json:"disabled"`
-	DeprecationReason    string    `json:"deprecation_reason"`
-	DeprecationDate      string    `json:"deprecation_date"`
-	DisableReason        string    `json:"disable_reason"`
-	DisableDate          string    `json:"disable_date"`
-	ConflictsWith        []string  `json:"conflicts_with"`
-	ConflictsWithReasons []*string `json:"conflicts_with_reasons"`
+	Name                 string   `json:"name"`
+	FullName             string   `json:"full_name"`
+	Desc                 string   `json:"desc"`
+	Homepage             string   `json:"homepage"`
+	License              string   `json:"license"`
+	Caveats              string   `json:"caveats"`
+	RubySourcePath       string   `json:"ruby_source_path"`
+	Deprecated           bool     `json:"deprecated"`
+	Disabled             bool     `json:"disabled"`
+	DeprecationReason    string   `json:"deprecation_reason"`
+	DeprecationDate      string   `json:"deprecation_date"`
+	DisableReason        string   `json:"disable_reason"`
+	DisableDate          string   `json:"disable_date"`
+	ConflictsWith        []string `json:"conflicts_with"`
+	ConflictsWithReasons []string `json:"conflicts_with_reasons"` // "" where the API has null
 
 	DeprecationReplacementFormula string                        `json:"deprecation_replacement_formula"`
 	DeprecationReplacementCask    string                        `json:"deprecation_replacement_cask"`

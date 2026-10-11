@@ -250,8 +250,8 @@ func (e Env) conflicts(f *api.Formula) []string {
 			}
 			name = other.FullName
 		}
-		if i < len(f.ConflictsWithReasons) && f.ConflictsWithReasons[i] != nil {
-			name += " (because " + *f.ConflictsWithReasons[i] + ")"
+		if i < len(f.ConflictsWithReasons) && f.ConflictsWithReasons[i] != "" {
+			name += " (because " + f.ConflictsWithReasons[i] + ")"
 		}
 		out = append(out, name)
 	}
