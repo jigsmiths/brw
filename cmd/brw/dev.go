@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -16,10 +15,6 @@ import (
 )
 
 const devUsage = "usage: brw dev keg-create|keg-remove|hold-lock [flags]"
-
-func newFlagSet(name string) *flag.FlagSet {
-	return flag.NewFlagSet(name, flag.ContinueOnError)
-}
 
 // dev runs the commands used to test a real prefix.
 func dev(args []string, out io.Writer) error {

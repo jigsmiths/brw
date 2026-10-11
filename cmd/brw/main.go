@@ -8,52 +8,72 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/jigsmiths/brw/internal/cellar"
+	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-const usage = "usage: brw list|tag|dev [flags]"
+const usage = "usage: brw list|search|deps|uses|outdated|tag|dev [flags]"
+
+// env is everything a command needs from the outside world.
+type env struct {
+	out, err io.Writer
+	tty      bool // out is a terminal
+	host     platform.Host
+	client   *api.Client
+}
 
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
 	}
-	if err := run(os.Args[1], os.Args[2:], os.Stdout); err != nil {
+	host := platform.Current(macVersion())
+	e := &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host}
+	if err := run(e, os.Args[1], os.Args[2:]); err != nil {
 		fmt.Fprintln(os.Stderr, "brw:", err)
 		os.Exit(1)
 	}
 }
 
-func run(cmd string, args []string, out io.Writer) error {
+func run(e *env, cmd string, args []string) error {
 	switch cmd {
 	case "list":
-		return list(args, out)
+		return list(e, args)
+	case "search":
+		return searchCommand(e, args)
+	case "deps":
+		return depsCommand(e, args)
+	case "uses":
+		return usesCommand(e, args)
+	case "outdated":
+		return outdatedCommand(e, args)
 	case "tag":
-		tag, err := platform.Tag(platform.Current(macVersion()))
+		tag, err := platform.Tag(e.host)
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(out, tag)
+		_, err = fmt.Fprintln(e.out, tag)
 		return err
 	case "dev":
-		return dev(args, out)
+		return dev(args, e.out)
 	}
 	return fmt.Errorf("unknown command %q\n%s", cmd, usage)
 }
 
-func list(args []string, out io.Writer) error {
-	fs := newFlagSet("list")
-	prefix := fs.String("prefix", "/opt/homebrew", "Homebrew prefix")
-	if err := fs.Parse(args); err != nil {
-		return err
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// defaultPrefix is where Homebrew installs on this host.
+func defaultPrefix(h platform.Host) string {
+	switch {
+	case h.OS == "linux":
+		return "/home/linuxbrew/.linuxbrew"
+	case h.Arch == "arm64":
+		return "/opt/homebrew"
 	}
-	kegs, err := cellar.Prefix(*prefix).Kegs()
-	if err != nil {
-		return err
-	}
-	_, err = io.WriteString(out, formatVersions(kegs))
-	return err
+	return "/usr/local"
 }
 
 func macVersion() string {
@@ -65,22 +85,4 @@ func macVersion() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
-}
-
-// formatVersions matches the output of brew list --versions.
-func formatVersions(kegs []cellar.Keg) string {
-	var b strings.Builder
-	for i, k := range kegs {
-		if i == 0 || kegs[i-1].Name != k.Name {
-			if i > 0 {
-				b.WriteByte('\n')
-			}
-			b.WriteString(k.Name)
-		}
-		b.WriteString(" " + k.Version)
-	}
-	if len(kegs) > 0 {
-		b.WriteByte('\n')
-	}
-	return b.String()
 }

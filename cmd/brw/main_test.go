@@ -54,7 +54,7 @@ func TestRunDispatch(t *testing.T) {
 	var out bytes.Buffer
 	for _, args := range [][]string{{"nope"}, {"dev"}, {"dev", "nope"}, {"keg-create"}} {
 		cmd, rest := args[0], args[1:]
-		if err := run(cmd, rest, &out); err == nil {
+		if err := run(&env{out: &out}, cmd, rest); err == nil {
 			t.Errorf("run(%v) should fail", args)
 		}
 	}
@@ -62,7 +62,7 @@ func TestRunDispatch(t *testing.T) {
 
 func TestDevCommandsMovedOffTopLevel(t *testing.T) {
 	for _, cmd := range []string{"keg-create", "keg-remove", "hold-lock"} {
-		err := run(cmd, nil, &bytes.Buffer{})
+		err := run(&env{out: &bytes.Buffer{}}, cmd, nil)
 		if err == nil || !strings.Contains(err.Error(), "unknown command") {
 			t.Errorf("%s at top level: %v", cmd, err)
 		}
@@ -72,18 +72,18 @@ func TestDevCommandsMovedOffTopLevel(t *testing.T) {
 func TestDevKegRoundTrip(t *testing.T) {
 	prefix := t.TempDir()
 	flags := []string{"-prefix", prefix, "-name", "demo", "-version", "1.0"}
-	if err := run("dev", append([]string{"keg-create"}, flags...), &bytes.Buffer{}); err != nil {
+	if err := run(&env{out: &bytes.Buffer{}}, "dev", append([]string{"keg-create"}, flags...)); err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := run("list", []string{"-prefix", prefix}, &out); err != nil || out.String() != "demo 1.0\n" {
+	if err := run(&env{out: &out}, "list", []string{"-versions", "-prefix", prefix}); err != nil || out.String() != "demo 1.0\n" {
 		t.Fatalf("list = %q, %v", out.String(), err)
 	}
-	if err := run("dev", append([]string{"keg-remove"}, flags...), &bytes.Buffer{}); err != nil {
+	if err := run(&env{out: &bytes.Buffer{}}, "dev", append([]string{"keg-remove"}, flags...)); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := run("list", []string{"-prefix", prefix}, &out); err != nil || out.String() != "" {
+	if err := run(&env{out: &out}, "list", []string{"-versions", "-prefix", prefix}); err != nil || out.String() != "" {
 		t.Fatalf("list after remove = %q, %v", out.String(), err)
 	}
 }
