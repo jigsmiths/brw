@@ -154,6 +154,25 @@ func TestKegs(t *testing.T) {
 	}
 }
 
+func TestNames(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "Cellar/jq/1.8.2/INSTALL_RECEIPT.json"), string(fixture(t, "jq")))
+	writeFile(t, filepath.Join(root, "Cellar/.DS_Store"), "")
+	if err := os.MkdirAll(filepath.Join(root, "Cellar/empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Prefix(root).Names()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"empty", "jq"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Names = %v, want %v (formulae without versions still count)", got, want)
+	}
+	if got, err := Prefix(t.TempDir()).Names(); err != nil || len(got) != 0 {
+		t.Errorf("Names without a cellar = %v, %v", got, err)
+	}
+}
+
 func TestKegsNoCellar(t *testing.T) {
 	kegs, err := Prefix(t.TempDir()).Kegs()
 	if err != nil || len(kegs) != 0 {
@@ -240,5 +259,49 @@ func TestReceiptUnknownKeys(t *testing.T) {
 				t.Errorf("Marshal error = %v, want ErrUnknownKeys", err)
 			}
 		})
+	}
+}
+
+func TestVersionScheme(t *testing.T) {
+	r, err := ParseReceipt(fixture(t, "jq"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.VersionScheme(); got != 0 {
+		t.Errorf("jq VersionScheme = %d", got)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(fixture(t, "jq"), &m); err != nil {
+		t.Fatal(err)
+	}
+	m["source"].(map[string]any)["versions"].(map[string]any)["version_scheme"] = 2
+	b, _ := json.Marshal(m)
+	r, err = ParseReceipt(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.VersionScheme(); got != 2 {
+		t.Errorf("VersionScheme = %d, want 2", got)
+	}
+	if got := (&Receipt{}).VersionScheme(); got != 0 {
+		t.Errorf("empty receipt VersionScheme = %d", got)
+	}
+}
+
+func TestPinned(t *testing.T) {
+	root := t.TempDir()
+	p := Prefix(root)
+	writeFile(t, filepath.Join(root, "Cellar/jq/1.8.2/bin/jq"), "")
+	writeFile(t, filepath.Join(root, "Cellar/git/2.0/bin/git"), "")
+	symlink(t, "../../../Cellar/jq/1.8.2", filepath.Join(root, "var/homebrew/pinned/jq"))
+	symlink(t, "../../../Cellar/gone/1.0", filepath.Join(root, "var/homebrew/pinned/gone"))
+
+	if v, ok := p.Pinned("jq"); !ok || v != "1.8.2" {
+		t.Errorf("Pinned(jq) = %q, %v", v, ok)
+	}
+	for _, name := range []string{"git", "gone", "missing"} {
+		if _, ok := p.Pinned(name); ok {
+			t.Errorf("Pinned(%s) should be false", name)
+		}
 	}
 }

@@ -38,7 +38,7 @@ func Tag(h Host) (string, error) {
 	case "linux":
 		return linuxTag(h.Arch)
 	case "darwin":
-		major, err := macMajor(h.MacVersion)
+		major, err := MacMajor(h.MacVersion)
 		if err != nil {
 			return "", err
 		}
@@ -79,7 +79,7 @@ func candidates(h Host) []string {
 		}
 		return []string{tag}
 	case "darwin":
-		major, err := macMajor(h.MacVersion)
+		major, err := MacMajor(h.MacVersion)
 		if err != nil {
 			return nil
 		}
@@ -121,8 +121,8 @@ func macTag(arch, name string) (string, error) {
 	return "", fmt.Errorf("unsupported macOS arch %q", arch)
 }
 
-// macMajor parses the major version; 10.x is unsupported.
-func macMajor(version string) (int, error) {
+// MacMajor parses the major version; 10.x is unsupported.
+func MacMajor(version string) (int, error) {
 	first, _, _ := strings.Cut(version, ".")
 	major, err := strconv.Atoi(first)
 	if err != nil {
@@ -132,4 +132,14 @@ func macMajor(version string) (int, error) {
 		return 0, fmt.Errorf("unsupported macOS version %q", version)
 	}
 	return major, nil
+}
+
+// ReleaseMajor returns the major version of a macOS release name such as "ventura".
+func ReleaseMajor(name string) (int, bool) {
+	for _, r := range macReleases {
+		if r.name == name {
+			return r.major, true
+		}
+	}
+	return 0, false
 }

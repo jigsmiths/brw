@@ -52,6 +52,24 @@ func (p Prefix) Kegs() ([]Keg, error) {
 	return kegs, nil
 }
 
+// Names lists every formula directory in the Cellar, including those with no versions.
+func (p Prefix) Names() ([]string, error) {
+	entries, err := os.ReadDir(p.cellarDir())
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	return names, nil
+}
+
 func readReceipt(kegPath string) (*Receipt, error) {
 	b, err := os.ReadFile(filepath.Join(kegPath, "INSTALL_RECEIPT.json"))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -65,6 +83,19 @@ func readReceipt(kegPath string) (*Receipt, error) {
 
 func (p Prefix) OptVersion(name string) (string, bool) {
 	path, ok := p.resolveKeg(filepath.Join(string(p), "opt", name))
+	if !ok {
+		return "", false
+	}
+	return filepath.Base(path), true
+}
+
+// Pinned returns the version a pin record for name points at.
+func (p Prefix) Pinned(name string) (string, bool) {
+	record := filepath.Join(string(p), "var", "homebrew", "pinned", name)
+	if fi, err := os.Lstat(record); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return "", false
+	}
+	path, ok := p.resolveKeg(record)
 	if !ok {
 		return "", false
 	}

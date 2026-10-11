@@ -1,0 +1,6 @@
+ca-certificates
+mpdecimal
+openssl@3
+readline
+sqlite
+xz
