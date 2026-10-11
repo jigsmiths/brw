@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -129,27 +130,29 @@ func (f Formula) ForTag(tag string) (Formula, error) {
 	return f, nil
 }
 
+// Bottle lists the tags a formula has bottles for. The URL and checksum of each
+// bottle are not kept; read them from the raw entry (Client.Raw).
 type Bottle struct {
-	Rebuild int                   `json:"rebuild"`
-	RootURL string                `json:"root_url"`
-	Files   map[string]BottleFile `json:"files"`
+	Rebuild int
+	RootURL string
+	Tags    []string // sorted
 }
 
-type BottleFile struct {
-	Cellar string `json:"cellar"`
-	URL    string `json:"url"`
-	SHA256 string `json:"sha256"`
+func (b *Bottle) UnmarshalJSON(data []byte) error {
+	var v struct {
+		Rebuild int                 `json:"rebuild"`
+		RootURL string              `json:"root_url"`
+		Files   map[string]struct{} `json:"files"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*b = Bottle{Rebuild: v.Rebuild, RootURL: v.RootURL, Tags: slices.Sorted(maps.Keys(v.Files))}
+	return nil
 }
 
 // BottleTags returns the tags in sorted order.
-func (f *Formula) BottleTags() []string {
-	tags := make([]string, 0, len(f.Bottle.Stable.Files))
-	for tag := range f.Bottle.Stable.Files {
-		tags = append(tags, tag)
-	}
-	slices.Sort(tags)
-	return tags
-}
+func (f *Formula) BottleTags() []string { return f.Bottle.Stable.Tags }
 
 func Parse(b []byte) ([]Formula, error) {
 	var formulae []Formula

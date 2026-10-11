@@ -49,9 +49,8 @@ func TestParse(t *testing.T) {
 	if jq.Bottle.Stable.Rebuild != 1 {
 		t.Errorf("Rebuild = %d", jq.Bottle.Stable.Rebuild)
 	}
-	f := jq.Bottle.Stable.Files["arm64_tahoe"]
-	if f.Cellar != ":any" || len(f.SHA256) != 64 || f.URL == "" {
-		t.Errorf("arm64_tahoe file = %+v", f)
+	if !slices.Contains(jq.Bottle.Stable.Tags, "arm64_tahoe") || jq.Bottle.Stable.RootURL == "" {
+		t.Errorf("bottle = %+v", jq.Bottle.Stable)
 	}
 	if !fs[1].KegOnly {
 		t.Error("openssl@3 should be keg_only")
@@ -402,8 +401,8 @@ func TestRaw(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil || got.Name != "jq" || got.Desc == "" {
 		t.Errorf("Raw(jq) = %s, %v", raw, err)
 	}
-	if !strings.Contains(string(raw), `"homepage"`) {
-		t.Error("raw entry is missing fields")
+	if !strings.Contains(string(raw), `"homepage"`) || !strings.Contains(string(raw), `"sha256"`) {
+		t.Error("raw entry is missing fields, such as the bottle checksums a formula does not keep")
 	}
 	if _, err := c.Raw("nosuch"); err == nil {
 		t.Error("expected an error for an unknown formula")

@@ -158,9 +158,11 @@ func JSON(raw json.RawMessage, f *api.Formula, env Env) (json.RawMessage, error)
 		}
 	}
 
-	if err := o.setValue("bottle", hostBottle(f, env.Host)); err != nil {
+	bottle, err := hostBottle(f, env.Host, o.vals["bottle"])
+	if err != nil {
 		return nil, err
 	}
+	o.set("bottle", bottle)
 
 	kegs := env.installed(f)
 	installed := make([]installedJSON, 0, len(kegs))
@@ -185,17 +187,36 @@ func JSON(raw json.RawMessage, f *api.Formula, env Env) (json.RawMessage, error)
 	return o.MarshalJSON()
 }
 
-// hostBottle keeps only the bottle file this host would use.
-func hostBottle(f *api.Formula, host platform.Host) any {
+// hostBottle keeps only the bottle file this host would use, or is {} if there is none.
+func hostBottle(f *api.Formula, host platform.Host, raw json.RawMessage) (json.RawMessage, error) {
 	tag, ok := platform.Select(host, f.BottleTags())
-	if !ok {
-		return struct{}{}
+	if !ok || raw == nil {
+		return json.RawMessage("{}"), nil
 	}
-	return map[string]any{"stable": struct {
-		Rebuild int                       `json:"rebuild"`
-		RootURL string                    `json:"root_url"`
-		Files   map[string]api.BottleFile `json:"files"`
-	}{f.Bottle.Stable.Rebuild, f.Bottle.Stable.RootURL, map[string]api.BottleFile{tag: f.Bottle.Stable.Files[tag]}}}
+	bottle, err := parseObject(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s bottle: %w", f.Name, err)
+	}
+	stable, err := parseObject(bottle.vals["stable"])
+	if err != nil {
+		return nil, fmt.Errorf("%s bottle: %w", f.Name, err)
+	}
+	files, err := parseObject(stable.vals["files"])
+	if err != nil {
+		return nil, fmt.Errorf("%s bottle files: %w", f.Name, err)
+	}
+	for _, k := range slices.Clone(files.keys) {
+		if k != tag {
+			files.delete(k)
+		}
+	}
+	if stable.vals["files"], err = files.MarshalJSON(); err != nil {
+		return nil, err
+	}
+	if bottle.vals["stable"], err = stable.MarshalJSON(); err != nil {
+		return nil, err
+	}
+	return bottle.MarshalJSON()
 }
 
 // installedJSON is one entry of "installed": what brew keeps from a receipt.
