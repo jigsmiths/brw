@@ -383,3 +383,29 @@ func TestInfoFields(t *testing.T) {
 		t.Errorf("jq flags = %v %v %v", jq.Deprecated, jq.Disabled, jq.OldNames)
 	}
 }
+
+func TestRaw(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	defer ts.Close()
+	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	if _, err := c.Raw("jq"); err == nil {
+		t.Error("expected an error before anything is cached")
+	}
+	if _, err := c.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := c.Raw("jq")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct{ Name, Desc string }
+	if err := json.Unmarshal(raw, &got); err != nil || got.Name != "jq" || got.Desc == "" {
+		t.Errorf("Raw(jq) = %s, %v", raw, err)
+	}
+	if !strings.Contains(string(raw), `"homepage"`) {
+		t.Error("raw entry is missing fields")
+	}
+	if _, err := c.Raw("nosuch"); err == nil {
+		t.Error("expected an error for an unknown formula")
+	}
+}

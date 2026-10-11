@@ -18,33 +18,45 @@ import (
 const DefaultURL = "https://formulae.brew.sh/api/formula.json"
 
 type Formula struct {
-	Name                    string                        `json:"name"`
-	FullName                string                        `json:"full_name"`
-	Desc                    string                        `json:"desc"`
-	Homepage                string                        `json:"homepage"`
-	License                 string                        `json:"license"`
-	Caveats                 string                        `json:"caveats"`
-	RubySourcePath          string                        `json:"ruby_source_path"`
-	Deprecated              bool                          `json:"deprecated"`
-	Disabled                bool                          `json:"disabled"`
-	VersionedFormulae       []string                      `json:"versioned_formulae"`
-	KegOnlyReason           KegOnlyReason                 `json:"keg_only_reason"`
-	Tap                     string                        `json:"tap"`
-	Aliases                 []string                      `json:"aliases"`
-	OldNames                []string                      `json:"oldnames"`
-	Versions                struct{ Stable, Head string } `json:"versions"`
-	Revision                int                           `json:"revision"`
-	VersionScheme           int                           `json:"version_scheme"`
-	Bottle                  struct{ Stable Bottle }       `json:"bottle"`
-	Dependencies            []string                      `json:"dependencies"`
-	BuildDependencies       []string                      `json:"build_dependencies"`
-	RecommendedDependencies []string                      `json:"recommended_dependencies"`
-	OptionalDependencies    []string                      `json:"optional_dependencies"`
-	UsesFromMacOS           []UsesFromMacOS               `json:"uses_from_macos"`
-	UsesBounds              []struct{ Since string }      `json:"uses_from_macos_bounds"`
-	KegOnly                 bool                          `json:"keg_only"`
-	PostInstallSteps        []json.RawMessage             `json:"post_install_steps"`
-	Variations              map[string]json.RawMessage    `json:"variations"`
+	Name                 string    `json:"name"`
+	FullName             string    `json:"full_name"`
+	Desc                 string    `json:"desc"`
+	Homepage             string    `json:"homepage"`
+	License              string    `json:"license"`
+	Caveats              string    `json:"caveats"`
+	RubySourcePath       string    `json:"ruby_source_path"`
+	Deprecated           bool      `json:"deprecated"`
+	Disabled             bool      `json:"disabled"`
+	DeprecationReason    string    `json:"deprecation_reason"`
+	DeprecationDate      string    `json:"deprecation_date"`
+	DisableReason        string    `json:"disable_reason"`
+	DisableDate          string    `json:"disable_date"`
+	ConflictsWith        []string  `json:"conflicts_with"`
+	ConflictsWithReasons []*string `json:"conflicts_with_reasons"`
+
+	DeprecationReplacementFormula string                        `json:"deprecation_replacement_formula"`
+	DeprecationReplacementCask    string                        `json:"deprecation_replacement_cask"`
+	DisableReplacementFormula     string                        `json:"disable_replacement_formula"`
+	DisableReplacementCask        string                        `json:"disable_replacement_cask"`
+	VersionedFormulae             []string                      `json:"versioned_formulae"`
+	Requirements                  []struct{ Name string }       `json:"requirements"`
+	KegOnlyReason                 KegOnlyReason                 `json:"keg_only_reason"`
+	Tap                           string                        `json:"tap"`
+	Aliases                       []string                      `json:"aliases"`
+	OldNames                      []string                      `json:"oldnames"`
+	Versions                      struct{ Stable, Head string } `json:"versions"`
+	Revision                      int                           `json:"revision"`
+	VersionScheme                 int                           `json:"version_scheme"`
+	Bottle                        struct{ Stable Bottle }       `json:"bottle"`
+	Dependencies                  []string                      `json:"dependencies"`
+	BuildDependencies             []string                      `json:"build_dependencies"`
+	RecommendedDependencies       []string                      `json:"recommended_dependencies"`
+	OptionalDependencies          []string                      `json:"optional_dependencies"`
+	UsesFromMacOS                 []UsesFromMacOS               `json:"uses_from_macos"`
+	UsesBounds                    []struct{ Since string }      `json:"uses_from_macos_bounds"`
+	KegOnly                       bool                          `json:"keg_only"`
+	PostInstallSteps              []json.RawMessage             `json:"post_install_steps"`
+	Variations                    map[string]json.RawMessage    `json:"variations"`
 }
 
 // KegOnlyReason is why a formula is not linked. Reason is a symbol such as
@@ -248,6 +260,34 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 		}
 	}
 	return formulae, err
+}
+
+// Raw returns the cached JSON entry for the formula with this exact name,
+// exactly as the API served it. Call Formulae first to fill the cache.
+func (c *Client) Raw(name string) (json.RawMessage, error) {
+	f, err := os.Open(filepath.Join(c.CacheDir, "formula.json"))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	dec := json.NewDecoder(f)
+	if _, err := dec.Token(); err != nil { // the opening bracket
+		return nil, err
+	}
+	for dec.More() {
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return nil, err
+		}
+		var probe struct{ Name string }
+		if err := json.Unmarshal(raw, &probe); err != nil {
+			return nil, err
+		}
+		if probe.Name == name {
+			return raw, nil
+		}
+	}
+	return nil, fmt.Errorf("%s: %w", name, fs.ErrNotExist)
 }
 
 // stale returns the cached listing after a failed fetch, or the fetch error if there is none.
