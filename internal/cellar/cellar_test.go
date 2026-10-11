@@ -154,6 +154,25 @@ func TestKegs(t *testing.T) {
 	}
 }
 
+func TestNames(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "Cellar/jq/1.8.2/INSTALL_RECEIPT.json"), string(fixture(t, "jq")))
+	writeFile(t, filepath.Join(root, "Cellar/.DS_Store"), "")
+	if err := os.MkdirAll(filepath.Join(root, "Cellar/empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Prefix(root).Names()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"empty", "jq"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Names = %v, want %v (formulae without versions still count)", got, want)
+	}
+	if got, err := Prefix(t.TempDir()).Names(); err != nil || len(got) != 0 {
+		t.Errorf("Names without a cellar = %v, %v", got, err)
+	}
+}
+
 func TestKegsNoCellar(t *testing.T) {
 	kegs, err := Prefix(t.TempDir()).Kegs()
 	if err != nil || len(kegs) != 0 {
