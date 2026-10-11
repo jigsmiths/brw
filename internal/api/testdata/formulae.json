@@ -1454,5 +1454,1381 @@
    "dzr-srt",
    "dzr-url"
   ]
+ },
+ {
+  "name": "mpdecimal",
+  "full_name": "mpdecimal",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [
+   "libmpdec"
+  ],
+  "versioned_formulae": [],
+  "desc": "Library for decimal floating point arithmetic",
+  "license": "BSD-2-Clause",
+  "homepage": "https://www.bytereef.org/mpdecimal/",
+  "versions": {
+   "stable": "4.0.1",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://www.bytereef.org/software/mpdecimal/releases/mpdecimal-4.0.1.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "96d33abb4bb0070c7be0fed4246cd38416188325f820468214471938545b1ac8"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 1,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/mpdecimal/blobs/sha256:e60d12927c7dc7681c91784f2b2cbf9f779bc0a70599d552403403f89ea4e570",
+      "sha256": "e60d12927c7dc7681c91784f2b2cbf9f779bc0a70599d552403403f89ea4e570"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/mpdecimal/blobs/sha256:9fa6ced040c13747f9b010f406453c14041659dfb496a791b949c163b8a413f5",
+      "sha256": "9fa6ced040c13747f9b010f406453c14041659dfb496a791b949c163b8a413f5"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/mpdecimal/blobs/sha256:9e2dc44e47e91465c3cefa8969baa6af53a1ec339eda8443b18a30786147203e",
+      "sha256": "9e2dc44e47e91465c3cefa8969baa6af53a1ec339eda8443b18a30786147203e"
+     },
+     "arm64_sonoma": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/mpdecimal/blobs/sha256:594c572777fc4e03ca32d1d2772a4ee69791373fb1eab6b9e673564f131d13e4",
+      "sha256": "594c572777fc4e03ca32d1d2772a4ee69791373fb1eab6b9e673564f131d13e4"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/mpdecimal/blobs/sha256:49590f6b1d059b895496e768d9e13004b6fad8e66f1c446dc79a41802c16e482",
+      "sha256": "49590f6b1d059b895496e768d9e13004b6fad8e66f1c446dc79a41802c16e482"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/mpdecimal/blobs/sha256:d92d8706831c7dfa2fdd0f1a0d8548137a7ef325ae5c5a7f98fb5090182d6974",
+      "sha256": "d92d8706831c7dfa2fdd0f1a0d8548137a7ef325ae5c5a7f98fb5090182d6974"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/m/mpdecimal.rb",
+  "ruby_source_checksum": {
+   "sha256": "b7e3a231899466088e6dfc6ad4c82bffe8dc38c623b2a4a0ef4de388bd68c1fb"
+  },
+  "variations": {},
+  "executables": []
+ },
+ {
+  "name": "ca-certificates",
+  "full_name": "ca-certificates",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Mozilla CA certificate store",
+  "license": "MPL-2.0",
+  "homepage": "https://curl.se/docs/caextract.html",
+  "versions": {
+   "stable": "2026-09-25",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://curl.se/ca/cacert-2026-09-25.pem",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "all": {
+      "cellar": ":any_skip_relocation",
+      "url": "https://ghcr.io/v2/homebrew/core/ca-certificates/blobs/sha256:81804ad8a70a7a8d2a0a964d106765ff88716b310decaeffb4b4895a3252186a",
+      "sha256": "81804ad8a70a7a8d2a0a964d106765ff88716b310decaeffb4b4895a3252186a"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [
+   {
+    "command": {
+     "base": "libexec",
+     "path": "post-install"
+    },
+    "type": "run",
+    "args": [
+     "{{pkgshare}}/cacert.pem",
+     "{{pkgetc}}/cert.pem"
+    ]
+   }
+  ],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/c/ca-certificates.rb",
+  "ruby_source_checksum": {
+   "sha256": "e7807634f02d41cfad036cdebb546daacd45e118fcb463acc6c6e4f6e07dcf3f"
+  },
+  "variations": {
+   "x86_64_linux": {
+    "caveats": "CA certificates have been bootstrapped from both the Mozilla CA store and the system CA store at\none of the following locations, depending on your distro:\n\n  /etc/ssl/certs/ca-certificates.crt                 # Debian/Ubuntu, Alpine Linux, Arch Linux\n  /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem  # RHEL/CentOS/Fedora, Amazon Linux\n  /etc/ssl/ca-bundle.pem                             # SUSE/openSUSE\n\n"
+   },
+   "arm64_linux": {
+    "caveats": "CA certificates have been bootstrapped from both the Mozilla CA store and the system CA store at\none of the following locations, depending on your distro:\n\n  /etc/ssl/certs/ca-certificates.crt                 # Debian/Ubuntu, Alpine Linux, Arch Linux\n  /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem  # RHEL/CentOS/Fedora, Amazon Linux\n  /etc/ssl/ca-bundle.pem                             # SUSE/openSUSE\n\n"
+   }
+  },
+  "executables": []
+ },
+ {
+  "name": "sqlite",
+  "full_name": "sqlite",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [
+   "sqlite3"
+  ],
+  "versioned_formulae": [],
+  "desc": "Command-line interface for SQLite",
+  "license": "blessing",
+  "homepage": "https://sqlite.org/index.html",
+  "versions": {
+   "stable": "3.53.4",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://www.sqlite.org/2026/sqlite-autoconf-3530400.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": false,
+  "no_autobump_message": "incompatible_version_format",
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 1,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:804bef8ca4631bf2cf790c2b0564cee7ace649eb4052f2e16da3ac9142e77f51",
+      "sha256": "804bef8ca4631bf2cf790c2b0564cee7ace649eb4052f2e16da3ac9142e77f51"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:d09c4852f75e19c18c3e347ce73c81b0b864792046f079d074205522c735d3fc",
+      "sha256": "d09c4852f75e19c18c3e347ce73c81b0b864792046f079d074205522c735d3fc"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:4eefe9a700a6de4c31d20a16a2e675b51a24c87638d79fbc2195b952e7cb8d6a",
+      "sha256": "4eefe9a700a6de4c31d20a16a2e675b51a24c87638d79fbc2195b952e7cb8d6a"
+     },
+     "arm64_sonoma": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:45049bbdee244bc9d91e22c36629b5ba93b719b52c4d121b86392b3410be630f",
+      "sha256": "45049bbdee244bc9d91e22c36629b5ba93b719b52c4d121b86392b3410be630f"
+     },
+     "tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:58c8931be9f84faf36cd62062f161dcc7c70a104761a4d0753ef4398dd9f627f",
+      "sha256": "58c8931be9f84faf36cd62062f161dcc7c70a104761a4d0753ef4398dd9f627f"
+     },
+     "sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:f6752e93c0ddf55d10ae3aaea01d280be9632855649caa87daf1371fa6e26eb4",
+      "sha256": "f6752e93c0ddf55d10ae3aaea01d280be9632855649caa87daf1371fa6e26eb4"
+     },
+     "sonoma": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:32f6a117203a602fe3e06f524c19e431965ecc0bf9ede4c11ab443551558cfe9",
+      "sha256": "32f6a117203a602fe3e06f524c19e431965ecc0bf9ede4c11ab443551558cfe9"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:70f4fd9c239aa60c3b437d9c2638bd3186d920a19090cb62e2ce9f79f8e0a04c",
+      "sha256": "70f4fd9c239aa60c3b437d9c2638bd3186d920a19090cb62e2ce9f79f8e0a04c"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/sqlite/blobs/sha256:a7d570ed08f4678d8aee733ab6f12a3193891709b8047042b07b48b90473fad5",
+      "sha256": "a7d570ed08f4678d8aee733ab6f12a3193891709b8047042b07b48b90473fad5"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": true,
+  "keg_only_reason": {
+   "reason": ":provided_by_macos",
+   "explanation": ""
+  },
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [
+   "readline"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/s/sqlite.rb",
+  "ruby_source_checksum": {
+   "sha256": "72beb735cdbdbe21ff6134ac65df742c4b4c31a3511a88d979917ce37579c67a"
+  },
+  "variations": {
+   "x86_64_linux": {
+    "dependencies": [
+     "readline",
+     "zlib-ng-compat"
+    ]
+   },
+   "arm64_linux": {
+    "dependencies": [
+     "readline",
+     "zlib-ng-compat"
+    ]
+   }
+  },
+  "executables": [
+   "sqlite3"
+  ]
+ },
+ {
+  "name": "readline",
+  "full_name": "readline",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Library for command-line editing",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://tiswww.case.edu/php/chet/readline/rltop.html",
+  "versions": {
+   "stable": "8.3.6",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://ftpmirror.gnu.org/readline/readline-8.3.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc"
+   }
+  },
+  "patches": [
+   {
+    "strip": "p0",
+    "url": "https://ftpmirror.gnu.org/readline/readline-8.3-patches/readline83-001",
+    "sha256": "21f0a03106dbe697337cd25c70eb0edbaa2bdb6d595b45f83285cdd35bac84de",
+    "type": "cherry-pick"
+   },
+   {
+    "strip": "p0",
+    "url": "https://ftpmirror.gnu.org/readline/readline-8.3-patches/readline83-002",
+    "sha256": "e27364396ba9f6debf7cbaaf1a669e2b2854241ae07f7eca74ca8a8ba0c97472",
+    "type": "cherry-pick"
+   },
+   {
+    "strip": "p0",
+    "url": "https://ftpmirror.gnu.org/readline/readline-8.3-patches/readline83-003",
+    "sha256": "72dee13601ce38f6746eb15239999a7c56f8e1ff5eb1ec8153a1f213e4acdb29",
+    "type": "cherry-pick"
+   },
+   {
+    "strip": "p0",
+    "url": "https://ftpmirror.gnu.org/readline/readline-8.3-patches/readline83-004",
+    "sha256": "1f189c4566aa35950964647b9ec3be1a821e42b86048129c63eb7f9d4d2f5a74",
+    "type": "cherry-pick"
+   },
+   {
+    "strip": "p0",
+    "url": "https://ftpmirror.gnu.org/readline/readline-8.3-patches/readline83-005",
+    "sha256": "5481adbe161c9f6ba972c74db9e18c7aa351d3df3035cc4a673a1aa06247d1c6",
+    "type": "cherry-pick"
+   },
+   {
+    "strip": "p0",
+    "url": "https://ftpmirror.gnu.org/readline/readline-8.3-patches/readline83-006",
+    "sha256": "4ebd261a608287796e171af0ea9af5a1e3122e46672accda2484b6698c47c1a4",
+    "type": "cherry-pick"
+   }
+  ],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": false,
+  "no_autobump_message": "incompatible_version_format",
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/readline/blobs/sha256:74b458562c5a589a612ebba8f8fc12f3ecbe083223eb4a368c723d88b26a454d",
+      "sha256": "74b458562c5a589a612ebba8f8fc12f3ecbe083223eb4a368c723d88b26a454d"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/readline/blobs/sha256:15cdd69af824537192843db389cbfd2459b3797cf4f36c906f8f8ab617d7d59f",
+      "sha256": "15cdd69af824537192843db389cbfd2459b3797cf4f36c906f8f8ab617d7d59f"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/readline/blobs/sha256:461763fa21c050a59e5bbceedf67dcacf24e4aa4604490d73f0c9fa0f40e7fe5",
+      "sha256": "461763fa21c050a59e5bbceedf67dcacf24e4aa4604490d73f0c9fa0f40e7fe5"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/readline/blobs/sha256:ba75518e6b5d5376aa56fe6754deaf9188cf5df9b24f5885dbf0baf8e27a5bbe",
+      "sha256": "ba75518e6b5d5376aa56fe6754deaf9188cf5df9b24f5885dbf0baf8e27a5bbe"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/readline/blobs/sha256:4edcc5d53fb104818fd0e642f18edaace69e60c24b5e892df2bd437670c32857",
+      "sha256": "4edcc5d53fb104818fd0e642f18edaace69e60c24b5e892df2bd437670c32857"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": true,
+  "keg_only_reason": {
+   "reason": ":shadowed_by_macos",
+   "explanation": "macOS provides BSD libedit"
+  },
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   "ncurses"
+  ],
+  "uses_from_macos_bounds": [
+   {}
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/r/readline.rb",
+  "ruby_source_checksum": {
+   "sha256": "ead60941ba0f81334499b208e26382eefda15eb1b9614c417d70f1d827dc2e64"
+  },
+  "variations": {},
+  "executables": []
+ },
+ {
+  "name": "xz",
+  "full_name": "xz",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "General-purpose data compression with high compression ratio",
+  "license": "0BSD AND GPL-2.0-or-later",
+  "homepage": "https://tukaani.org/xz/",
+  "versions": {
+   "stable": "5.8.4",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "0014c7886930454fe8bd4228665b51af55eeae560ea135c9c4cd33f55b2591d9"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 1,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/xz/blobs/sha256:b2b5d6523153be05c20bcc51cd358ea3dd1f4bf893748fdedb779ab508ea63ce",
+      "sha256": "b2b5d6523153be05c20bcc51cd358ea3dd1f4bf893748fdedb779ab508ea63ce"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/xz/blobs/sha256:d291ad2277682238329b0e4d249e5e2c948c4b10cd64dba1963d897330ad88dd",
+      "sha256": "d291ad2277682238329b0e4d249e5e2c948c4b10cd64dba1963d897330ad88dd"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/xz/blobs/sha256:c2724c0db0398134694b8366d30d14f4de376115fb54c559c331d5fd0474af76",
+      "sha256": "c2724c0db0398134694b8366d30d14f4de376115fb54c559c331d5fd0474af76"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/xz/blobs/sha256:fd4f4c75678cc31e474931ff9798f0ca9aeb137b401faec2f6339891f2b40f94",
+      "sha256": "fd4f4c75678cc31e474931ff9798f0ca9aeb137b401faec2f6339891f2b40f94"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/xz/blobs/sha256:aa3b18af4d682e52746cd73dca60cec5422bfe1dc8bf4fff3c38a63fe4d516f5",
+      "sha256": "aa3b18af4d682e52746cd73dca60cec5422bfe1dc8bf4fff3c38a63fe4d516f5"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/x/xz.rb",
+  "ruby_source_checksum": {
+   "sha256": "e5b8bbf09dccb4a1f2ee333ed65b13ee773350a26735ef594ca859d2cf85248e"
+  },
+  "variations": {},
+  "executables": [
+   "lzcat",
+   "lzcmp",
+   "lzdiff",
+   "lzegrep",
+   "lzfgrep",
+   "lzgrep",
+   "lzless",
+   "lzma",
+   "lzmadec",
+   "lzmainfo",
+   "lzmore",
+   "unlzma",
+   "unxz",
+   "xz",
+   "xzcat",
+   "xzcmp",
+   "xzdec",
+   "xzdiff",
+   "xzegrep",
+   "xzfgrep",
+   "xzgrep",
+   "xzless",
+   "xzmore"
+  ]
+ },
+ {
+  "name": "git",
+  "full_name": "git",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Distributed revision control system",
+  "license": "GPL-2.0-only AND GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause AND MIT",
+  "homepage": "https://git-scm.com",
+  "versions": {
+   "stable": "2.56.0",
+   "head": "HEAD",
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3"
+   },
+   "head": {
+    "url": "https://github.com/git/git.git",
+    "branch": "master",
+    "using": null
+   }
+  },
+  "patches": [],
+  "revision": 1,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/git/blobs/sha256:8ac72c13f283a7b997604b479683bf418650d931bd2d9b8fe2f9059642b81bd9",
+      "sha256": "8ac72c13f283a7b997604b479683bf418650d931bd2d9b8fe2f9059642b81bd9"
+     },
+     "arm64_tahoe": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/git/blobs/sha256:f932c1525a4d6aaf2d982c471f95992a1faafc8ff9e3f331395e6dd538cfa9ca",
+      "sha256": "f932c1525a4d6aaf2d982c471f95992a1faafc8ff9e3f331395e6dd538cfa9ca"
+     },
+     "arm64_sequoia": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/git/blobs/sha256:8761edfe7a24efa75e6ded6aa98489a0d978eeca053d51c1f7b2b74bf365a587",
+      "sha256": "8761edfe7a24efa75e6ded6aa98489a0d978eeca053d51c1f7b2b74bf365a587"
+     },
+     "arm64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/git/blobs/sha256:6df0cc15eccfad7112d82df088ed2abe60f068e6faa1bb5f1a23b5dea71b2d84",
+      "sha256": "6df0cc15eccfad7112d82df088ed2abe60f068e6faa1bb5f1a23b5dea71b2d84"
+     },
+     "x86_64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/git/blobs/sha256:7b9b5082c7ffbf3a5084d1a11a1126ea646fcb9bddec2d24edc4d11efe9b60b9",
+      "sha256": "7b9b5082c7ffbf3a5084d1a11a1126ea646fcb9bddec2d24edc4d11efe9b60b9"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [
+   "gettext",
+   "pkgconf"
+  ],
+  "dependencies": [
+   "pcre2",
+   "gettext"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   "curl",
+   "expat"
+  ],
+  "uses_from_macos_bounds": [
+   {},
+   {}
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": "The Tcl/Tk GUIs (e.g. gitk, git-gui) are now in the `git-gui` formula.\nSubversion interoperability (git-svn) is now in the `git-svn` formula.\n",
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/g/git.rb",
+  "ruby_source_checksum": {
+   "sha256": "df39658f97fd2bb62ab681628d14c7e41b6c2dfbe220778c3d3b2712ff16b0a4"
+  },
+  "variations": {
+   "x86_64_linux": {
+    "dependencies": [
+     "pcre2",
+     "openssl@4",
+     "zlib-ng-compat"
+    ]
+   },
+   "arm64_linux": {
+    "dependencies": [
+     "pcre2",
+     "openssl@4",
+     "zlib-ng-compat"
+    ]
+   }
+  },
+  "executables": [
+   "git",
+   "git-cvsserver",
+   "git-receive-pack",
+   "git-shell",
+   "git-upload-archive",
+   "git-upload-pack",
+   "scalar"
+  ],
+  "vulnerabilities": {
+   "open": [],
+   "patched": [],
+   "fixed_count": 1
+  }
+ },
+ {
+  "name": "pcre2",
+  "full_name": "pcre2",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "Perl compatible regular expressions library with a new API",
+  "license": "BSD-3-Clause",
+  "homepage": "https://www.pcre.org/",
+  "versions": {
+   "stable": "10.49",
+   "head": "HEAD",
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.bz2",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "53c156e1ba416a20da8e65395daa132da0d80e76910424caca3fcdae7831d384"
+   },
+   "head": {
+    "url": "https://github.com/PCRE2Project/pcre2.git",
+    "branch": "main",
+    "using": null
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 0,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/pcre2/blobs/sha256:5cac44323243138490ca74a2499fd347fa836df6b5fffa789944be12110e91ff",
+      "sha256": "5cac44323243138490ca74a2499fd347fa836df6b5fffa789944be12110e91ff"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/pcre2/blobs/sha256:475d36ffae1f472554eac1fd96ca3ead3840c3d8fd2d34b257d2d7c4c1e5a17f",
+      "sha256": "475d36ffae1f472554eac1fd96ca3ead3840c3d8fd2d34b257d2d7c4c1e5a17f"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/pcre2/blobs/sha256:0ec47d18c50f5770db2b3f07b5b85644284cc6ee8e07e23b11d2727e95932b77",
+      "sha256": "0ec47d18c50f5770db2b3f07b5b85644284cc6ee8e07e23b11d2727e95932b77"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/pcre2/blobs/sha256:5bab1f9eb587d9f538e0a18589768c71b741dcebd9fd3863d7b5dd35f10ccd1a",
+      "sha256": "5bab1f9eb587d9f538e0a18589768c71b741dcebd9fd3863d7b5dd35f10ccd1a"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/pcre2/blobs/sha256:372ff34217dfe1185894c7ee06dc5c865eea331192c13ed5e62df0babe1b0520",
+      "sha256": "372ff34217dfe1185894c7ee06dc5c865eea331192c13ed5e62df0babe1b0520"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   "bzip2"
+  ],
+  "uses_from_macos_bounds": [
+   {}
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/p/pcre2.rb",
+  "ruby_source_checksum": {
+   "sha256": "2dcb74b4bc19dc81ace51feac7bb626b679c7b730eca1d3492d73fe822134fb8"
+  },
+  "head_dependencies": {
+   "build_dependencies": [
+    "autoconf",
+    "automake",
+    "libtool"
+   ],
+   "dependencies": [],
+   "test_dependencies": [],
+   "recommended_dependencies": [],
+   "optional_dependencies": [],
+   "uses_from_macos": [
+    "bzip2"
+   ],
+   "uses_from_macos_bounds": [
+    {}
+   ]
+  },
+  "variations": {
+   "x86_64_linux": {
+    "dependencies": [
+     "zlib-ng-compat"
+    ],
+    "head_dependencies": {
+     "build_dependencies": [
+      "autoconf",
+      "automake",
+      "libtool"
+     ],
+     "dependencies": [
+      "zlib-ng-compat"
+     ],
+     "test_dependencies": [],
+     "recommended_dependencies": [],
+     "optional_dependencies": [],
+     "uses_from_macos": [
+      "bzip2"
+     ],
+     "uses_from_macos_bounds": [
+      {}
+     ]
+    }
+   },
+   "arm64_linux": {
+    "dependencies": [
+     "zlib-ng-compat"
+    ],
+    "head_dependencies": {
+     "build_dependencies": [
+      "autoconf",
+      "automake",
+      "libtool"
+     ],
+     "dependencies": [
+      "zlib-ng-compat"
+     ],
+     "test_dependencies": [],
+     "recommended_dependencies": [],
+     "optional_dependencies": [],
+     "uses_from_macos": [
+      "bzip2"
+     ],
+     "uses_from_macos_bounds": [
+      {}
+     ]
+    }
+   }
+  },
+  "executables": [
+   "pcre2-config",
+   "pcre2grep",
+   "pcre2test"
+  ]
+ },
+ {
+  "name": "gettext",
+  "full_name": "gettext",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "GNU internationalization (i18n) and localization (l10n) library",
+  "license": "GPL-3.0-or-later AND LGPL-2.1-or-later",
+  "homepage": "https://www.gnu.org/software/gettext/",
+  "versions": {
+   "stable": "1.0",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://ftpmirror.gnu.org/gettext/gettext-1.0.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 2,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/gettext/blobs/sha256:4db034aa2ae4b1f18d86906707ece14c895198090ad028d2fb1ae4fbeb3ca6fd",
+      "sha256": "4db034aa2ae4b1f18d86906707ece14c895198090ad028d2fb1ae4fbeb3ca6fd"
+     },
+     "arm64_tahoe": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/gettext/blobs/sha256:3af5392939e50a6ef73e42799fc3ead6ef72fe0040c0a45183d04a4008306d6a",
+      "sha256": "3af5392939e50a6ef73e42799fc3ead6ef72fe0040c0a45183d04a4008306d6a"
+     },
+     "arm64_sequoia": {
+      "cellar": "/opt/homebrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/gettext/blobs/sha256:98a116d35792ccd730360ffc8c0d8fc5799b2282b96bb7696192c573f064a331",
+      "sha256": "98a116d35792ccd730360ffc8c0d8fc5799b2282b96bb7696192c573f064a331"
+     },
+     "arm64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/gettext/blobs/sha256:3cad13274e2b89d4b625623c0e6553b341dc04f2f24465892c511332dc80c2d2",
+      "sha256": "3cad13274e2b89d4b625623c0e6553b341dc04f2f24465892c511332dc80c2d2"
+     },
+     "x86_64_linux": {
+      "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+      "url": "https://ghcr.io/v2/homebrew/core/gettext/blobs/sha256:2d8896fdb7fe81fc987cefd609ddcd3696f99b71b7b6b60508a2c53f0e99eb5a",
+      "sha256": "2d8896fdb7fe81fc987cefd609ddcd3696f99b71b7b6b60508a2c53f0e99eb5a"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [
+   "json-c",
+   "libunistring"
+  ],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [
+   "curl",
+   "libxml2",
+   "ncurses"
+  ],
+  "uses_from_macos_bounds": [
+   {},
+   {},
+   {}
+  ],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/g/gettext.rb",
+  "ruby_source_checksum": {
+   "sha256": "9c90f7cf5a45c828e2a66d9339b25b781302cf49316e939d029e6079e1b9d916"
+  },
+  "variations": {
+   "x86_64_linux": {
+    "dependencies": [
+     "json-c",
+     "libunistring",
+     "acl"
+    ]
+   },
+   "arm64_linux": {
+    "dependencies": [
+     "json-c",
+     "libunistring",
+     "acl"
+    ]
+   }
+  },
+  "executables": [
+   "autopoint",
+   "envsubst",
+   "gettext",
+   "gettext.sh",
+   "gettextize",
+   "msgattrib",
+   "msgcat",
+   "msgcmp",
+   "msgcomm",
+   "msgconv",
+   "msgen",
+   "msgexec",
+   "msgfilter",
+   "msgfmt",
+   "msggrep",
+   "msginit",
+   "msgmerge",
+   "msgpre",
+   "msgunfmt",
+   "msguniq",
+   "ngettext",
+   "po-fetch",
+   "printf_gettext",
+   "printf_ngettext",
+   "recode-sr-latin",
+   "spit",
+   "xgettext"
+  ]
+ },
+ {
+  "name": "libunistring",
+  "full_name": "libunistring",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "C string library for manipulating Unicode strings",
+  "license": "GPL-2.0-or-later OR LGPL-3.0-or-later",
+  "homepage": "https://www.gnu.org/software/libunistring/",
+  "versions": {
+   "stable": "1.4.2",
+   "head": null,
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://ftpmirror.gnu.org/libunistring/libunistring-1.4.2.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "e82664b170064e62331962126b259d452d53b227bb4a93ab20040d846fec01d8"
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": 1,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 1,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/libunistring/blobs/sha256:57307eb89a02e09aa4de70e09391994dfc9520d9f101ec7e64f9af21dcea2420",
+      "sha256": "57307eb89a02e09aa4de70e09391994dfc9520d9f101ec7e64f9af21dcea2420"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/libunistring/blobs/sha256:14a72bd0aa3f1b2b3a7360be24380171d140b2fc5abbde0144807d3847b6728c",
+      "sha256": "14a72bd0aa3f1b2b3a7360be24380171d140b2fc5abbde0144807d3847b6728c"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/libunistring/blobs/sha256:513bf2378982459bf3daf286cec9d50d3f491686f8caa8749604de3be4e6db77",
+      "sha256": "513bf2378982459bf3daf286cec9d50d3f491686f8caa8749604de3be4e6db77"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/libunistring/blobs/sha256:27ac70a1873a544d1602e2c23a60feab68707d8a5403fb686567ce94ef08e2cd",
+      "sha256": "27ac70a1873a544d1602e2c23a60feab68707d8a5403fb686567ce94ef08e2cd"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/libunistring/blobs/sha256:a1153bcda606e120f9bf8e7e274d102e9f87a517c88fc8324c488ffdf1cfce71",
+      "sha256": "a1153bcda606e120f9bf8e7e274d102e9f87a517c88fc8324c488ffdf1cfce71"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [],
+  "dependencies": [],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/lib/libunistring.rb",
+  "ruby_source_checksum": {
+   "sha256": "8acac13619748b5c040c866f78955ea15fe51f555d60d494f52beae6ee24ce34"
+  },
+  "variations": {},
+  "executables": []
+ },
+ {
+  "name": "json-c",
+  "full_name": "json-c",
+  "tap": "homebrew/core",
+  "oldnames": [],
+  "aliases": [],
+  "versioned_formulae": [],
+  "desc": "JSON parser for C",
+  "license": "MIT",
+  "homepage": "https://github.com/json-c/json-c/wiki",
+  "versions": {
+   "stable": "0.19",
+   "head": "HEAD",
+   "bottle": true
+  },
+  "urls": {
+   "stable": {
+    "url": "https://s3.amazonaws.com/json-c_releases/releases/json-c-0.19.tar.gz",
+    "tag": null,
+    "revision": null,
+    "using": null,
+    "checksum": "37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de"
+   },
+   "head": {
+    "url": "https://github.com/json-c/json-c.git",
+    "branch": "master",
+    "using": null
+   }
+  },
+  "patches": [],
+  "revision": 0,
+  "version_scheme": 0,
+  "compatibility_version": null,
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "bottle": {
+   "stable": {
+    "rebuild": 1,
+    "root_url": "https://ghcr.io/v2/homebrew/core",
+    "files": {
+     "arm64_golden_gate": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/json-c/blobs/sha256:6b45746f31780a84ae3ed11d056bd101d1b0a6d0f16bf91aad2d35a18f6107dc",
+      "sha256": "6b45746f31780a84ae3ed11d056bd101d1b0a6d0f16bf91aad2d35a18f6107dc"
+     },
+     "arm64_tahoe": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/json-c/blobs/sha256:f2da9c816501d9c3c0e5f883b60b3d2758b35a3995e20d541d4b029d8b35ef13",
+      "sha256": "f2da9c816501d9c3c0e5f883b60b3d2758b35a3995e20d541d4b029d8b35ef13"
+     },
+     "arm64_sequoia": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/json-c/blobs/sha256:5624048dbb067f1a6d3784081029c3d738edeefd57188ce6724bb93d01aa53aa",
+      "sha256": "5624048dbb067f1a6d3784081029c3d738edeefd57188ce6724bb93d01aa53aa"
+     },
+     "arm64_sonoma": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/json-c/blobs/sha256:ce9c5f6c7095110cd5c9336b9277e1845cc55bb0fc98c7550576587fd28abbb1",
+      "sha256": "ce9c5f6c7095110cd5c9336b9277e1845cc55bb0fc98c7550576587fd28abbb1"
+     },
+     "arm64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/json-c/blobs/sha256:64475f64c83a75a0438e4d652bd75b0e7428f2e33e33377c88f087f4c652ed90",
+      "sha256": "64475f64c83a75a0438e4d652bd75b0e7428f2e33e33377c88f087f4c652ed90"
+     },
+     "x86_64_linux": {
+      "cellar": ":any",
+      "url": "https://ghcr.io/v2/homebrew/core/json-c/blobs/sha256:9745b482f9c14d66b5ec02f567a61f7ef29f9060cded74e5b37e322c139580af",
+      "sha256": "9745b482f9c14d66b5ec02f567a61f7ef29f9060cded74e5b37e322c139580af"
+     }
+    }
+   }
+  },
+  "pour_bottle_only_if": null,
+  "keg_only": false,
+  "keg_only_reason": null,
+  "options": [],
+  "build_dependencies": [
+   "cmake"
+  ],
+  "dependencies": [],
+  "test_dependencies": [],
+  "recommended_dependencies": [],
+  "optional_dependencies": [],
+  "uses_from_macos": [],
+  "uses_from_macos_bounds": [],
+  "requirements": [],
+  "conflicts_with": [],
+  "conflicts_with_reasons": [],
+  "link_overwrite": [],
+  "caveats": null,
+  "installed": [],
+  "linked_keg": null,
+  "pinned": false,
+  "outdated": false,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "post_install_steps": [],
+  "post_install_defined": false,
+  "service": null,
+  "tap_git_head": "d77269a4784b7854422acc6aedaadaa3c4d3d266",
+  "ruby_source_path": "Formula/j/json-c.rb",
+  "ruby_source_checksum": {
+   "sha256": "7b6c55b79158a98a41e376a39e05bbee827f425b67654af75db461f79402af37"
+  },
+  "variations": {},
+  "executables": []
  }
 ]

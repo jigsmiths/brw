@@ -1,0 +1,4 @@
+gettext
+json-c
+libunistring
+pcre2

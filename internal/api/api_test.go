@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-const fixtureSize = 9
+const fixtureSize = 19
 
 func fixture(t *testing.T) []byte {
 	t.Helper()
@@ -298,5 +298,13 @@ func TestUsesFromMacOSSince(t *testing.T) {
 	}
 	if got := byName(t, "node").UsesFromMacOS[0].Since; got != "" {
 		t.Errorf("node python Since = %q, want none", got)
+	}
+}
+
+func TestIndexFormulae(t *testing.T) {
+	idx := NewIndex(parseFixture(t))
+	all := idx.Formulae()
+	if len(all) != fixtureSize || all[0].Name != "jq" || all[1].Name != "openssl@3" {
+		t.Errorf("Formulae() = %d entries starting %q, %q", len(all), all[0].Name, all[1].Name)
 	}
 }

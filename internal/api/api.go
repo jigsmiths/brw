@@ -139,12 +139,14 @@ func Parse(b []byte) ([]Formula, error) {
 // Index finds formulae by name, alias or old name. Real names win over aliases.
 type Index struct {
 	byName map[string]*Formula
+	all    []*Formula
 }
 
 func NewIndex(formulae []Formula) *Index {
 	idx := &Index{byName: make(map[string]*Formula, len(formulae))}
 	for i := range formulae {
 		idx.byName[formulae[i].Name] = &formulae[i]
+		idx.all = append(idx.all, &formulae[i])
 	}
 	for i := range formulae {
 		for _, alt := range slices.Concat(formulae[i].Aliases, formulae[i].OldNames) {
@@ -155,6 +157,9 @@ func NewIndex(formulae []Formula) *Index {
 	}
 	return idx
 }
+
+// Formulae returns every formula once, in listing order.
+func (i *Index) Formulae() []*Formula { return i.all }
 
 func (i *Index) Lookup(name string) (*Formula, bool) {
 	f, ok := i.byName[name]

@@ -1,0 +1,8 @@
+python@3.13
+├── mpdecimal
+├── openssl@3
+│   └── ca-certificates
+├── sqlite
+│   └── readline
+└── xz
+
