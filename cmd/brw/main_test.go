@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/cellar"
@@ -45,5 +47,43 @@ func TestWithRootJournalFile(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(journal); string(got) != "write a/b\n" {
 		t.Errorf("journal = %q", got)
+	}
+}
+
+func TestRunDispatch(t *testing.T) {
+	var out bytes.Buffer
+	for _, args := range [][]string{{"nope"}, {"dev"}, {"dev", "nope"}, {"keg-create"}} {
+		cmd, rest := args[0], args[1:]
+		if err := run(cmd, rest, &out); err == nil {
+			t.Errorf("run(%v) should fail", args)
+		}
+	}
+}
+
+func TestDevCommandsMovedOffTopLevel(t *testing.T) {
+	for _, cmd := range []string{"keg-create", "keg-remove", "hold-lock"} {
+		err := run(cmd, nil, &bytes.Buffer{})
+		if err == nil || !strings.Contains(err.Error(), "unknown command") {
+			t.Errorf("%s at top level: %v", cmd, err)
+		}
+	}
+}
+
+func TestDevKegRoundTrip(t *testing.T) {
+	prefix := t.TempDir()
+	flags := []string{"-prefix", prefix, "-name", "demo", "-version", "1.0"}
+	if err := run("dev", append([]string{"keg-create"}, flags...), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := run("list", []string{"-prefix", prefix}, &out); err != nil || out.String() != "demo 1.0\n" {
+		t.Fatalf("list = %q, %v", out.String(), err)
+	}
+	if err := run("dev", append([]string{"keg-remove"}, flags...), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := run("list", []string{"-prefix", prefix}, &out); err != nil || out.String() != "" {
+		t.Fatalf("list after remove = %q, %v", out.String(), err)
 	}
 }
