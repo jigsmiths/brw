@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"runtime"
-	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/platform"
@@ -76,15 +73,4 @@ func defaultPrefix(h platform.Host) string {
 		return "/opt/homebrew"
 	}
 	return "/usr/local"
-}
-
-func macVersion() string {
-	if runtime.GOOS != "darwin" {
-		return ""
-	}
-	out, err := exec.Command("sw_vers", "-productVersion").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
