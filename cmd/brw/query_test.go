@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -222,5 +223,85 @@ func TestOfflineWarnsOnStderr(t *testing.T) {
 	}
 	if w := offline.err.(*bytes.Buffer).String(); !strings.HasPrefix(w, "brw: warning: using the cached formula list") {
 		t.Errorf("stderr = %q", w)
+	}
+}
+
+// linkKeg points opt/NAME at the keg, so it counts as linked.
+func linkKeg(t *testing.T, prefix, name, version string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(prefix, "opt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../Cellar/"+name+"/"+version, filepath.Join(prefix, "opt", name)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInfo(t *testing.T) {
+	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq"})
+	linkKeg(t, prefix, "jq", "1.8.2")
+	e := &env{host: linux, client: apiServer(t)}
+	flags := []string{"-prefix", prefix}
+
+	got, err := runCmd(t, e, "info", append([]string{"jq"}, flags...)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"==> jq: stable 1.8.2 (bottled), HEAD\n",
+		"Installed (on request)\n",
+		"From: https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/j/jq.rb\n",
+		"==> Installed Versions\njq 1.8.2 (",
+		"==> Dependencies\nRequired (1): oniguruma\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("info jq is missing %q:\n%s", want, got)
+		}
+	}
+
+	// Several formulae are separated by a blank line.
+	got, err = runCmd(t, e, "info", append([]string{"zsh-lovers", "xz"}, flags...)...)
+	if err != nil || !strings.Contains(got, "\n\n==> xz: ") {
+		t.Errorf("info of two = %q, %v", got, err)
+	}
+	if _, err := runCmd(t, e, "info", append([]string{"nosuchformula"}, flags...)...); err == nil {
+		t.Error("an unknown formula should fail")
+	}
+	if _, err := runCmd(t, e, "info"); err == nil {
+		t.Error("info needs a formula")
+	}
+}
+
+func TestInfoJSON(t *testing.T) {
+	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq"})
+	linkKeg(t, prefix, "jq", "1.8.2")
+	e := &env{host: linux, client: apiServer(t)}
+	got, err := runCmd(t, e, "info", "--json", "jq", "-prefix", prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Formulae []struct {
+			Name      string            `json:"name"`
+			Installed []json.RawMessage `json:"installed"`
+			Bottle    struct {
+				Stable struct {
+					Files map[string]json.RawMessage `json:"files"`
+				} `json:"stable"`
+			} `json:"bottle"`
+		} `json:"formulae"`
+		Casks []any `json:"casks"`
+	}
+	if err := json.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("%v\n%s", err, got)
+	}
+	if len(doc.Formulae) != 1 || doc.Formulae[0].Name != "jq" || len(doc.Formulae[0].Installed) != 1 || doc.Casks == nil || len(doc.Casks) != 0 {
+		t.Errorf("unexpected document:\n%s", got)
+	}
+	if files := doc.Formulae[0].Bottle.Stable.Files; len(files) != 1 || files["x86_64_linux"] == nil {
+		t.Errorf("bottle files = %v, want only this host's", files)
+	}
+	if !strings.HasPrefix(got, "{\n  \"formulae\": [\n    {\n      \"name\": \"jq\",\n") || !strings.HasSuffix(got, "  ],\n  \"casks\": []\n}\n") {
+		t.Errorf("not pretty printed like brew:\n%.200s", got)
 	}
 }

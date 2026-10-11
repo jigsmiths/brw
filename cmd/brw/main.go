@@ -12,7 +12,7 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-const usage = "usage: brw list|search|deps|uses|outdated|tag|dev [flags]"
+const usage = "usage: brw list|search|info|deps|uses|outdated|tag|dev [flags]"
 
 // env is everything a command needs from the outside world.
 type env struct {
@@ -47,6 +47,8 @@ func run(e *env, cmd string, args []string) error {
 		return usesCommand(e, args)
 	case "outdated":
 		return outdatedCommand(e, args)
+	case "info":
+		return infoCommand(e, args)
 	case "tag":
 		tag, err := platform.Tag(e.host)
 		if err != nil {

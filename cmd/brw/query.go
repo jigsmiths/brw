@@ -14,6 +14,7 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/deps"
+	"github.com/jigsmiths/brw/internal/info"
 	"github.com/jigsmiths/brw/internal/outdated"
 	"github.com/jigsmiths/brw/internal/search"
 )
@@ -43,8 +44,9 @@ func prefixFlag(e *env, fs *flag.FlagSet) *string {
 	return fs.String("prefix", defaultPrefix(e.host), "Homebrew prefix")
 }
 
-// index loads the formula listing, using the cache when offline.
-func (e *env) index(ctx context.Context) (*api.Index, error) {
+// apiClient returns the formula API client, warning on stderr when it falls
+// back to the cache.
+func (e *env) apiClient() (*api.Client, error) {
 	c := e.client
 	if c == nil {
 		dir, err := os.UserCacheDir()
@@ -55,11 +57,25 @@ func (e *env) index(ctx context.Context) (*api.Index, error) {
 	}
 	warned := *c
 	warned.Warn = func(msg string) { _, _ = fmt.Fprintln(e.err, "brw: warning:", msg) }
-	formulae, err := warned.Formulae(ctx)
+	return &warned, nil
+}
+
+// index loads the formula listing, using the cache when offline.
+func (e *env) index(ctx context.Context) (*api.Index, error) {
+	idx, _, err := e.indexAndClient(ctx)
+	return idx, err
+}
+
+func (e *env) indexAndClient(ctx context.Context) (*api.Index, *api.Client, error) {
+	c, err := e.apiClient()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return api.NewIndex(formulae), nil
+	formulae, err := c.Formulae(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return api.NewIndex(formulae), c, nil
 }
 
 func list(e *env, args []string) error {
@@ -321,4 +337,75 @@ func lines(names []string) string {
 		return ""
 	}
 	return strings.Join(names, "\n") + "\n"
+}
+
+func infoCommand(e *env, args []string) error {
+	fs := newFlagSet("info")
+	prefix := prefixFlag(e, fs)
+	asJSON := fs.Bool("json", false, "print JSON")
+	names, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		return errors.New("usage: brw info [--json] FORMULA [FORMULA ...]")
+	}
+	idx, client, err := e.indexAndClient(context.Background())
+	if err != nil {
+		return err
+	}
+	kegs, err := cellar.Prefix(*prefix).Kegs()
+	if err != nil {
+		return err
+	}
+	stale, err := outdated.Check(idx, cellar.Prefix(*prefix), kegs)
+	if err != nil {
+		return err
+	}
+	env := info.Env{Index: idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale}
+
+	var formulae []*api.Formula
+	for _, name := range names {
+		f, ok := idx.Lookup(name)
+		if !ok {
+			return fmt.Errorf("no available formula with the name %q", name)
+		}
+		formulae = append(formulae, f)
+	}
+
+	if *asJSON {
+		entries := []json.RawMessage{}
+		for _, f := range formulae {
+			raw, err := client.Raw(f.Name)
+			if err != nil {
+				return err
+			}
+			entry, err := info.JSON(raw, f, env)
+			if err != nil {
+				return err
+			}
+			entries = append(entries, entry)
+		}
+		enc := json.NewEncoder(e.out)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		return enc.Encode(struct {
+			Formulae []json.RawMessage `json:"formulae"`
+			Casks    []struct{}        `json:"casks"`
+		}{entries, []struct{}{}})
+	}
+
+	var b strings.Builder
+	for i, f := range formulae {
+		text, err := info.Text(f, env)
+		if err != nil {
+			return err
+		}
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(text)
+	}
+	_, err = io.WriteString(e.out, b.String())
+	return err
 }
