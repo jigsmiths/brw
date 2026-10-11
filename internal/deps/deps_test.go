@@ -274,7 +274,7 @@ func TestInstalled(t *testing.T) {
 	}
 }
 
-func TestInstalledUsesDirectVersusRecursive(t *testing.T) {
+func TestInstalledUsesIncludesIndirectDependents(t *testing.T) {
 	kegs := []cellar.Keg{
 		kegWith("app", dep("lib", true), dep("base", false)),
 		kegWith("lib", dep("base", true)),
@@ -282,20 +282,29 @@ func TestInstalledUsesDirectVersusRecursive(t *testing.T) {
 		kegWith("zed", dep("base", true)),
 		{Name: "norecord", Version: "1"},
 	}
-	if got := InstalledUses(kegs, "base", false); !reflect.DeepEqual(got, []string{"lib", "zed"}) {
-		t.Errorf("direct = %v", got)
+	if got := InstalledUses(kegs, "base"); !reflect.DeepEqual(got, []string{"app", "lib", "zed"}) {
+		t.Errorf("got %v, want every formula with base in its receipt", got)
 	}
-	if got := InstalledUses(kegs, "base", true); !reflect.DeepEqual(got, []string{"app", "lib", "zed"}) {
-		t.Errorf("recursive = %v", got)
-	}
-	if got := InstalledUses(kegs, "app", true); len(got) != 0 {
+	if got := InstalledUses(kegs, "app"); len(got) != 0 {
 		t.Errorf("nothing uses app, got %v", got)
+	}
+}
+
+func TestInstalledUsesNamesTapFormulaeInFull(t *testing.T) {
+	tapped := kegWith("zeta", dep("base", true))
+	tapped.Receipt.Source.Tap = "me/tap"
+	core := kegWith("alpha", dep("base", true))
+	core.Receipt.Source.Tap = "homebrew/core"
+	kegs := []cellar.Keg{tapped, core, kegWith("mid", dep("base", true))}
+	want := []string{"alpha", "me/tap/zeta", "mid"}
+	if got := InstalledUses(kegs, "base"); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v (full name for tap formulae, sorted by it)", got, want)
 	}
 }
 
 func TestInstalledUsesCountsMultipleVersionsOnce(t *testing.T) {
 	kegs := []cellar.Keg{kegWith("app", dep("base", true)), kegWith("app", dep("base", true))}
-	if got := InstalledUses(kegs, "base", false); !reflect.DeepEqual(got, []string{"app"}) {
+	if got := InstalledUses(kegs, "base"); !reflect.DeepEqual(got, []string{"app"}) {
 		t.Errorf("got %v", got)
 	}
 }

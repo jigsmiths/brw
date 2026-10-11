@@ -234,20 +234,28 @@ func Installed(kegs []cellar.Keg, name string) ([]string, error) {
 }
 
 // InstalledUses returns the installed formulae whose receipts list name as a
-// runtime dependency. Without recursive, only those that declare it directly.
-func InstalledUses(kegs []cellar.Keg, name string, recursive bool) []string {
+// runtime dependency, direct or not. Formulae from taps other than core are
+// named in full, and the list is sorted by those names.
+func InstalledUses(kegs []cellar.Keg, name string) []string {
 	var out []string
 	for _, k := range kegs {
 		if k.Receipt == nil || k.Name == name {
 			continue
 		}
 		for _, d := range k.Receipt.RuntimeDependencies {
-			if d.FullName == name && (recursive || d.DeclaredDirectly) {
-				out = append(out, k.Name)
+			if d.FullName == name {
+				out = append(out, fullName(k))
 				break
 			}
 		}
 	}
 	slices.Sort(out)
 	return slices.Compact(out)
+}
+
+func fullName(k cellar.Keg) string {
+	if tap := k.Receipt.Source.Tap; tap != "" && tap != "homebrew/core" {
+		return tap + "/" + k.Name
+	}
+	return k.Name
 }
