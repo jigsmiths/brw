@@ -20,6 +20,7 @@ const DefaultURL = "https://formulae.brew.sh/api/formula.json"
 type Formula struct {
 	Name             string                     `json:"name"`
 	FullName         string                     `json:"full_name"`
+	Desc             string                     `json:"desc"`
 	Tap              string                     `json:"tap"`
 	Aliases          []string                   `json:"aliases"`
 	OldNames         []string                   `json:"oldnames"`
