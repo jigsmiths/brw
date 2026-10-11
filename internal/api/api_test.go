@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const fixtureSize = 19
@@ -118,6 +122,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(s.body)
 }
 
+// afterFresh is a clock far enough ahead that a cached listing needs revalidating.
+func afterFresh() time.Time { return time.Now().Add(time.Hour) }
+
 func TestFormulaeCachesWithETag(t *testing.T) {
 	srv := &server{body: fixture(t)}
 	ts := httptest.NewServer(srv)
@@ -128,6 +135,7 @@ func TestFormulaeCachesWithETag(t *testing.T) {
 	if err != nil || len(first) != fixtureSize {
 		t.Fatalf("first fetch = %d formulae, %v", len(first), err)
 	}
+	c.Now = afterFresh
 	second, err := c.Formulae(context.Background())
 	if err != nil || len(second) != fixtureSize {
 		t.Fatalf("second fetch = %d formulae, %v", len(second), err)
@@ -182,7 +190,7 @@ func TestFormulaeStaleCacheWhenFetchFails(t *testing.T) {
 	for name, url := range map[string]string{"unreachable": down, "server error": failing.URL} {
 		t.Run(name, func(t *testing.T) {
 			var warnings []string
-			c := &Client{URL: url, CacheDir: dir, Warn: func(msg string) { warnings = append(warnings, msg) }}
+			c := &Client{URL: url, CacheDir: dir, Now: afterFresh, Warn: func(msg string) { warnings = append(warnings, msg) }}
 			fs, err := c.Formulae(context.Background())
 			if err != nil || len(fs) != fixtureSize {
 				t.Fatalf("got %d formulae, %v; want the stale cache", len(fs), err)
@@ -416,5 +424,219 @@ func TestConflictReasonsNullBecomesEmpty(t *testing.T) {
 	}
 	if got := fs[0].ConflictsWithReasons; !reflect.DeepEqual(got, []string{"both install x", ""}) {
 		t.Errorf("reasons = %q", got)
+	}
+}
+
+// clock is a Now function that tests can move.
+type clock struct{ offset time.Duration }
+
+func (c *clock) now() time.Time { return time.Now().Add(c.offset) }
+
+func TestFormulaeSkipsTheServerWhileFresh(t *testing.T) {
+	srv := &server{body: fixture(t)}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	clk := &clock{}
+	c := &Client{URL: ts.URL, CacheDir: t.TempDir(), Now: clk.now}
+	get := func(want int32) {
+		t.Helper()
+		fs, err := c.Formulae(context.Background())
+		if err != nil || len(fs) != fixtureSize {
+			t.Fatalf("got %d formulae, %v", len(fs), err)
+		}
+		if srv.hits.Load() != want {
+			t.Fatalf("hits = %d, want %d", srv.hits.Load(), want)
+		}
+	}
+	get(1)
+	clk.offset = 5 * time.Minute
+	get(1) // still fresh
+	clk.offset = 11 * time.Minute
+	get(2) // revalidated, the server says not modified
+	if srv.conditional.Load() != 1 {
+		t.Errorf("conditional = %d, want 1", srv.conditional.Load())
+	}
+	clk.offset = 15 * time.Minute
+	get(2) // the revalidation made it fresh again
+	clk.offset = 22 * time.Minute
+	get(3)
+}
+
+func TestFormulaeLoadsTheIndexNotTheBody(t *testing.T) {
+	srv := &server{body: fixture(t)}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	dir := t.TempDir()
+	clk := &clock{}
+	c := &Client{URL: ts.URL, CacheDir: dir, Now: clk.now}
+	if _, err := c.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "formula.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, offset := range []time.Duration{time.Minute, time.Hour} { // fresh, then revalidated with a 304
+		clk.offset = offset
+		fs, err := c.Formulae(context.Background())
+		if err != nil || len(fs) != fixtureSize {
+			t.Fatalf("offset %v: got %d formulae, %v", offset, len(fs), err)
+		}
+	}
+}
+
+func writeIndex(t *testing.T, dir string, idx listingIndex) {
+	t.Helper()
+	var b bytes.Buffer
+	if err := gob.NewEncoder(&b).Encode(idx); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "formula.index"), b.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFormulaeRebuildsAnUnusableIndex(t *testing.T) {
+	tests := map[string]func(t *testing.T, dir string){
+		"missing": func(t *testing.T, dir string) {
+			if err := os.Remove(filepath.Join(dir, "formula.index")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"corrupt": func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "formula.index"), []byte("garbage"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		},
+		// An index that is well formed but not for this listing must not be used. It
+		// holds no formulae, so using it would be noticed.
+		"for another listing": func(t *testing.T, dir string) {
+			writeIndex(t, dir, listingIndex{Fingerprint: indexFingerprint, ETag: `"v0"`})
+		},
+		"from another version of the formula type": func(t *testing.T, dir string) {
+			writeIndex(t, dir, listingIndex{Fingerprint: "old", ETag: `"v1"`})
+		},
+	}
+	for name, damage := range tests {
+		t.Run(name, func(t *testing.T) {
+			ts := httptest.NewServer(&server{body: fixture(t)})
+			defer ts.Close()
+			dir := t.TempDir()
+			clk := &clock{}
+			c := &Client{URL: ts.URL, CacheDir: dir, Now: clk.now}
+			if _, err := c.Formulae(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			damage(t, dir)
+			clk.offset = time.Hour
+			if fs, err := c.Formulae(context.Background()); err != nil || len(fs) != fixtureSize {
+				t.Fatalf("got %d formulae, %v", len(fs), err)
+			}
+			// The rebuilt index is good: a fresh call must not need the body.
+			if err := os.WriteFile(filepath.Join(dir, "formula.json"), []byte("not json"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			clk.offset = time.Hour + time.Minute
+			if fs, err := c.Formulae(context.Background()); err != nil || len(fs) != fixtureSize {
+				t.Fatalf("after rebuild: got %d formulae, %v", len(fs), err)
+			}
+		})
+	}
+}
+
+func TestFormulaeOfflineUsesTheIndex(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	dir := t.TempDir()
+	clk := &clock{}
+	if _, err := (&Client{URL: ts.URL, CacheDir: dir, Now: clk.now}).Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	down := ts.URL
+	ts.Close()
+	if err := os.WriteFile(filepath.Join(dir, "formula.json"), []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clk.offset = time.Hour
+	var warnings []string
+	c := &Client{URL: down, CacheDir: dir, Now: clk.now, Warn: func(m string) { warnings = append(warnings, m) }}
+	fs, err := c.Formulae(context.Background())
+	if err != nil || len(fs) != fixtureSize || len(warnings) != 1 {
+		t.Errorf("got %d formulae, %v, warnings %q", len(fs), err, warnings)
+	}
+}
+
+func TestFormulaeNeedsTheBodyToStaySkippable(t *testing.T) {
+	// The index alone must not satisfy a fresh call: Raw needs the body.
+	srv := &server{body: fixture(t)}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	dir := t.TempDir()
+	c := &Client{URL: ts.URL, CacheDir: dir}
+	if _, err := c.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, "formula.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if srv.hits.Load() != 2 {
+		t.Errorf("hits = %d, want a refetch because the body is gone", srv.hits.Load())
+	}
+	if _, err := c.Raw("jq"); err != nil {
+		t.Errorf("Raw after the refetch: %v", err)
+	}
+}
+
+func TestFingerprint(t *testing.T) {
+	type a struct {
+		X int
+		Y []string
+	}
+	type b struct {
+		X int
+		Y []string
+		Z bool
+	}
+	type c struct {
+		X int
+		Y []int
+	}
+	fa, fb, fc := fingerprint(reflect.TypeOf(a{})), fingerprint(reflect.TypeOf(b{})), fingerprint(reflect.TypeOf(c{}))
+	if fa != fingerprint(reflect.TypeOf(a{})) {
+		t.Error("fingerprint is not stable")
+	}
+	if fa == fb || fa == fc || fb == fc {
+		t.Errorf("added fields or changed types must change the fingerprint: %s %s %s", fa, fb, fc)
+	}
+}
+
+func TestIndexMatchesAFreshParse(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	defer ts.Close()
+	clk := &clock{}
+	c := &Client{URL: ts.URL, CacheDir: t.TempDir(), Now: clk.now}
+	parsed, err := c.Formulae(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	clk.offset = time.Minute
+	loaded, err := c.Formulae(context.Background()) // from the index
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed) != len(loaded) {
+		t.Fatalf("%d formulae parsed, %d loaded", len(parsed), len(loaded))
+	}
+	for i := range parsed {
+		// %+v prints nil and empty slices alike, which is the difference gob loses.
+		if a, b := fmt.Sprintf("%+v", parsed[i]), fmt.Sprintf("%+v", loaded[i]); a != b {
+			t.Errorf("%s differs after the round trip\nparsed: %s\nloaded: %s", parsed[i].Name, a, b)
+		}
+	}
+	// What the commands rely on survives as is.
+	idx := NewIndex(loaded)
+	if f, ok := idx.Lookup("python@3.13"); !ok || len(f.UsesFromMacOS) == 0 || len(f.Variations) == 0 || len(f.BottleTags()) == 0 {
+		t.Errorf("python@3.13 lost data: %+v", f)
 	}
 }

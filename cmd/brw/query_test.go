@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/platform"
@@ -216,7 +217,8 @@ func TestOfflineWarnsOnStderr(t *testing.T) {
 	if _, err := runCmd(t, e, "search", "json"); err != nil {
 		t.Fatal(err)
 	}
-	offline := &env{host: linux, client: &api.Client{URL: "http://127.0.0.1:1", CacheDir: c.CacheDir}, err: &bytes.Buffer{}}
+	later := func() time.Time { return time.Now().Add(time.Hour) }
+	offline := &env{host: linux, client: &api.Client{URL: "http://127.0.0.1:1", CacheDir: c.CacheDir, Now: later}, err: &bytes.Buffer{}}
 	got, err := runCmd(t, offline, "search", "json")
 	if err != nil || got != "json-c\n" {
 		t.Fatalf("offline search = %q, %v", got, err)

@@ -2,7 +2,12 @@
 package api
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/gob"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +17,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -200,27 +207,54 @@ func (i *Index) Lookup(name string) (*Formula, bool) {
 	return f, ok
 }
 
-// Client fetches the formula listing and caches it in CacheDir by ETag.
-// When the fetch fails and a cache exists, the cache is used and Warn is called.
+// freshFor is how long a validated listing is used without asking the server.
+// The server allows ten minutes (Cache-Control: max-age=600).
+const freshFor = 10 * time.Minute
+
+// indexVersion changes when Parse starts building something different, so an
+// index written by an older brw is not trusted. Changes to the Formula type
+// itself are caught by its fingerprint.
+const indexVersion = "1"
+
+// Client fetches the formula listing and caches it in CacheDir by ETag. It also
+// keeps an index of the parsed formulae, which is much faster to load than the
+// listing. When the fetch fails and a cache exists, the cache is used and Warn
+// is called.
 type Client struct {
 	URL      string
 	CacheDir string
 	HTTP     *http.Client
 	Warn     func(msg string)
+	Now      func() time.Time // defaults to time.Now
+}
+
+func (c *Client) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
 }
 
 func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	body := filepath.Join(c.CacheDir, "formula.json")
 	etagFile := filepath.Join(c.CacheDir, "formula.etag")
-	cached, bodyErr := os.ReadFile(body)
-	etag, etagErr := os.ReadFile(etagFile)
+	etagBytes, etagErr := os.ReadFile(etagFile)
+	etag := string(etagBytes)
+	_, bodyErr := os.Stat(body)
+	cached := bodyErr == nil && etagErr == nil
+
+	if cached && c.fresh(etagFile) {
+		if formulae, ok := c.loadIndex(etag); ok {
+			return formulae, nil
+		}
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
 	if err != nil {
 		return nil, err
 	}
-	if bodyErr == nil && etagErr == nil {
-		req.Header.Set("If-None-Match", string(etag))
+	if cached {
+		req.Header.Set("If-None-Match", etag)
 	}
 	hc := c.HTTP
 	if hc == nil {
@@ -228,19 +262,24 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return c.stale(cached, bodyErr, err)
+		return c.stale(etag, bodyErr == nil, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusNotModified:
-		if bodyErr != nil {
-			return nil, fmt.Errorf("304 without a cached body: %w", bodyErr)
+		if !cached {
+			return nil, errors.New("304 without a cached listing")
 		}
-		return Parse(cached)
+		formulae, err := c.fromCache(etag)
+		if err != nil {
+			return nil, err
+		}
+		c.touch(etagFile)
+		return formulae, nil
 	case http.StatusOK:
 	default:
-		return c.stale(cached, bodyErr, fmt.Errorf("GET %s: %s", c.URL, resp.Status))
+		return c.stale(etag, bodyErr == nil, fmt.Errorf("GET %s: %s", c.URL, resp.Status))
 	}
 
 	data, err := io.ReadAll(resp.Body)
@@ -254,8 +293,11 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	if err := writeAtomic(body, data); err != nil {
 		return nil, err
 	}
-	if tag := resp.Header.Get("ETag"); tag != "" {
+	tag := resp.Header.Get("ETag")
+	if tag != "" {
 		err = writeAtomic(etagFile, []byte(tag))
+		c.touch(etagFile)
+		c.writeIndex(tag, formulae)
 	} else {
 		err = os.Remove(etagFile) //fsx:allow cache file
 		if errors.Is(err, fs.ErrNotExist) {
@@ -263,6 +305,120 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 		}
 	}
 	return formulae, err
+}
+
+// fresh reports whether the listing was validated recently enough to use as is.
+func (c *Client) fresh(etagFile string) bool {
+	fi, err := os.Stat(etagFile)
+	if err != nil {
+		return false
+	}
+	age := c.now().Sub(fi.ModTime())
+	return age >= 0 && age < freshFor
+}
+
+// touch records that the cached listing was just validated.
+func (c *Client) touch(etagFile string) {
+	now := c.now()
+	_ = os.Chtimes(etagFile, now, now) //fsx:allow cache file; a failure only costs a revalidation
+}
+
+// fromCache loads the cached listing, preferring the index and rebuilding it
+// from the listing when it is unusable.
+func (c *Client) fromCache(etag string) ([]Formula, error) {
+	if formulae, ok := c.loadIndex(etag); ok {
+		return formulae, nil
+	}
+	data, err := os.ReadFile(filepath.Join(c.CacheDir, "formula.json"))
+	if err != nil {
+		return nil, err
+	}
+	formulae, err := Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	c.writeIndex(etag, formulae)
+	return formulae, nil
+}
+
+// listingIndex is the parsed listing as stored on disk.
+type listingIndex struct {
+	Fingerprint string
+	ETag        string
+	Formulae    []Formula
+}
+
+var indexFingerprint = indexVersion + fingerprint(reflect.TypeFor[Formula]())
+
+// loadIndex returns the index if it was built for this listing by a brw that
+// parses the same way.
+func (c *Client) loadIndex(etag string) ([]Formula, bool) {
+	if etag == "" {
+		return nil, false
+	}
+	f, err := os.Open(filepath.Join(c.CacheDir, "formula.index"))
+	if err != nil {
+		return nil, false
+	}
+	defer func() { _ = f.Close() }()
+	var idx listingIndex
+	if err := gob.NewDecoder(bufio.NewReader(f)).Decode(&idx); err != nil {
+		return nil, false
+	}
+	if idx.Fingerprint != indexFingerprint || idx.ETag != etag {
+		return nil, false
+	}
+	return idx.Formulae, true
+}
+
+// writeIndex is best effort: without an index the listing is parsed each time.
+func (c *Client) writeIndex(etag string, formulae []Formula) {
+	if etag == "" {
+		return
+	}
+	var b bytes.Buffer
+	if err := gob.NewEncoder(&b).Encode(listingIndex{indexFingerprint, etag, formulae}); err != nil {
+		return
+	}
+	_ = writeAtomic(filepath.Join(c.CacheDir, "formula.index"), b.Bytes())
+}
+
+// fingerprint summarises the shape of t, so that adding, removing or retyping a
+// field changes it.
+func fingerprint(t reflect.Type) string {
+	var b strings.Builder
+	describe(&b, t, map[reflect.Type]bool{})
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:8])
+}
+
+func describe(b *strings.Builder, t reflect.Type, seen map[reflect.Type]bool) {
+	switch t.Kind() {
+	case reflect.Struct:
+		if seen[t] {
+			b.WriteString("~" + t.Name())
+			return
+		}
+		seen[t] = true
+		b.WriteString("struct{")
+		for i := range t.NumField() {
+			f := t.Field(i)
+			b.WriteString(f.Name + " ")
+			describe(b, f.Type, seen)
+			b.WriteString(";")
+		}
+		b.WriteString("}")
+	case reflect.Slice, reflect.Array, reflect.Pointer:
+		b.WriteString(t.Kind().String() + " ")
+		describe(b, t.Elem(), seen)
+	case reflect.Map:
+		b.WriteString("map[")
+		describe(b, t.Key(), seen)
+		b.WriteString("]")
+		describe(b, t.Elem(), seen)
+	default:
+		b.WriteString(t.String())
+	}
 }
 
 // Raw returns the cached JSON entry for the formula with this exact name,
@@ -294,11 +450,11 @@ func (c *Client) Raw(name string) (json.RawMessage, error) {
 }
 
 // stale returns the cached listing after a failed fetch, or the fetch error if there is none.
-func (c *Client) stale(cached []byte, bodyErr, fetchErr error) ([]Formula, error) {
-	if bodyErr != nil {
+func (c *Client) stale(etag string, haveBody bool, fetchErr error) ([]Formula, error) {
+	if !haveBody {
 		return nil, fetchErr
 	}
-	formulae, err := Parse(cached)
+	formulae, err := c.fromCache(etag)
 	if err != nil {
 		return nil, fetchErr
 	}
