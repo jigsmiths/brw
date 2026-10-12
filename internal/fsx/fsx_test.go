@@ -620,3 +620,19 @@ func TestReadFile(t *testing.T) {
 		}
 	}
 }
+
+func TestAbs(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	got, err := r.Abs("Cellar/jq/1.0")
+	if err != nil || got != filepath.Join(dir, "Cellar/jq/1.0") {
+		t.Errorf("Abs = %q, %v", got, err)
+	}
+	if got, err := r.Abs(filepath.Join(dir, "x")); err != nil || got != filepath.Join(dir, "x") {
+		t.Errorf("Abs of an absolute path inside = %q, %v", got, err)
+	}
+	for _, p := range []string{"../out", filepath.Join(t.TempDir(), "elsewhere")} {
+		if got, err := r.Abs(p); err == nil {
+			t.Errorf("Abs(%q) = %q, want an error", p, got)
+		}
+	}
+}

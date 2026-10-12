@@ -156,6 +156,16 @@ func (r *Root) OpenLock(name string) (*os.File, error) {
 	return r.root.OpenFile(rel, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o644)
 }
 
+// Abs returns the absolute path of name, for handing to another program. It
+// only checks that name is inside the root.
+func (r *Root) Abs(name string) (string, error) {
+	rel, err := r.rel(name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(r.dir, rel), nil
+}
+
 // ReadFile reads a file inside the root. It changes nothing and is not journaled.
 func (r *Root) ReadFile(name string) ([]byte, error) {
 	rel, err := r.rel(name)
