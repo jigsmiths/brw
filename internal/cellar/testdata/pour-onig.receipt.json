@@ -1,0 +1,44 @@
+{
+  "homebrew_version": "6.0.22-269-ge103b39",
+  "used_options": [],
+  "unused_options": [],
+  "built_as_bottle": true,
+  "poured_from_bottle": true,
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "installed_on_request": false,
+  "changed_files": [
+    "bin/onig-config",
+    "lib/pkgconfig/oniguruma.pc"
+  ],
+  "linkage_files": [
+    "lib/libonig.5.dylib"
+  ],
+  "binary_relocation_files": [],
+  "time": 1791753508,
+  "source_modified_time": 1735396424,
+  "compiler": "clang",
+  "aliases": [],
+  "runtime_dependencies": [],
+  "source": {
+    "spec": "stable",
+    "versions": {
+      "stable": "6.9.10",
+      "head": null,
+      "version_scheme": 0,
+      "compatibility_version": null
+    },
+    "path": "/cache/api/internal/packages.arm64_golden_gate.jws.json",
+    "tap_git_head": null,
+    "tap": "homebrew/core"
+  },
+  "arch": "arm64",
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "dunno",
+    "xcode": "27.0",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}

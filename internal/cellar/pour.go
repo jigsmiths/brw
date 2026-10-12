@@ -1,0 +1,73 @@
+package cellar
+
+import (
+	"bytes"
+	"encoding/json"
+	"time"
+)
+
+// Pour is what brew adds to a bottle's receipt data when it pours the bottle.
+type Pour struct {
+	OnRequest bool
+	Time      time.Time
+	Aliases   []string
+	Stable    string // the formula's version, without its revision
+	Scheme    int
+	Tap       string
+	Path      string // where the API data brew would have read from lives
+}
+
+// NewPourReceipt builds the receipt for a poured bottle from the tab in the
+// bottle's manifest, the way brew does: the tab supplies the build details
+// (homebrew_version, built_on, the relocation lists and the runtime
+// dependencies) and brew overwrites ten fields. Keys in the tab that this code
+// does not model are dropped, as brew drops them.
+func NewPourReceipt(tab []byte, p Pour) (*Receipt, error) {
+	r, err := ParseReceipt(tab)
+	if err != nil {
+		return nil, err
+	}
+	r.unknown = nil
+
+	yes := true
+	r.UsedOptions, r.UnusedOptions = []string{}, []string{}
+	r.BuiltAsBottle, r.PouredFromBottle = true, true
+	r.LoadedFromAPI, r.LoadedFromInternalAPI = true, &yes
+	r.InstalledOnRequest = p.OnRequest
+	r.InstalledAsDependency = nil
+	r.Time = p.Time.Unix()
+	r.Aliases = p.Aliases
+	if r.Aliases == nil {
+		r.Aliases = []string{}
+	}
+	src, err := pourSource(p)
+	if err != nil {
+		return nil, err
+	}
+	r.Source = src
+	return r, nil
+}
+
+// pourSource is brew's source block for an API formula, in brew's key order.
+func pourSource(p Pour) (Source, error) {
+	type versions struct {
+		Stable               string  `json:"stable"`
+		Head                 *string `json:"head"`
+		VersionScheme        int     `json:"version_scheme"`
+		CompatibilityVersion *int    `json:"compatibility_version"`
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	err := enc.Encode(struct {
+		Spec       string   `json:"spec"`
+		Versions   versions `json:"versions"`
+		Path       string   `json:"path"`
+		TapGitHead *string  `json:"tap_git_head"`
+		Tap        string   `json:"tap"`
+	}{"stable", versions{Stable: p.Stable, VersionScheme: p.Scheme}, p.Path, nil, p.Tap})
+	if err != nil {
+		return Source{}, err
+	}
+	return Source{Tap: p.Tap, scheme: p.Scheme, raw: bytes.TrimSuffix(buf.Bytes(), []byte("\n"))}, nil
+}
