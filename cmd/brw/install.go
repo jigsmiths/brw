@@ -90,23 +90,32 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 		Linker:  &link.Linker{Root: root, Prefix: prefix},
 		APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+hostTag+".jws.json"),
 		Log:     e.out,
+		User:    os.Getenv("USER"),
 	}).Install(context.Background(), plan)
 
-	notLinked := 0
+	notLinked, postFailed := 0, 0
 	for _, r := range results {
 		if r.LinkErr != nil {
 			notLinked++
 			_, _ = fmt.Fprintf(e.err, "brw: %s %s was poured but could not be linked: %v\n", r.Name, r.Version, r.LinkErr)
+		}
+		if r.PostInstallErr != nil {
+			postFailed++
+			_, _ = fmt.Fprintf(e.err, "brw: the post_install step of %s did not complete: %v\n", r.Name, r.PostInstallErr)
 		}
 	}
 	printCaveats(e, plan, results, prefix)
 	if err != nil {
 		return err
 	}
+	var problems []error
 	if notLinked > 0 {
-		return fmt.Errorf("%d of %d formulae installed but not linked", notLinked, len(results))
+		problems = append(problems, fmt.Errorf("%d of %d formulae installed but not linked", notLinked, len(results)))
 	}
-	return nil
+	if postFailed > 0 {
+		problems = append(problems, fmt.Errorf("%d of %d formulae installed but their post_install did not complete", postFailed, len(results)))
+	}
+	return errors.Join(problems...)
 }
 
 // printCaveats shows the keg-only notices and the caveats of what was installed.

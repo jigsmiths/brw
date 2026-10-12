@@ -452,3 +452,106 @@ func TestInstallIntoABarePrefix(t *testing.T) {
 		}
 	}
 }
+
+func steps(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var v []any
+	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+		t.Fatal(err)
+	}
+	return map[string]any{"post_install_steps": v}
+}
+
+func TestInstallRunsPostInstallStepsAfterLinking(t *testing.T) {
+	e := newEnv(t)
+	extra := steps(t, `[
+		{"type":"mkdir_p","path":{"base":"var","path":"lib/{{formula_name}}"}},
+		{"type":"symlink","force":true,"source":{"base":"opt_prefix","path":"bin/jq"},"target":{"base":"var","path":"lib/jq/current"}},
+		{"type":"write","content":"v={{version}} user={{user}}\n","path":{"base":"pkgetc","path":"state"}}
+	]`)
+	e.in.User = "tester"
+	results, err := e.install(e.item(jq, true, false, extra))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].PostInstallErr != nil {
+		t.Fatalf("post_install failed: %v", results[0].PostInstallErr)
+	}
+	if got := e.readlink("var/lib/jq/current"); got != e.prefix+"/opt/jq/bin/jq" {
+		t.Errorf("link = %q: the opt record has to exist when the steps run", got)
+	}
+	if e.read("etc/jq/state") != "v=1.0 user=tester\n" {
+		t.Errorf("state = %q", e.read("etc/jq/state"))
+	}
+}
+
+func TestInstallRunsPostInstallStepsForTheHostOS(t *testing.T) {
+	e := newEnv(t)
+	e.in.OS = "linux"
+	extra := steps(t, `[
+		{"type":"touch","path":{"base":"var","path":"mac"},"guards":[{"condition":"on","value":"macos","id":"1"}]},
+		{"type":"touch","path":{"base":"var","path":"lin"},"guards":[{"condition":"on","value":"linux","id":"2"}]}
+	]`)
+	if _, err := e.install(e.item(jq, true, false, extra)); err != nil {
+		t.Fatal(err)
+	}
+	if e.exists("var/mac") || !e.exists("var/lin") {
+		t.Error("the on guards did not follow the installer's OS")
+	}
+}
+
+func TestInstallPostInstallFailureKeepsTheKegAndGoesOn(t *testing.T) {
+	e := newEnv(t)
+	bad := e.item(jq, true, false, steps(t, `[{"type":"run","command":{"path":"false"}}]`))
+	next := e.item(installtest.Bottle{Name: "next", Version: "1.0", Files: []installtest.File{file("bin/next", "n", 0o755)}}, true, false, nil)
+	results, err := e.install(bad, next)
+	if err != nil {
+		t.Fatalf("a failing post_install must not fail the install: %v", err)
+	}
+	if len(results) != 2 || results[0].PostInstallErr == nil || results[1].PostInstallErr != nil {
+		t.Fatalf("results = %+v", results)
+	}
+	if !results[0].Linked || !e.exists("Cellar/jq/1.0") || !e.exists("Cellar/next/1.0") {
+		t.Error("the keg should stay installed and linked, and the next one should install")
+	}
+}
+
+func TestInstallSkipsPostInstallWhenThereAreNoSteps(t *testing.T) {
+	e := newEnv(t)
+	results, err := e.install(e.item(jq, true, false, nil))
+	if err != nil || results[0].PostInstallErr != nil {
+		t.Errorf("%v, %v", results, err)
+	}
+}
+
+func TestInstallRestoresBottledEtcAndVar(t *testing.T) {
+	e := newEnv(t)
+	spec := installtest.Bottle{Name: "cfg", Version: "1.0", Files: []installtest.File{
+		file("bin/cfg", "#!/bin/sh\n", 0o755),
+		file(".bottle/etc/cfg.yml", "a: 1\n", 0),
+		file(".bottle/etc/sub/x.conf", "x\n", 0),
+		file(".bottle/var/lib/cfg/", "", 0),
+	}}
+	if _, err := e.install(e.item(spec, true, false, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if e.read("etc/cfg.yml") != "a: 1\n" || e.read("etc/sub/x.conf") != "x\n" || !e.exists("var/lib/cfg") {
+		t.Error("bottled etc and var were not restored into the prefix")
+	}
+}
+
+func TestInstallKeepsEditedConfigAndAddsDefault(t *testing.T) {
+	e := newEnv(t)
+	if err := e.root.WriteFile("etc/cfg.yml", []byte("mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec := installtest.Bottle{Name: "cfg", Version: "1.0", Files: []installtest.File{
+		file(".bottle/etc/cfg.yml", "a: 1\n", 0),
+	}}
+	if _, err := e.install(e.item(spec, true, false, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if e.read("etc/cfg.yml") != "mine\n" || e.read("etc/cfg.yml.default") != "a: 1\n" {
+		t.Errorf("etc = %q, default = %q", e.read("etc/cfg.yml"), e.read("etc/cfg.yml.default"))
+	}
+}

@@ -2,10 +2,8 @@
 package install
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,12 +14,13 @@ import (
 	"github.com/jigsmiths/brw/internal/info"
 	"github.com/jigsmiths/brw/internal/outdated"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 )
 
 var (
 	ErrNoBottle        = errors.New("no bottle for this host")
 	ErrDisabled        = errors.New("disabled")
-	ErrPostInstall     = errors.New("needs post_install steps, which brw does not run yet")
+	ErrPostInstall     = errors.New("has post_install steps brw cannot run yet")
 	ErrOtherPrefix     = errors.New("its bottle is built for another prefix")
 	ErrUnsupportedHost = errors.New("cannot be installed on this host yet")
 	ErrConflict        = errors.New("conflicts with a linked formula")
@@ -201,8 +200,11 @@ func (p *Planner) check(it *Item, problems *[]error) error {
 		}
 		it.Warnings = append(it.Warnings, f.Name+" is "+strings.ToLower(info.Deprecation(f, now)[:1])+info.Deprecation(f, now)[1:])
 	}
-	if len(f.PostInstallSteps) > 0 {
-		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.Name, ErrPostInstall, stepTypes(f)))
+	if u := poststep.Unsupported(f.PostInstallSteps); len(u) > 0 {
+		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.Name, ErrPostInstall, strings.Join(u, ", ")))
+	}
+	if len(f.Service) > 0 && string(f.Service) != "null" {
+		it.Warnings = append(it.Warnings, f.Name+" has a service definition, and brw does not write its launchd or systemd files")
 	}
 	tag, ok := platform.Select(p.Host, f.BottleTags())
 	if !ok {
@@ -218,19 +220,6 @@ func (p *Planner) check(it *Item, problems *[]error) error {
 		*problems = append(*problems, fmt.Errorf("%s: %w: %s", f.Name, ErrConflict, other.Name))
 	}
 	return nil
-}
-
-func stepTypes(f *api.Formula) string {
-	var types []string
-	for _, raw := range f.PostInstallSteps {
-		var s struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal(raw, &s) == nil && s.Type != "" && !slices.Contains(types, s.Type) {
-			types = append(types, s.Type)
-		}
-	}
-	return strings.Join(types, ", ")
 }
 
 // checkCellar refuses bottles that need work we cannot do for this prefix.

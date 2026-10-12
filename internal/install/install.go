@@ -1,6 +1,7 @@
 package install
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -17,6 +18,7 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/lock"
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/relocate"
 )
 
@@ -32,6 +34,8 @@ type Installer struct {
 	Now     func() time.Time
 	APIPath string // recorded in each receipt as the API data the formula came from
 	Log     io.Writer
+	OS      string // for the post_install guards; runtime.GOOS if empty
+	User    string // for {{user}} in post_install steps
 }
 
 // standardDirs are the directories every prefix has, which linking relies on.
@@ -43,6 +47,8 @@ type Result struct {
 	Size          string // such as "20 files, 1.3MB"
 	Linked        bool
 	LinkErr       error // why it is not linked, which does not fail the install
+	// PostInstallErr is why the post_install steps failed. The keg stays, as in brew.
+	PostInstallErr error
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -172,6 +178,17 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 		result.LinkErr = in.Linker.Optlink(k)
 	} else if result.LinkErr = in.Linker.Link(k); result.LinkErr == nil {
 		result.Linked = true
+	}
+	if err := in.restoreEtcVar(keg); err != nil {
+		result.PostInstallErr = err
+		return result, nil
+	}
+	if len(f.PostInstallSteps) > 0 {
+		in.logf("==> Running post_install for %s", f.Name)
+		result.PostInstallErr = poststep.Run(poststep.Context{
+			Root: in.Root, Prefix: in.Prefix, Name: f.Name, Version: f.Versions.Stable, Keg: keg,
+			OS: cmp.Or(in.OS, runtime.GOOS), User: in.User, Log: in.Log,
+		}, f.PostInstallSteps)
 	}
 	return result, nil
 }

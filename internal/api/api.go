@@ -64,6 +64,7 @@ type Formula struct {
 	UsesBounds                    []struct{ Since string }      `json:"uses_from_macos_bounds"`
 	KegOnly                       bool                          `json:"keg_only"`
 	PostInstallSteps              []json.RawMessage             `json:"post_install_steps"`
+	Service                       json.RawMessage               `json:"service"`
 	Variations                    map[string]json.RawMessage    `json:"variations"`
 }
 

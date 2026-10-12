@@ -153,14 +153,14 @@ func TestInstallDryRunChangesNothing(t *testing.T) {
 func TestInstallExplainsWhatItRefuses(t *testing.T) {
 	s := newStore(t)
 	s.formula(jqBottle(), nil, nil)
-	s.formula(installtest.Bottle{Name: "pi", Version: "1.0"}, nil, map[string]any{"post_install_steps": []any{map[string]any{"type": "mkdir_p"}}})
+	s.formula(installtest.Bottle{Name: "pi", Version: "1.0"}, nil, map[string]any{"post_install_steps": []any{map[string]any{"type": "gtk_update_icon_cache"}}})
 	s.formula(installtest.Bottle{Name: "old", Version: "1.0"}, nil, map[string]any{"disabled": true})
 	e, prefix := s.env()
 	_, err := runCmd(t, e, "install", "-prefix", prefix, "jq", "pi", "old")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, want := range []string{"pi:", "mkdir_p", "old:", "disabled"} {
+	for _, want := range []string{"pi:", "gtk_update_icon_cache", "old:", "disabled"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error does not mention %q: %v", want, err)
 		}
@@ -226,5 +226,37 @@ func TestInstallWritesNothingOutsideThePrefixAndTheCaches(t *testing.T) {
 	}
 	if !exists(t, cache, "downloads") {
 		t.Error("bottles should be cached next to the formula list")
+	}
+}
+
+func TestInstallRunsPostInstallAndReportsFailures(t *testing.T) {
+	s := newStore(t)
+	s.formula(installtest.Bottle{Name: "ok", Version: "1.0", Files: []installtest.File{file("bin/ok", "o", 0o755)}}, nil,
+		map[string]any{"post_install_steps": []any{map[string]any{"type": "mkdir_p", "path": map[string]any{"base": "var", "path": "lib/ok"}}}})
+	s.formula(installtest.Bottle{Name: "bad", Version: "1.0", Files: []installtest.File{file("bin/bad", "b", 0o755)}}, nil,
+		map[string]any{"post_install_steps": []any{map[string]any{"type": "run", "command": map[string]any{"path": "false"}}}})
+	e, prefix := s.env()
+	_, err := runCmd(t, e, "install", "-prefix", prefix, "ok", "bad")
+	if err == nil || !strings.Contains(err.Error(), "post_install") {
+		t.Errorf("error = %v, want one about post_install", err)
+	}
+	if !exists(t, prefix, "var/lib/ok") || !exists(t, prefix, "Cellar/bad/1.0") {
+		t.Error("the steps that can run should run, and a failing formula stays installed")
+	}
+	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, "bad") || !strings.Contains(w, "post_install") {
+		t.Errorf("stderr = %q", w)
+	}
+}
+
+func TestInstallWarnsAboutServices(t *testing.T) {
+	s := newStore(t)
+	s.formula(installtest.Bottle{Name: "daemon", Version: "1.0", Files: []installtest.File{file("bin/d", "d", 0o755)}}, nil,
+		map[string]any{"service": map[string]any{"run": []string{"/x"}}})
+	e, prefix := s.env()
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "daemon"); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, "service") {
+		t.Errorf("stderr = %q", w)
 	}
 }

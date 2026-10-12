@@ -189,10 +189,11 @@ func TestPlanRefusesWhatItCannotInstall(t *testing.T) {
 		want error
 		in   string
 	}{
-		"no bottle for the host":  {index(t, noBottle), ErrNoBottle, "nobottle"},
-		"disabled":                {index(t, with(f("old"), "disabled", true)), ErrDisabled, "old"},
-		"post_install steps":      {index(t, with(f("pi"), "post_install_steps", []any{map[string]any{"type": "touch", "path": "x"}})), ErrPostInstall, "pi"},
-		"a dependency with steps": {index(t, f("app", "pi"), with(f("pi"), "post_install_steps", []any{map[string]any{"type": "run"}})), ErrPostInstall, "app"},
+		"no bottle for the host": {index(t, noBottle), ErrNoBottle, "nobottle"},
+		"disabled":               {index(t, with(f("old"), "disabled", true)), ErrDisabled, "old"},
+		"an unsupported step":    {index(t, with(f("pi"), "post_install_steps", []any{map[string]any{"type": "gdk_pixbuf_query_loaders"}})), ErrPostInstall, "pi"},
+		"a dependency with one":  {index(t, f("app", "pi"), with(f("pi"), "post_install_steps", []any{map[string]any{"type": "configure_gcc_runtime"}})), ErrPostInstall, "app"},
+		"a step run with sudo":   {index(t, with(f("su"), "post_install_steps", []any{map[string]any{"type": "touch", "sudo": true}})), ErrPostInstall, "su"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -298,5 +299,32 @@ func TestPlanNothingToDo(t *testing.T) {
 	plan, err := planner(t, mac, index(t, f("a"))).Plan(nil)
 	if err != nil || len(plan.Items) != 0 {
 		t.Errorf("plan = %v, %v", plan, err)
+	}
+}
+
+func TestPlanAllowsPostInstallStepsItCanRun(t *testing.T) {
+	steps := []any{map[string]any{"type": "mkdir_p", "path": map[string]any{"base": "var", "path": "x"}}, map[string]any{"type": "run", "command": map[string]any{"path": "true"}}}
+	idx := index(t, with(f("pi"), "post_install_steps", steps))
+	if _, err := planner(t, mac, idx).Plan([]string{"pi"}); err != nil {
+		t.Errorf("steps brw can run should not stop the install: %v", err)
+	}
+}
+
+func TestPlanNamesTheUnsupportedSteps(t *testing.T) {
+	steps := []any{map[string]any{"type": "touch"}, map[string]any{"type": "gtk_update_icon_cache"}, map[string]any{"type": "gtk_update_icon_cache"}, map[string]any{"type": "configure_php"}}
+	_, err := planner(t, mac, index(t, with(f("pi"), "post_install_steps", steps))).Plan([]string{"pi"})
+	if err == nil || !strings.Contains(err.Error(), "gtk_update_icon_cache, configure_php") || strings.Contains(err.Error(), "touch") {
+		t.Errorf("error = %v, want the unsupported steps once each and not the supported one", err)
+	}
+}
+
+func TestPlanWarnsAboutServiceFiles(t *testing.T) {
+	idx := index(t, with(f("daemon"), "service", map[string]any{"run": []string{"/x"}}), f("plain"))
+	plan, err := planner(t, mac, idx).Plan([]string{"daemon", "plain"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items[0].Warnings) != 1 || !strings.Contains(plan.Items[0].Warnings[0], "service") || len(plan.Items[1].Warnings) != 0 {
+		t.Errorf("warnings = %v / %v", plan.Items[0].Warnings, plan.Items[1].Warnings)
 	}
 }
