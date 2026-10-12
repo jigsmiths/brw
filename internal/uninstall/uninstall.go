@@ -17,20 +17,14 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/lock"
-	"github.com/jigsmiths/brw/internal/version"
+	"github.com/jigsmiths/brw/internal/racks"
 )
 
-// NoSuchKegError is a formula that is known but has nothing installed.
-type NoSuchKegError struct{ Path string }
-
-func (e *NoSuchKegError) Error() string { return "no such keg: " + e.Path }
-
-// UnavailableError is a name that is neither installed nor a formula.
-type UnavailableError struct{ Name string }
-
-func (e *UnavailableError) Error() string {
-	return fmt.Sprintf("no available formula with the name %q", e.Name)
-}
+// NoSuchKegError and UnavailableError are what racks.Finder reports.
+type (
+	NoSuchKegError   = racks.NoSuchKegError
+	UnavailableError = racks.UnavailableError
+)
 
 // DependentsError says which installed formulae need the kegs.
 type DependentsError struct {
@@ -120,75 +114,8 @@ func (r *Remover) rackNames() []string {
 	return names
 }
 
-// defaultKeg is the keg brew uninstalls when no version is forced: the one the
-// opt record names, else the linked one, else the only one, else the latest.
-func (r *Remover) defaultKeg(kegs []cellar.Keg) cellar.Keg {
-	p := r.cellar()
-	name := kegs[0].Name
-	if v, ok := p.OptVersion(name); ok {
-		for _, k := range kegs {
-			if k.Version == v {
-				return k
-			}
-		}
-	}
-	for _, k := range kegs {
-		if p.Linked(name, k.Version) {
-			return k
-		}
-	}
-	return latest(kegs)
-}
-
-// latest is the keg with the greatest scheme and version.
-func latest(kegs []cellar.Keg) cellar.Keg {
-	best := kegs[0]
-	for _, k := range kegs[1:] {
-		if newer(k, best) {
-			best = k
-		}
-	}
-	return best
-}
-
-func newer(a, b cellar.Keg) bool {
-	scheme := func(k cellar.Keg) int {
-		if k.Receipt == nil {
-			return 0
-		}
-		return k.Receipt.VersionScheme()
-	}
-	if scheme(a) != scheme(b) {
-		return scheme(a) > scheme(b)
-	}
-	va, ea := version.ParsePkg(a.Version)
-	vb, eb := version.ParsePkg(b.Version)
-	if ea != nil || eb != nil {
-		return eb != nil && ea == nil
-	}
-	return va.Compare(vb) > 0
-}
-
-// resolve finds the rack a name stands for.
 func (r *Remover) resolve(name string) (string, error) {
-	name = strings.TrimPrefix(strings.ToLower(name), "homebrew/core/")
-	if len(r.rackKegs(name)) > 0 {
-		return name, nil
-	}
-	canonical, known := name, false
-	if r.Resolve != nil {
-		canonical, known = r.Resolve(name)
-		if known && len(r.rackKegs(canonical)) > 0 {
-			return canonical, nil
-		}
-	}
-	if known {
-		return "", &NoSuchKegError{Path: filepath.Join(r.Prefix, "Cellar", canonical)}
-	}
-	if r.Resolve == nil {
-		return "", &NoSuchKegError{Path: filepath.Join(r.Prefix, "Cellar", name)}
-	}
-	return "", &UnavailableError{Name: name}
+	return racks.Finder{Prefix: r.Prefix, Kegs: r.Kegs, Resolve: r.Resolve}.Find(name)
 }
 
 type rack struct {
@@ -212,7 +139,7 @@ func (r *Remover) Run(names []string, o Options) error {
 		}
 		kegs := r.rackKegs(name)
 		if !o.Force {
-			kegs = []cellar.Keg{r.defaultKeg(kegs)}
+			kegs = []cellar.Keg{r.cellar().DefaultKeg(kegs)}
 		}
 		racks = append(racks, rack{name, kegs})
 	}
@@ -471,7 +398,7 @@ func (r *Remover) dependentsOf(kegs []cellar.Keg) (required []cellar.Keg, depend
 		if _, going := removed[name]; going {
 			continue
 		}
-		dep := r.defaultKeg(r.rackKegs(name))
+		dep := r.cellar().DefaultKeg(r.rackKegs(name))
 		if dep.Receipt == nil {
 			continue
 		}
@@ -481,7 +408,7 @@ func (r *Remover) dependentsOf(kegs []cellar.Keg) (required []cellar.Keg, depend
 			if !slices.Contains(optlinked, dn) {
 				continue
 			}
-			k := latest(removed[dn])
+			k := cellar.Latest(removed[dn])
 			if !slices.ContainsFunc(required, func(x cellar.Keg) bool { return x.Path == k.Path }) {
 				required = append(required, k)
 			}
@@ -500,7 +427,7 @@ func (r *Remover) dependentsOf(kegs []cellar.Keg) (required []cellar.Keg, depend
 		if len(tokens) == 0 {
 			continue
 		}
-		k := latest(removed[name])
+		k := cellar.Latest(removed[name])
 		if !slices.ContainsFunc(required, func(x cellar.Keg) bool { return x.Path == k.Path }) {
 			required = append(required, k)
 		}

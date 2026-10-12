@@ -323,3 +323,69 @@ func TestOnRequestRecorded(t *testing.T) {
 		}
 	}
 }
+
+func TestLatestOrdersVersionsLikeBrew(t *testing.T) {
+	mk := func(vs ...string) []Keg {
+		var out []Keg
+		for _, v := range vs {
+			out = append(out, Keg{Name: "x", Version: v})
+		}
+		return out
+	}
+	for _, tt := range []struct {
+		versions []string
+		want     string
+	}{
+		{[]string{"1.9", "1.10", "1.2"}, "1.10"},
+		{[]string{"1.0", "1.0_1"}, "1.0_1"},
+		{[]string{"2.0", "10.0", "9.9"}, "10.0"},
+		{[]string{"1.0", ""}, "1.0"}, // an unreadable version loses
+		{[]string{"", "1.0"}, "1.0"},
+	} {
+		if got := Latest(mk(tt.versions...)).Version; got != tt.want {
+			t.Errorf("Latest(%v) = %s, want %s", tt.versions, got, tt.want)
+		}
+	}
+}
+
+func TestLatestPrefersANewerVersionScheme(t *testing.T) {
+	old := Keg{Name: "x", Version: "9.0", Receipt: &Receipt{}}
+	renumbered, err := ParseReceipt([]byte(`{"source":{"tap":"homebrew/core","versions":{"version_scheme":1}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Latest([]Keg{{Name: "x", Version: "1.0", Receipt: renumbered}, old}); got.Version != "1.0" {
+		t.Errorf("Latest = %s: scheme 1 beats scheme 0 whatever the version", got.Version)
+	}
+}
+
+func TestDefaultKegPrefersTheOptRecordThenTheLinkedRecordThenTheLatest(t *testing.T) {
+	prefix := t.TempDir()
+	kegs := []Keg{{Name: "jq", Version: "1.0"}, {Name: "jq", Version: "2.0"}, {Name: "jq", Version: "3.0"}}
+	for _, k := range kegs {
+		if err := os.MkdirAll(filepath.Join(prefix, "Cellar/jq", k.Version), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, d := range []string{"opt", "var/homebrew/linked"} {
+		if err := os.MkdirAll(filepath.Join(prefix, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := Prefix(prefix)
+	if got := p.DefaultKeg(kegs).Version; got != "3.0" {
+		t.Errorf("with no records = %s, want the latest", got)
+	}
+	if err := os.Symlink("../../../Cellar/jq/2.0", filepath.Join(prefix, "var/homebrew/linked/jq")); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.DefaultKeg(kegs).Version; got != "2.0" {
+		t.Errorf("with a linked record = %s", got)
+	}
+	if err := os.Symlink("../Cellar/jq/1.0", filepath.Join(prefix, "opt/jq")); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.DefaultKeg(kegs).Version; got != "1.0" {
+		t.Errorf("with an opt record = %s: it wins over the linked record", got)
+	}
+}

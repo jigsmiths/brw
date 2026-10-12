@@ -457,28 +457,6 @@ func TestUninstallRefusesAFormulaThatIsBeingInstalled(t *testing.T) {
 	}
 }
 
-func TestLatestOrdersVersionsLikeBrew(t *testing.T) {
-	mk := func(vs ...string) []cellar.Keg {
-		var out []cellar.Keg
-		for _, v := range vs {
-			out = append(out, cellar.Keg{Name: "x", Version: v})
-		}
-		return out
-	}
-	for _, tt := range []struct {
-		versions []string
-		want     string
-	}{
-		{[]string{"1.9", "1.10", "1.2"}, "1.10"},
-		{[]string{"1.0", "1.0_1"}, "1.0_1"},
-		{[]string{"2.0", "10.0", "9.9"}, "10.0"},
-	} {
-		if got := latest(mk(tt.versions...)).Version; got != tt.want {
-			t.Errorf("latest(%v) = %s, want %s", tt.versions, got, tt.want)
-		}
-	}
-}
-
 func TestSentence(t *testing.T) {
 	for in, want := range map[string]string{"a": "a", "a b": "a and b", "a b c": "a, b, and c"} {
 		if got := sentence(strings.Fields(in)); got != want {

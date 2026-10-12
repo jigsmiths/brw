@@ -15,7 +15,7 @@ import (
 func (r *Remover) unneeded() ([]cellar.Keg, error) {
 	var rest []cellar.Keg
 	for _, name := range r.rackNames() {
-		rest = append(rest, r.defaultKeg(r.rackKegs(name)))
+		rest = append(rest, r.cellar().DefaultKeg(r.rackKegs(name)))
 	}
 	var out []cellar.Keg
 	for {
