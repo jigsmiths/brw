@@ -27,17 +27,12 @@ func TestConformanceUninstall(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "brw")
 	sh(t, "", nil, "go", "build", "-o", bin, ".")
 
-	work, err := os.MkdirTemp(filepath.Dir(oracle), "run-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(work) })
+	work := workDir(t, filepath.Dir(oracle))
 	theirs, mine := filepath.Join(work, "brew"), filepath.Join(work, "brw")
 	for _, p := range []string{theirs, mine} {
 		sh(t, "", nil, "git", "clone", "-q", oracle, p)
 	}
-	// brw does not remove unneeded dependencies yet, so brew is told not to either.
-	env := []string{"HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_NO_AUTOREMOVE=1", "HOMEBREW_CACHE=" + cache}
+	env := []string{"HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_CACHE=" + cache}
 	brwEnv := append(slices.Clone(env), "HOME="+filepath.Join(work, "home"))
 
 	for _, p := range []string{theirs, mine} {
@@ -45,18 +40,20 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 
 	failed := false
-	step := func(name string, wantFail bool, args ...string) {
+	// step runs the same command with both tools and compares the prefixes.
+	step := func(name string, wantFail bool, extraEnv []string, cmd string, args ...string) {
 		t.Helper()
-		_, errBrew := try(env, filepath.Join(theirs, "bin", "brew"), append([]string{"uninstall"}, args...)...)
-		_, errBrw := try(brwEnv, bin, append([]string{"uninstall", "-prefix", mine}, args...)...)
+		outBrew, errBrew := try(append(slices.Clone(env), extraEnv...), filepath.Join(theirs, "bin", "brew"), append([]string{cmd}, args...)...)
+		outBrw, errBrw := try(append(slices.Clone(brwEnv), extraEnv...), bin, append([]string{cmd, "-prefix", mine}, args...)...)
 		if (errBrew != nil) != wantFail || (errBrw != nil) != wantFail {
-			t.Errorf("%s: brew failed = %v, brw failed = %v, want %v", name, errBrew != nil, errBrw != nil, wantFail)
+			t.Errorf("%s: brew failed = %v, brw failed = %v, want %v\nbrew: %s\nbrw: %s", name, errBrew != nil, errBrw != nil, wantFail, outBrew, outBrw)
 			failed = true
 		}
 		compare(t, name, theirs, mine)
 	}
+	noAutoremove := []string{"HOMEBREW_NO_AUTOREMOVE=1"}
 
-	step("refusing to remove a dependency", true, "oniguruma")
+	step("refusing to remove a dependency", true, nil, "uninstall", "oniguruma")
 
 	// A second version of jq, and a pin on minio, made the same way in both.
 	for _, p := range []string{theirs, mine} {
@@ -76,11 +73,33 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 	compare(t, "after adding a version and a pin", theirs, mine)
 
-	step("the linked version of two", false, "jq")
-	step("a pinned formula", false, "minio")
-	step("all versions", false, "--force", "jq")
-	step("several names at once", false, "cayley", "sbtenv")
-	step("forcing past a dependent", false, "--ignore-dependencies", "--force", "oniguruma", "minio", "rustup", "xz")
+	step("the linked version of two", false, nil, "uninstall", "jq")
+	step("a pinned formula", false, nil, "uninstall", "minio")
+
+	// With autoremove off, removing jq leaves oniguruma behind unneeded.
+	step("all versions, autoremove off", false, noAutoremove, "uninstall", "--force", "jq")
+	list := func(tool string) string {
+		if tool == "brew" {
+			out, _ := try(env, filepath.Join(theirs, "bin", "brew"), "autoremove", "--dry-run")
+			return out
+		}
+		out, _ := try(brwEnv, bin, "autoremove", "-prefix", mine, "--dry-run")
+		return out
+	}
+	if a, b := list("brew"), list("brw"); a != b || !strings.Contains(a, "oniguruma") {
+		t.Errorf("autoremove --dry-run differs\nbrew: %q\nbrw:  %q", a, b)
+	}
+	compare(t, "after the dry run", theirs, mine)
+	step("autoremove", false, nil, "autoremove")
+
+	step("several names at once", false, nil, "uninstall", "cayley", "sbtenv")
+	step("a dependency of an installed formula", true, nil, "uninstall", "xz")
+	for _, p := range []string{theirs, mine} {
+		if err := os.Remove(filepath.Join(p, "var/homebrew/pinned/minio")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	step("the rest, and the dependency that goes with it", false, nil, "uninstall", "minio", "rustup")
 
 	// With everything removed, no link, opt record or linked record may be left
 	// that brew does not leave as well (post_install can make some).

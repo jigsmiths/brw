@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // This test installs the same formulae with brew and with brw into two fresh
@@ -32,11 +33,7 @@ func TestConformanceInstall(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "brw")
 	sh(t, "", nil, "go", "build", "-o", bin, ".")
 
-	work, err := os.MkdirTemp(filepath.Dir(oracle), "run-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(work) })
+	work := workDir(t, filepath.Dir(oracle))
 	theirs, mine := filepath.Join(work, "brew"), filepath.Join(work, "brw")
 	for _, p := range []string{theirs, mine} {
 		sh(t, "", nil, "git", "clone", "-q", oracle, p)
@@ -262,4 +259,23 @@ func isMachO(data []byte) bool {
 		return true
 	}
 	return false
+}
+
+// workDir makes a scratch directory next to the oracle checkout and removes it
+// when the test ends. A run that was interrupted leaves its directory behind,
+// so those older than an hour are swept first.
+func workDir(t *testing.T, parent string) string {
+	t.Helper()
+	old, _ := filepath.Glob(filepath.Join(parent, "run-*"))
+	for _, d := range old {
+		if fi, err := os.Stat(d); err == nil && time.Since(fi.ModTime()) > time.Hour {
+			_ = os.RemoveAll(d)
+		}
+	}
+	work, err := os.MkdirTemp(parent, "run-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(work) })
+	return work
 }
