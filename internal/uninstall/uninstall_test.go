@@ -546,3 +546,34 @@ func TestUninstallPrefersTheOptRecordToTheLinkedRecord(t *testing.T) {
 		t.Errorf("tree = %v", f.tree())
 	}
 }
+
+func TestUninstallOnlyLoadsTheFormulaListingWhenItIsNeeded(t *testing.T) {
+	f := newFixture(t)
+	f.keg("jq", "1.0", true)
+	if err := os.WriteFile(filepath.Join(f.dir, "etc/other.conf"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loads := 0
+	r := f.remover()
+	r.FormulaNames = func() map[string]bool { loads++; return f.formula }
+	if err := r.Run([]string{"jq"}, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if loads != 0 {
+		t.Errorf("the listing was loaded %d times with no candidate files", loads)
+	}
+
+	f.keg("tool", "1.0", true)
+	if err := os.WriteFile(filepath.Join(f.dir, "etc/tool.conf"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r = f.remover()
+	r.FormulaNames = func() map[string]bool { return nil } // the listing is unavailable
+	f.warn.Reset()
+	if err := r.Run([]string{"tool"}, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if f.warn.Len() != 0 {
+		t.Errorf("without a listing there is nothing to guess from: %q", f.warn.String())
+	}
+}

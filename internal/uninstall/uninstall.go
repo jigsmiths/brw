@@ -370,25 +370,32 @@ func (r *Remover) configNotices(name string) {
 		return
 	}
 	unversioned, _, _ := strings.Cut(name, "@")
-	names := r.FormulaNames()
 	entries, err := r.Root.ReadDir("etc")
 	if err != nil {
 		return
 	}
-	var maybe []string
+	var candidates []fs.DirEntry
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), unversioned) {
-			continue
+		if strings.HasPrefix(e.Name(), unversioned) && !slices.Contains(paths, "etc/"+e.Name()) {
+			candidates = append(candidates, e)
 		}
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	names := r.FormulaNames()
+	if names == nil {
+		return
+	}
+	var maybe []string
+	for _, e := range candidates {
 		base := e.Name()
 		if !e.IsDir() {
 			base = strings.TrimSuffix(base, path.Ext(base))
 		}
-		abs := filepath.Join(r.Prefix, "etc", e.Name())
-		if names[base] || slices.Contains(paths, "etc/"+e.Name()) {
-			continue
+		if !names[base] {
+			maybe = append(maybe, filepath.Join(r.Prefix, "etc", e.Name()))
 		}
-		maybe = append(maybe, abs)
 	}
 	if len(maybe) > 0 {
 		slices.Sort(maybe)
