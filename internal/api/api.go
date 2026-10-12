@@ -421,32 +421,98 @@ func describe(b *strings.Builder, t reflect.Type, seen map[reflect.Type]bool) {
 	}
 }
 
-// Raw returns the cached JSON entry for the formula with this exact name,
-// exactly as the API served it. Call Formulae first to fill the cache.
-func (c *Client) Raw(name string) (json.RawMessage, error) {
+// each calls fn with every entry of the cached listing, in order, until fn
+// returns true.
+func (c *Client) each(fn func(name string, raw json.RawMessage) (done bool, err error)) error {
 	f, err := os.Open(filepath.Join(c.CacheDir, "formula.json"))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = f.Close() }()
 	dec := json.NewDecoder(f)
 	if _, err := dec.Token(); err != nil { // the opening bracket
-		return nil, err
+		return err
 	}
 	for dec.More() {
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return nil, err
+			return err
 		}
 		var probe struct{ Name string }
 		if err := json.Unmarshal(raw, &probe); err != nil {
-			return nil, err
+			return err
 		}
-		if probe.Name == name {
-			return raw, nil
+		if done, err := fn(probe.Name, raw); done || err != nil {
+			return err
 		}
 	}
-	return nil, fmt.Errorf("%s: %w", name, fs.ErrNotExist)
+	return nil
+}
+
+// Raw returns the cached JSON entry for the formula with this exact name,
+// exactly as the API served it. Call Formulae first to fill the cache.
+func (c *Client) Raw(name string) (json.RawMessage, error) {
+	var found json.RawMessage
+	err := c.each(func(n string, raw json.RawMessage) (bool, error) {
+		if n == name {
+			found = raw
+		}
+		return found != nil, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if found == nil {
+		return nil, fmt.Errorf("%s: %w", name, fs.ErrNotExist)
+	}
+	return found, nil
+}
+
+// BottleFile says where one bottle is and what it must hash to.
+type BottleFile struct {
+	Cellar string `json:"cellar"`
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256"`
+}
+
+// Bottles looks up the bottle of each formula for its tag, in one pass over the
+// cached listing. want maps a formula name to a bottle tag.
+func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) {
+	out := make(map[string]BottleFile, len(want))
+	if len(want) == 0 {
+		return out, nil
+	}
+	err := c.each(func(name string, raw json.RawMessage) (bool, error) {
+		tag, ok := want[name]
+		if !ok {
+			return false, nil
+		}
+		var e struct {
+			Bottle struct {
+				Stable struct {
+					Files map[string]BottleFile `json:"files"`
+				} `json:"stable"`
+			} `json:"bottle"`
+		}
+		if err := json.Unmarshal(raw, &e); err != nil {
+			return false, fmt.Errorf("%s: %w", name, err)
+		}
+		file, ok := e.Bottle.Stable.Files[tag]
+		if !ok {
+			return false, fmt.Errorf("%s has no bottle for %s", name, tag)
+		}
+		out[name] = file
+		return len(out) == len(want), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	for name := range want {
+		if _, ok := out[name]; !ok {
+			return nil, fmt.Errorf("%s: %w", name, fs.ErrNotExist)
+		}
+	}
+	return out, nil
 }
 
 // stale returns the cached listing after a failed fetch, or the fetch error if there is none.
