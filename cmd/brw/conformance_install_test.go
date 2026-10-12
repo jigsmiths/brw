@@ -42,12 +42,14 @@ func TestConformanceInstall(t *testing.T) {
 		sh(t, "", nil, "git", "clone", "-q", oracle, p)
 	}
 	env := []string{"HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_CACHE=" + cache}
+	// brw keeps its cache under HOME, so it gets one that goes away with the test.
+	brwEnv := append(slices.Clone(env), "HOME="+filepath.Join(work, "home"))
 	brewIn := func(prefix string, args ...string) string {
 		return sh(t, "", env, filepath.Join(prefix, "bin", "brew"), args...)
 	}
 
 	brewIn(theirs, append([]string{"install"}, installSet...)...)
-	sh(t, "", env, bin, append([]string{"install", "-prefix", mine}, installSet...)...)
+	sh(t, "", brwEnv, bin, append([]string{"install", "-prefix", mine}, installSet...)...)
 
 	a, b := snapshot(t, theirs), snapshot(t, mine)
 	a, b = strings.ReplaceAll(a, theirs, "<prefix>"), strings.ReplaceAll(b, mine, "<prefix>")
@@ -65,7 +67,7 @@ func TestConformanceInstall(t *testing.T) {
 	}
 
 	// brew accepts what brw installed.
-	want := sh(t, "", env, bin, "list", "-prefix", mine)
+	want := sh(t, "", brwEnv, bin, "list", "-prefix", mine)
 	if got := brewIn(mine, "list", "--formula"); got != want {
 		t.Errorf("brew list differs from brw list on brw's prefix\nbrew:\n%s\nbrw:\n%s", got, want)
 	}
@@ -74,7 +76,7 @@ func TestConformanceInstall(t *testing.T) {
 	}
 	brewIn(mine, "unlink", "jq")
 	brewIn(mine, "link", "jq")
-	if out := sh(t, "", env, bin, "list", "-prefix", theirs); out != brewIn(theirs, "list", "--formula") {
+	if out := sh(t, "", brwEnv, bin, "list", "-prefix", theirs); out != brewIn(theirs, "list", "--formula") {
 		t.Errorf("brw list differs from brew list on brew's prefix:\n%s", out)
 	}
 	uninstall := append([]string{"uninstall", "--force", "--ignore-dependencies"}, installSet...)
