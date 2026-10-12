@@ -557,3 +557,99 @@ func TestGlobsFollowRubyRules(t *testing.T) {
 		}
 	}
 }
+
+// fakeInitialiser puts a script in the keg's bin that records its arguments and
+// whether TMPDIR was set.
+func (f *fixture) fakeInitialiser(name string) string {
+	f.t.Helper()
+	out := filepath.Join(f.prefix, "calls-"+name)
+	f.write("Cellar/pkg/1.2.3-1/bin/"+name, "#!/bin/sh\nprintf '%s\\n' \"$@\" > '"+out+"'\nprintf 'TMPDIR=%s\\n' \"${TMPDIR-unset}\" >> '"+out+"'\n", 0o755)
+	return out
+}
+
+func TestInitDataDirPostgres(t *testing.T) {
+	f := newFixture(t)
+	f.fakeInitialiser("initdb")
+	t.Setenv("TMPDIR", "/kept")
+	f.mustRun(`[{"type":"init_data_dir","using":"postgresql_initdb","path":{"base":"var","path":"{{formula_name}}"}}]`)
+	want := "--locale=en_US.UTF-8\n-E\nUTF-8\n" + filepath.Join(f.prefix, "var/pkg") + "\nTMPDIR=/kept\n"
+	if got := f.read("calls-initdb"); got != want {
+		t.Errorf("initdb saw %q, want %q", got, want)
+	}
+}
+
+func TestInitDataDirPostgresLocale(t *testing.T) {
+	f := newFixture(t)
+	f.fakeInitialiser("initdb")
+	f.mustRun(`[{"type":"init_data_dir","using":"postgresql_initdb","locale":"C","path":{"base":"var","path":"pkg"}}]`)
+	if got := f.read("calls-initdb"); !strings.HasPrefix(got, "--locale=C\n") {
+		t.Errorf("initdb arguments = %q", got)
+	}
+}
+
+func TestInitDataDirMySQLAndMariaDB(t *testing.T) {
+	for using, program := range map[string]string{"mysql_initialize": "mysqld", "mariadb_install_db": "mysql_install_db"} {
+		f := newFixture(t)
+		f.fakeInitialiser(program)
+		t.Setenv("TMPDIR", "/should/not/be/seen")
+		f.mustRun(`[{"type":"init_data_dir","using":"` + using + `","path":{"base":"var","path":"mysql"}}]`)
+		got := f.read("calls-" + program)
+		keg, data := filepath.Join(f.prefix, "Cellar/pkg/1.2.3-1"), filepath.Join(f.prefix, "var/mysql")
+		for _, want := range []string{"--user=tester\n", "--basedir=" + keg + "\n", "--datadir=" + data + "\n", "--tmpdir=/tmp\n", "TMPDIR=unset\n"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("%s: %q is missing from %q", using, want, got)
+			}
+		}
+		if using == "mysql_initialize" && !strings.HasPrefix(got, "--initialize-insecure\n") {
+			t.Errorf("mysqld arguments = %q", got)
+		}
+		if using == "mariadb_install_db" && !strings.HasPrefix(got, "--verbose\n") {
+			t.Errorf("mysql_install_db arguments = %q", got)
+		}
+	}
+}
+
+func TestInitDataDirKeepsAnInitialisedDirectory(t *testing.T) {
+	for using, marker := range map[string]string{
+		"postgresql_initdb": "var/data/PG_VERSION", "mysql_initialize": "var/data/mysql/general_log.CSM", "mariadb_install_db": "var/data/mysql/user.frm",
+	} {
+		f := newFixture(t)
+		for _, p := range []string{"initdb", "mysqld", "mysql_install_db"} {
+			f.fakeInitialiser(p)
+		}
+		f.write(marker, "", 0o644)
+		f.mustRun(`[{"type":"init_data_dir","using":"` + using + `","path":{"base":"var","path":"data"}}]`)
+		for _, p := range []string{"initdb", "mysqld", "mysql_install_db"} {
+			if f.exists("calls-" + p) {
+				t.Errorf("%s: %s ran although %s exists", using, p, marker)
+			}
+		}
+	}
+}
+
+func TestInitDataDirCreatesThePathAndSkipsOnGitHubActions(t *testing.T) {
+	f := newFixture(t)
+	f.fakeInitialiser("initdb")
+	t.Setenv("HOMEBREW_GITHUB_ACTIONS", "true")
+	f.mustRun(`[{"type":"init_data_dir","using":"postgresql_initdb","path":{"base":"var","path":"deep/data"}}]`)
+	if !f.exists("var/deep/data") || f.exists("calls-initdb") {
+		t.Errorf("directory exists = %v, initdb ran = %v", f.exists("var/deep/data"), f.exists("calls-initdb"))
+	}
+}
+
+func TestInitDataDirFailures(t *testing.T) {
+	f := newFixture(t)
+	if err := f.run(`[{"type":"init_data_dir","using":"sqlite","path":{"base":"var","path":"d"}}]`); err == nil {
+		t.Error("an unknown initialiser should fail")
+	}
+	f.write("Cellar/pkg/1.2.3-1/bin/initdb", "#!/bin/sh\necho boom >&2\nexit 3\n", 0o755)
+	err := f.run(`[{"type":"init_data_dir","using":"postgresql_initdb","path":{"base":"var","path":"d"}}]`)
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("a failing initdb should report its error, got %v", err)
+	}
+	f.ctx.User = ""
+	f.fakeInitialiser("mysqld")
+	if err := f.run(`[{"type":"init_data_dir","using":"mysql_initialize","path":{"base":"var","path":"m"}}]`); err == nil {
+		t.Error("mysql needs a user name")
+	}
+}
