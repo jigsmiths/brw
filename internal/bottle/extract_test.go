@@ -287,3 +287,21 @@ func TestCleanName(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractDropsGroupAndOtherWrite(t *testing.T) {
+	root, err := extract(t,
+		dir("jq/1.8.2", 0o775),
+		file("jq/1.8.2/a.txt", "a", 0o664),
+		file("jq/1.8.2/b", "b", 0o777),
+		dir("jq/1.8.2/d", 0o2775&0o777),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p, want := range map[string]os.FileMode{"": 0o755, "a.txt": 0o644, "b": 0o755, "d": 0o755} {
+		fi, err := os.Stat(filepath.Join(root, stage, "jq/1.8.2", p))
+		if err != nil || fi.Mode().Perm() != want {
+			t.Errorf("%q = %v, %v; want %v, as under brew's umask go-w", p, fi.Mode().Perm(), err, want)
+		}
+	}
+}

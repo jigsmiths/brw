@@ -10,6 +10,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/jigsmiths/brw/internal/fsx"
 )
@@ -96,7 +98,7 @@ func (x *extractor) entry(h *tar.Header, r io.Reader) error {
 	if h.Mode&0o7000 != 0 {
 		return fmt.Errorf("mode %o has setuid, setgid or sticky bits", h.Mode)
 	}
-	perm := os.FileMode(h.Mode & 0o777)
+	perm := os.FileMode(h.Mode&0o777) &^ umask()
 	switch h.Typeflag {
 	case tar.TypeDir:
 		return x.mkdir(rel, perm, h)
@@ -209,4 +211,20 @@ func (x *extractor) finish() error {
 		}
 	}
 	return nil
+}
+
+var (
+	umaskOnce sync.Once
+	umaskBits os.FileMode
+)
+
+// umask is what tar run by brew applies to modes: brew sets `umask go-w` on
+// top of the user's own.
+func umask() os.FileMode {
+	umaskOnce.Do(func() {
+		old := syscall.Umask(0)
+		syscall.Umask(old)
+		umaskBits = os.FileMode(old) | 0o022
+	})
+	return umaskBits
 }
