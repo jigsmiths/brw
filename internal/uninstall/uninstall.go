@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -66,6 +67,7 @@ func sentence(words []string) string {
 
 type Options struct {
 	Force, IgnoreDependencies bool
+	Autoremove                bool // afterwards, remove dependencies nothing needs any more
 }
 
 type Remover struct {
@@ -78,6 +80,9 @@ type Remover struct {
 	// exists. It may be nil, as may FormulaNames, when no listing is at hand.
 	Resolve      func(name string) (canonical string, known bool)
 	FormulaNames func() map[string]bool
+	// BuildDeps lists the build dependencies of a formula, for the ones that
+	// were built from source. It may be nil.
+	BuildDeps func(name string) []string
 
 	Out, Warn io.Writer
 	DryRun    bool
@@ -227,6 +232,9 @@ func (r *Remover) Run(names []string, o Options) error {
 		}
 	}
 	failed = append(failed, r.dropDanglingRacks())
+	if o.Autoremove {
+		failed = append(failed, r.Autoremove())
+	}
 	if !o.Force {
 		failed = append(failed, problems...)
 	}
@@ -250,6 +258,7 @@ func (r *Remover) removeRack(x rack, o Options) (err error) {
 		for _, k := range x.kegs {
 			r.printf(r.Out, "Would uninstall %s... (%s)\n", r.kegPath(k), r.abv(k.Path))
 		}
+		r.forget(x.kegs)
 		return nil
 	}
 	l, err := lock.Acquire(r.Root, x.name)
@@ -265,6 +274,7 @@ func (r *Remover) removeRack(x rack, o Options) (err error) {
 				return err
 			}
 		}
+		r.forget(x.kegs)
 		return r.unpin(x.name)
 	}
 
@@ -277,6 +287,7 @@ func (r *Remover) removeRack(x rack, o Options) (err error) {
 	if err := r.remove(k); err != nil {
 		return err
 	}
+	r.forget(x.kegs)
 	if err := r.unpin(x.name); err != nil {
 		return err
 	}
@@ -286,6 +297,13 @@ func (r *Remover) removeRack(x rack, o Options) (err error) {
 	}
 	r.configNotices(x.name)
 	return nil
+}
+
+// forget drops removed kegs from the list of installed ones.
+func (r *Remover) forget(kegs []cellar.Keg) {
+	r.Kegs = slices.DeleteFunc(r.Kegs, func(k cellar.Keg) bool {
+		return slices.ContainsFunc(kegs, func(x cellar.Keg) bool { return x.Path == k.Path })
+	})
 }
 
 func (r *Remover) remove(k cellar.Keg) error {
@@ -426,6 +444,20 @@ func (r *Remover) find(dir string) []string {
 // checkDependents refuses when an installed formula that is not being removed
 // needs one of the kegs, going by the runtime dependencies in its receipt.
 func (r *Remover) checkDependents(kegs []cellar.Keg, named []string) error {
+	required, dependents, err := r.dependentsOf(kegs)
+	if err != nil || len(required) == 0 {
+		return err
+	}
+	paths := make([]string, len(required))
+	for i, k := range required {
+		paths[i] = r.kegPath(k)
+	}
+	return &DependentsError{Kegs: paths, Dependents: dependents, Named: named}
+}
+
+// dependentsOf finds which of the kegs are needed by installed formulae or casks
+// that are not themselves going, and by whom.
+func (r *Remover) dependentsOf(kegs []cellar.Keg) (required []cellar.Keg, dependents []string, err error) {
 	p := r.cellar()
 	removed := map[string][]cellar.Keg{}
 	var optlinked []string
@@ -435,8 +467,6 @@ func (r *Remover) checkDependents(kegs []cellar.Keg, named []string) error {
 			optlinked = append(optlinked, k.Name)
 		}
 	}
-	var required []cellar.Keg
-	var dependents []string
 	for _, name := range r.rackNames() {
 		if _, going := removed[name]; going {
 			continue
@@ -461,13 +491,25 @@ func (r *Remover) checkDependents(kegs []cellar.Keg, named []string) error {
 			dependents = append(dependents, name)
 		}
 	}
-	if len(required) == 0 {
-		return nil
+	casks, err := caskDependencies(r.Prefix)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot tell whether a cask needs these formulae: %w", err)
+	}
+	for _, name := range slices.Sorted(maps.Keys(removed)) {
+		tokens := casks[name]
+		if len(tokens) == 0 {
+			continue
+		}
+		k := latest(removed[name])
+		if !slices.ContainsFunc(required, func(x cellar.Keg) bool { return x.Path == k.Path }) {
+			required = append(required, k)
+		}
+		for _, t := range tokens {
+			if !slices.Contains(dependents, t) {
+				dependents = append(dependents, t)
+			}
+		}
 	}
 	slices.Sort(dependents)
-	paths := make([]string, len(required))
-	for i, k := range required {
-		paths[i] = r.kegPath(k)
-	}
-	return &DependentsError{Kegs: paths, Dependents: dependents, Named: named}
+	return required, dependents, nil
 }
