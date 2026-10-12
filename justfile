@@ -34,3 +34,7 @@ setup:
 
 clean:
     rm -rf bin
+
+# Install the same formulae with brew and brw, then compare (needs ~/.brw-oracle/hb)
+conformance-install:
+    BRW_CONFORMANCE_INSTALL=1 go test ./cmd/brw -run TestConformanceInstall -count=1 -v -timeout 20m
