@@ -177,8 +177,16 @@ var deprecationReasons = map[string]string{
 		"We can re-package this once upstream has confirmed that they retagged their release",
 }
 
-// deprecation is the notice for a deprecated or disabled formula, or "".
 func (e Env) deprecation(f *api.Formula) string {
+	now := e.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	return Deprecation(f, now)
+}
+
+// Deprecation is the notice for a deprecated or disabled formula, or "".
+func Deprecation(f *api.Formula, now time.Time) string {
 	var kind, reason, replacement string
 	switch {
 	case f.Deprecated:
@@ -205,10 +213,6 @@ func (e Env) deprecation(f *api.Formula) string {
 		}
 	}
 	if disableDate != "" {
-		now := e.Now
-		if now.IsZero() {
-			now = time.Now()
-		}
 		if disableDate < now.Format(time.DateOnly) {
 			msg += " It was disabled on " + disableDate + "."
 		} else {
