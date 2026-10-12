@@ -3,10 +3,13 @@ package fsx
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -687,5 +690,274 @@ func TestReadlinkAndReadDir(t *testing.T) {
 	}
 	if _, err := r.Readlink("../x"); err == nil {
 		t.Error("Readlink escaped the root")
+	}
+}
+
+func TestRemoveKeg(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "keep"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	keg := filepath.Join(dir, "Cellar/jq/1.0")
+	for _, p := range []string{"bin", "share/doc/jq", "share/man"} {
+		if err := os.MkdirAll(filepath.Join(keg, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(keg, "bin/jq"), []byte("x"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(keg, "share/doc/jq/README"), []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(keg, "out")); err != nil {
+		t.Fatal(err)
+	}
+	// Read only directories, as bottles ship them; the deepest first.
+	for _, p := range []string{"share/doc/jq", "share/doc", "share/man", "share", "bin"} {
+		if err := os.Chmod(filepath.Join(keg, p), 0o555); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := filepath.Join(dir, "Cellar/jq/2.0")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.RemoveKeg("Cellar/jq/1.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(keg); !os.IsNotExist(err) {
+		t.Errorf("keg still exists: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("another version was removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "keep")); err != nil {
+		t.Errorf("RemoveKeg followed a symlink out of the keg: %v", err)
+	}
+	if !strings.Contains(journal.String(), "removekeg Cellar/jq/1.0\n") {
+		t.Errorf("journal = %q", journal.String())
+	}
+}
+
+func TestRemoveKegRefusesAnythingElse(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	for _, p := range []string{"Cellar/jq/1.0/bin", "Cellar/.brw-staging/x", "Cellar/.hidden/1.0", "bin/tool/1.0", "etc/jq/1.0", "var/Cellar/jq"} {
+		if err := os.MkdirAll(filepath.Join(dir, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(dir, "etc"), filepath.Join(dir, "Cellar/jq/2.0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Cellar/jq/3.0"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{
+		"", ".", "Cellar", "Cellar/jq", "Cellar/jq/1.0/bin", "Cellar/.brw-staging/x", "Cellar/.hidden/1.0",
+		"bin/tool/1.0", "etc/jq/1.0", "Cellar/jq/2.0", "Cellar/jq/3.0", "Cellar/nothing/1.0", "../Cellar/jq/1.0", "Cellar/jq/../jq/1.0/..",
+	} {
+		if err := r.RemoveKeg(p); err == nil {
+			t.Errorf("RemoveKeg(%q) succeeded", p)
+		}
+	}
+	for _, p := range []string{"Cellar/jq/1.0/bin", "Cellar/.brw-staging/x", "etc", "Cellar/jq/3.0"} {
+		if _, err := os.Lstat(filepath.Join(dir, p)); err != nil {
+			t.Errorf("%s was damaged: %v", p, err)
+		}
+	}
+}
+
+// snapshotTree lists everything below dir with its mode, size and time.
+func snapshotTree(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		fi, err := os.Lstat(p)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		line := fmt.Sprintf("%s %v %d %d", rel, fi.Mode(), fi.Size(), fi.ModTime().UnixNano())
+		if fi.Mode()&os.ModeSymlink != 0 {
+			target, _ := os.Readlink(p)
+			line += " -> " + target
+		}
+		out = append(out, line)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestDryRunChangesNothingAndSaysWhatItWould(t *testing.T) {
+	dir := t.TempDir()
+	for _, p := range []string{"Cellar/jq/1.0/bin", "Cellar/.brw-staging/x", "etc", "opt"} {
+		if err := os.MkdirAll(filepath.Join(dir, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for p, mode := range map[string]os.FileMode{"file": 0o644, "etc/conf": 0o644, "Cellar/jq/1.0/bin/jq": 0o555, "Cellar/.brw-staging/x/f": 0o644} {
+		if err := os.WriteFile(filepath.Join(dir, p), []byte("data"), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("file", filepath.Join(dir, "opt/link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dir, "Cellar/jq/1.0/bin"), 0o555); err != nil { // read only, as bottles ship them
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(dir, "Cellar/jq/1.0/bin"), 0o755) })
+
+	var journal bytes.Buffer
+	r, err := OpenDryRun(dir, &journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	before := snapshotTree(t, dir)
+
+	later := time.Now().Add(time.Hour)
+	for name, fn := range map[string]func() error{
+		"write":     func() error { return r.WriteFile("new/dir/f", []byte("x"), 0o644) },
+		"writefrom": func() error { return r.WriteFrom("Cellar/.brw-staging/x/g", strings.NewReader("x"), 0o644, later) },
+		"symlink":   func() error { return r.Symlink("../file", "bin/new/link") },
+		"mkdir":     func() error { return r.Mkdir("fresh", 0o755) },
+		"mkdirall":  func() error { return r.MkdirAll("a/b/c", 0o755) },
+		"chtimes":   func() error { return r.Chtimes("file", later, later) },
+		"chmod":     func() error { return r.Chmod("file", 0o600) },
+		"link":      func() error { return r.Link("file", "file2") },
+		"rename":    func() error { return r.Rename("file", "moved") },
+		"replace":   func() error { return r.Replace("Cellar/.brw-staging/x/f", []byte("changed")) },
+		"remove":    func() error { return r.Remove("file") },
+		"removeall": func() error { return r.RemoveAll("etc") },
+		"removekeg": func() error { return r.RemoveKeg("Cellar/jq/1.0") },
+	} {
+		if err := fn(); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if after := snapshotTree(t, dir); !reflect.DeepEqual(before, after) {
+		t.Errorf("a dry run changed the tree\nbefore: %v\nafter:  %v", before, after)
+	}
+	lines := strings.Split(strings.TrimSpace(journal.String()), "\n")
+	for _, want := range []string{
+		"would write new/dir/f", "would write Cellar/.brw-staging/x/g", "would symlink bin/new/link -> ../file", "would mkdir fresh",
+		"would mkdir a", "would mkdir a/b", "would mkdir a/b/c", "would chtimes file", "would chmod file 600", "would link file file2",
+		"would rename file moved", "would replace Cellar/.brw-staging/x/f", "would remove file", "would removeall etc", "would removekeg Cellar/jq/1.0",
+	} {
+		if !slices.Contains(lines, want) {
+			t.Errorf("the journal lacks %q:\n%s", want, journal.String())
+		}
+	}
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "would ") {
+			t.Errorf("a journal line does not say it is hypothetical: %q", l)
+		}
+	}
+}
+
+func TestDryRunStillRefusesWhatARealRunWould(t *testing.T) {
+	dir := t.TempDir()
+	r, err := OpenDryRun(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	for name, fn := range map[string]func() error{
+		"escape":         func() error { return r.Remove("../outside") },
+		"absolute":       func() error { return r.Symlink("x", "/etc/passwd") },
+		"symlink target": func() error { return r.Symlink("../../out", "link") },
+		"root":           func() error { return r.RemoveAll(".") },
+		"not a keg":      func() error { return r.RemoveKeg("Cellar/jq") },
+		"outside staging": func() error {
+			return r.Replace("file", nil)
+		},
+	} {
+		if err := fn(); err == nil {
+			t.Errorf("%s: a dry run accepted what a real one refuses", name)
+		}
+	}
+	if _, err := r.OpenLock("var/homebrew/locks/jq.formula.lock"); err == nil {
+		t.Error("a dry run must not create a lock file")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("the dry run wrote %v", entries)
+	}
+}
+
+func TestDryRunReportsWhatAlreadyExistsLikeARealRun(t *testing.T) {
+	dir := t.TempDir()
+	for _, p := range []string{"file", "link"} {
+		if p == "file" {
+			if err := os.WriteFile(filepath.Join(dir, p), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		} else if err := os.Symlink("nowhere", filepath.Join(dir, p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r, err := OpenDryRun(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	for name, fn := range map[string]func() error{
+		"write file":            func() error { return r.WriteFile("file", nil, 0o644) },
+		"write dangling link":   func() error { return r.WriteFile("link", nil, 0o644) },
+		"writefrom":             func() error { return r.WriteFrom("file", strings.NewReader(""), 0o644, time.Time{}) },
+		"symlink onto file":     func() error { return r.Symlink("x", "file") },
+		"symlink onto link":     func() error { return r.Symlink("x", "link") },
+		"symlink onto dir":      func() error { return r.Symlink("x", "dir") },
+		"mkdir onto dir":        func() error { return r.Mkdir("dir", 0o755) },
+		"mkdir onto file":       func() error { return r.Mkdir("file", 0o755) },
+		"link onto file":        func() error { return r.Link("file", "dir") },
+		"mkdirall through file": func() error { return r.MkdirAll("file/sub", 0o755) },
+	} {
+		if err := fn(); err == nil {
+			t.Errorf("%s: a dry run accepted what a real run reports as existing", name)
+		} else if name != "mkdirall through file" && !errors.Is(err, ErrExists) {
+			t.Errorf("%s: err = %v, want ErrExists", name, err)
+		}
+	}
+}
+
+func TestDryRunReportsWhatIsMissingLikeARealRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "file"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := OpenDryRun(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	now := time.Now()
+	for name, fn := range map[string]func() error{
+		"remove":           func() error { return r.Remove("missing") },
+		"chmod":            func() error { return r.Chmod("missing", 0o600) },
+		"chtimes":          func() error { return r.Chtimes("missing", now, now) },
+		"rename":           func() error { return r.Rename("missing", "other") },
+		"link":             func() error { return r.Link("missing", "other") },
+		"mkdir no parent":  func() error { return r.Mkdir("a/b", 0o755) },
+		"writefrom parent": func() error { return r.WriteFrom("a/f", strings.NewReader(""), 0o644, time.Time{}) },
+	} {
+		if err := fn(); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("%s: err = %v, want not exist", name, err)
+		}
+	}
+	if err := r.RemoveAll("missing"); err != nil {
+		t.Errorf("RemoveAll of nothing is fine in a real run: %v", err)
 	}
 }

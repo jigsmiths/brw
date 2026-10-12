@@ -27,6 +27,30 @@ func (k Keg) record() string { return "var/homebrew/linked/" + k.Name }
 type Linker struct {
 	Root   *fsx.Root
 	Prefix string // absolute path of Root, to read absolute symlinks into it
+
+	n int // symlinks made or removed by the call in progress
+}
+
+// isRecord says whether p is an opt or linked record. brew leaves those out of
+// the symlink counts it prints.
+func isRecord(p string) bool {
+	return strings.HasPrefix(p, "opt/") || strings.HasPrefix(p, "var/homebrew/linked/")
+}
+
+// LinkCount is Link, and says how many symlinks it created, not counting the
+// opt and linked records.
+func (l *Linker) LinkCount(k Keg) (int, error) {
+	l.n = 0
+	err := l.Link(k)
+	return l.n, err
+}
+
+// UnlinkCount is Unlink, and says how many symlinks it removed, not counting
+// the linked record.
+func (l *Linker) UnlinkCount(k Keg) (int, error) {
+	l.n = 0
+	err := l.Unlink(k)
+	return l.n, err
 }
 
 // The directories of the prefix that stay when the last link in them goes.
@@ -148,6 +172,9 @@ func (l *Linker) makeRelativeSymlink(dst, src string) error {
 		err := l.Root.Symlink(relPath(path.Dir(dst), src), dst)
 		switch {
 		case err == nil:
+			if !isRecord(dst) {
+				l.n++
+			}
 			return nil
 		case !errors.Is(err, fsx.ErrExists):
 			return &LinkError{Dst: dst, Src: src, Err: err}
@@ -317,6 +344,7 @@ func (l *Linker) Unlink(k Keg) error {
 				walkErr = fmt.Errorf("unlinking %s: %w", dst, err)
 				return false
 			}
+			l.n++
 			return !isDir
 		})
 		if walkErr != nil {
@@ -336,6 +364,20 @@ func (l *Linker) Unlink(k Keg) error {
 		if !slices.Contains(mustExist, d) {
 			l.rmdirIfPossible(d)
 		}
+	}
+	return nil
+}
+
+// Forget tidies up after a keg is deleted, as brew does: the rack goes if it is
+// empty, and so does the opt record if it led to this keg, even with other
+// versions left.
+func (l *Linker) Forget(k Keg) error {
+	l.rmdirIfPossible(k.rack())
+	if l.isSymlink(k.opt()) && l.resolved(k.opt()) == k.path() {
+		if err := l.Root.Remove(k.opt()); err != nil {
+			return err
+		}
+		l.rmdirIfPossible("opt")
 	}
 	return nil
 }

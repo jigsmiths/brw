@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // This test installs the same formulae with brew and with brw into two fresh
@@ -32,22 +33,20 @@ func TestConformanceInstall(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "brw")
 	sh(t, "", nil, "go", "build", "-o", bin, ".")
 
-	work, err := os.MkdirTemp(filepath.Dir(oracle), "run-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(work) })
+	work := workDir(t, filepath.Dir(oracle))
 	theirs, mine := filepath.Join(work, "brew"), filepath.Join(work, "brw")
 	for _, p := range []string{theirs, mine} {
 		sh(t, "", nil, "git", "clone", "-q", oracle, p)
 	}
 	env := []string{"HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_CACHE=" + cache}
+	// brw keeps its cache under HOME, so it gets one that goes away with the test.
+	brwEnv := append(slices.Clone(env), "HOME="+filepath.Join(work, "home"))
 	brewIn := func(prefix string, args ...string) string {
 		return sh(t, "", env, filepath.Join(prefix, "bin", "brew"), args...)
 	}
 
 	brewIn(theirs, append([]string{"install"}, installSet...)...)
-	sh(t, "", env, bin, append([]string{"install", "-prefix", mine}, installSet...)...)
+	sh(t, "", brwEnv, bin, append([]string{"install", "-prefix", mine}, installSet...)...)
 
 	a, b := snapshot(t, theirs), snapshot(t, mine)
 	a, b = strings.ReplaceAll(a, theirs, "<prefix>"), strings.ReplaceAll(b, mine, "<prefix>")
@@ -65,7 +64,7 @@ func TestConformanceInstall(t *testing.T) {
 	}
 
 	// brew accepts what brw installed.
-	want := sh(t, "", env, bin, "list", "-prefix", mine)
+	want := sh(t, "", brwEnv, bin, "list", "-prefix", mine)
 	if got := brewIn(mine, "list", "--formula"); got != want {
 		t.Errorf("brew list differs from brw list on brw's prefix\nbrew:\n%s\nbrw:\n%s", got, want)
 	}
@@ -74,7 +73,7 @@ func TestConformanceInstall(t *testing.T) {
 	}
 	brewIn(mine, "unlink", "jq")
 	brewIn(mine, "link", "jq")
-	if out := sh(t, "", env, bin, "list", "-prefix", theirs); out != brewIn(theirs, "list", "--formula") {
+	if out := sh(t, "", brwEnv, bin, "list", "-prefix", theirs); out != brewIn(theirs, "list", "--formula") {
 		t.Errorf("brw list differs from brew list on brew's prefix:\n%s", out)
 	}
 	uninstall := append([]string{"uninstall", "--force", "--ignore-dependencies"}, installSet...)
@@ -260,4 +259,23 @@ func isMachO(data []byte) bool {
 		return true
 	}
 	return false
+}
+
+// workDir makes a scratch directory next to the oracle checkout and removes it
+// when the test ends. A run that was interrupted leaves its directory behind,
+// so those older than an hour are swept first.
+func workDir(t *testing.T, parent string) string {
+	t.Helper()
+	old, _ := filepath.Glob(filepath.Join(parent, "run-*"))
+	for _, d := range old {
+		if fi, err := os.Stat(d); err == nil && time.Since(fi.ModTime()) > time.Hour {
+			_ = os.RemoveAll(d)
+		}
+	}
+	work, err := os.MkdirTemp(parent, "run-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(work) })
+	return work
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-const usage = "usage: brw list|search|info|install|deps|uses|outdated|tag|dev [flags]"
+const usage = "usage: brw list|search|info|install|uninstall|autoremove|link|unlink|deps|uses|outdated|tag|dev [flags]"
 
 // env is everything a command needs from the outside world.
 type env struct {
@@ -17,6 +17,8 @@ type env struct {
 	tty      bool // out is a terminal
 	host     platform.Host
 	client   *api.Client
+
+	defaultPrefix string // overrides the host's default prefix, for tests
 }
 
 func main() {
@@ -48,6 +50,14 @@ func run(e *env, cmd string, args []string) error {
 		return infoCommand(e, args)
 	case "install":
 		return installCommand(e, args)
+	case "uninstall":
+		return uninstallCommand(e, args)
+	case "autoremove":
+		return autoremoveCommand(e, args)
+	case "link":
+		return linkCommand(e, args)
+	case "unlink":
+		return unlinkCommand(e, args)
 	case "tag":
 		tag, err := platform.Tag(e.host)
 		if err != nil {

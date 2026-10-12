@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -345,5 +346,121 @@ func TestLinkRefusesAKegThatHasARecord(t *testing.T) {
 	}
 	if got := links(t, dir); len(got) != 1 {
 		t.Errorf("a refused link changed the prefix: %v", got)
+	}
+}
+
+func TestForgetDropsTheOptRecordOfTheKegAndAnEmptyRack(t *testing.T) {
+	l, dir := newLinker(t)
+	k := install(t, dir, "jq", "1.0", files{"bin/jq"})
+	linkAll(t, l, dir, k)
+	if err := l.Unlink(k); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "Cellar/jq/1.0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Forget(k); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "Cellar/jq")); !os.IsNotExist(err) {
+		t.Errorf("the empty rack is still there: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt/jq")); !os.IsNotExist(err) {
+		t.Errorf("opt/jq is still there: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt")); !os.IsNotExist(err) {
+		t.Errorf("the empty opt directory is still there, brew removes it: %v", err)
+	}
+}
+
+func TestForgetKeepsWhatBelongsToOtherVersions(t *testing.T) {
+	l, dir := newLinker(t)
+	old := install(t, dir, "jq", "1.0", files{"bin/jq"})
+	cur := install(t, dir, "jq", "2.0", files{"bin/jq"})
+	other := install(t, dir, "tool", "1.0", files{"bin/tool"})
+	linkAll(t, l, dir, other)
+	linkAll(t, l, dir, cur) // opt/jq leads to 2.0
+	if err := os.RemoveAll(filepath.Join(dir, "Cellar/jq/1.0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Forget(old); err != nil {
+		t.Fatal(err)
+	}
+	check(t, links(t, dir), []string{
+		"bin/jq -> ../Cellar/jq/2.0/bin/jq",
+		"bin/tool -> ../Cellar/tool/1.0/bin/tool",
+		"opt/jq -> ../Cellar/jq/2.0",
+		"opt/tool -> ../Cellar/tool/1.0",
+		"var/homebrew/linked/jq -> ../../../Cellar/jq/2.0",
+		"var/homebrew/linked/tool -> ../../../Cellar/tool/1.0",
+	})
+	// The opt record of the keg that is removed goes, though another version stays.
+	if err := os.RemoveAll(filepath.Join(dir, "Cellar/jq/2.0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Forget(cur); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt/jq")); !os.IsNotExist(err) {
+		t.Errorf("opt/jq stayed: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt/tool")); err != nil {
+		t.Errorf("opt/tool went: %v", err)
+	}
+}
+
+// symlinkCount is the number of symlinks in the prefix outside the Cellar.
+func symlinkCount(t *testing.T, dir string) int {
+	t.Helper()
+	n := 0
+	for _, e := range links(t, dir) {
+		if strings.Contains(e, " -> ") && !strings.HasPrefix(e, "Cellar/") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestLinkCountMatchesTheLinksIntoThePrefix(t *testing.T) {
+	l, dir := newLinker(t)
+	k := install(t, dir, "jq", "1.0", files{"bin/jq", "lib/libjq.dylib", "lib/pkgconfig/jq.pc", "share/man/man1/jq.1", "include/jq.h", "etc/jq.conf"})
+	before := symlinkCount(t, dir)
+	n, err := l.LinkCount(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Like brew, the opt and linked records are not counted.
+	if got := symlinkCount(t, dir) - before; n != got-2 || n < 5 {
+		t.Errorf("LinkCount = %d, symlinks created = %d", n, got)
+	}
+	removed, err := l.UnlinkCount(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := symlinkCount(t, dir); removed != n || got != before+1 { // the opt record stays
+		t.Errorf("UnlinkCount = %d (want %d), %d symlinks left (want %d)", removed, n, got, before+1)
+	}
+}
+
+func TestLinkCountLeavesOutLinksThatWereAlreadyRight(t *testing.T) {
+	l, dir := newLinker(t)
+	k := install(t, dir, "jq", "1.0", files{"bin/jq", "share/man/man1/jq.1"})
+	if _, err := l.LinkCount(k); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Root.Remove("var/homebrew/linked/jq"); err != nil { // links stay, the record goes
+		t.Fatal(err)
+	}
+	if n, err := l.LinkCount(k); err != nil || n != 0 {
+		t.Errorf("only the records were made again, and they are not counted: n = %d, err = %v", n, err)
+	}
+	if err := os.Remove(filepath.Join(dir, "bin/jq")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Root.Remove("var/homebrew/linked/jq"); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := l.LinkCount(k); err != nil || n != 1 {
+		t.Errorf("one link was missing: n = %d, err = %v", n, err)
 	}
 }

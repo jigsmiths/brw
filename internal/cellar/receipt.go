@@ -34,7 +34,8 @@ type Receipt struct {
 	Arch                  string          `json:"arch"`
 	BuiltOn               json.RawMessage `json:"built_on"`
 
-	unknown error
+	unknown     error
+	onRequestOK bool // the receipt says whether it was installed on request
 }
 
 type Dependency struct {
@@ -84,12 +85,21 @@ func ParseReceipt(b []byte) (*Receipt, error) {
 	if err := json.Unmarshal(b, &r); err != nil {
 		return nil, err
 	}
+	var probe struct {
+		OnRequest *bool `json:"installed_on_request"`
+	}
+	_ = json.Unmarshal(b, &probe)
+	r.onRequestOK = probe.OnRequest != nil
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	var strict Receipt
 	r.unknown = dec.Decode(&strict)
 	return &r, nil
 }
+
+// OnRequestRecorded is false for a receipt that does not say whether the keg was
+// installed on request, as brew's Tab#installed_on_request_present? is.
+func (r *Receipt) OnRequestRecorded() bool { return r.onRequestOK }
 
 // Marshal writes brew's format: two-space indent, no trailing newline.
 func (r *Receipt) Marshal() ([]byte, error) {
