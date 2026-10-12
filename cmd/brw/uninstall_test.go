@@ -26,6 +26,7 @@ func installed(t *testing.T) (*env, string) {
 }
 
 func TestUninstallRemovesWhatInstallMade(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "1")
 	e, prefix := installed(t)
 	out, err := runCmd(t, e, "uninstall", "-prefix", prefix, "app")
 	if err != nil {
@@ -132,5 +133,78 @@ func TestUninstallForceRemovesEveryVersion(t *testing.T) {
 		if !strings.HasPrefix(out, "Uninstalling app... (") || exists(t, prefix, "Cellar/app") {
 			t.Errorf("%s: output = %q, tree has Cellar/app = %v", flag, out, exists(t, prefix, "Cellar/app"))
 		}
+	}
+}
+
+func TestUninstallAutoremovesUnneededDependencies(t *testing.T) {
+	e, prefix := installed(t)
+	out, err := runCmd(t, e, "uninstall", "-prefix", prefix, "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "==> Autoremoving 1 unneeded formula:\nlibx\n") || exists(t, prefix, "Cellar/libx") {
+		t.Errorf("libx should go with app:\n%s", out)
+	}
+}
+
+func TestUninstallLeavesDependenciesWhenAutoremoveIsOff(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "1")
+	e, prefix := installed(t)
+	out, err := runCmd(t, e, "uninstall", "-prefix", prefix, "app")
+	if err != nil || strings.Contains(out, "Autoremoving") || !exists(t, prefix, "Cellar/libx/2.0") {
+		t.Fatalf("output = %q, err = %v", out, err)
+	}
+	out, err = runCmd(t, e, "autoremove", "-prefix", prefix, "-n")
+	if err != nil || out != "==> Would autoremove 1 unneeded formula:\nlibx\n" || !exists(t, prefix, "Cellar/libx/2.0") {
+		t.Fatalf("dry run: %q, %v", out, err)
+	}
+	out, err = runCmd(t, e, "autoremove", "-prefix", prefix)
+	if err != nil || !strings.HasPrefix(out, "==> Autoremoving 1 unneeded formula:\nlibx\nUninstalling ") || exists(t, prefix, "Cellar/libx") {
+		t.Fatalf("autoremove: %q, %v", out, err)
+	}
+	if out, err = runCmd(t, e, "autoremove", "-prefix", prefix); err != nil || out != "" {
+		t.Errorf("nothing left to do: %q, %v", out, err)
+	}
+	if _, err := runCmd(t, e, "autoremove", "-prefix", prefix, "extra"); err == nil {
+		t.Error("autoremove takes no names")
+	}
+}
+
+func TestUninstallDryRunPreviewsTheAutoremove(t *testing.T) {
+	e, prefix := installed(t)
+	out, err := runCmd(t, e, "uninstall", "-prefix", prefix, "-n", "app")
+	if err != nil || !strings.HasSuffix(out, "==> Would autoremove 1 unneeded formula:\nlibx\n") || !exists(t, prefix, "Cellar/libx/2.0") {
+		t.Errorf("output = %q, err = %v", out, err)
+	}
+}
+
+func TestAutoremoveKeepsTheBuildDependenciesOfSourceBuiltFormulae(t *testing.T) {
+	s := newStore(t)
+	s.formula(installtest.Bottle{Name: "libb", Version: "1.0", Files: []installtest.File{file("lib/libb.a", "b", 0)}}, nil, nil)
+	s.formula(installtest.Bottle{Name: "app", Version: "1.0", Files: []installtest.File{file("bin/app", "app", 0o755)}}, nil,
+		map[string]any{"build_dependencies": []string{"libb"}})
+	e, prefix := s.env()
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "libb", "app"); err != nil {
+		t.Fatal(err)
+	}
+	edit := func(name, old, new string) {
+		t.Helper()
+		p := filepath.Join(prefix, "Cellar", name, "1.0", "INSTALL_RECEIPT.json")
+		b, err := os.ReadFile(p)
+		if err != nil || !strings.Contains(string(b), old) {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if err := os.WriteFile(p, []byte(strings.Replace(string(b), old, new, 1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	edit("libb", `"installed_on_request": true`, `"installed_on_request": false`)
+	out, _ := runCmd(t, e, "autoremove", "-prefix", prefix, "-n")
+	if !strings.Contains(out, "libb") {
+		t.Fatalf("a bottled app does not need libb: %q", out)
+	}
+	edit("app", `"poured_from_bottle": true`, `"poured_from_bottle": false`)
+	if out, err := runCmd(t, e, "autoremove", "-prefix", prefix, "-n"); err != nil || out != "" {
+		t.Errorf("an app built from source needs libb to build: %q, %v", out, err)
 	}
 }
