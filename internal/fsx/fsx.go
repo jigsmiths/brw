@@ -3,6 +3,7 @@
 package fsx
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -13,7 +14,12 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
+
+// Staging is where a keg is unpacked and relocated before it is renamed into
+// place. brew ignores directories that start with a dot in the Cellar.
+const Staging = "Cellar/.brw-staging"
 
 var (
 	ErrExists = errors.New("path already exists")
@@ -43,6 +49,12 @@ func (r *Root) Close() error { return r.root.Close() }
 
 // WriteFile atomically creates name; ErrExists if it exists.
 func (r *Root) WriteFile(name string, data []byte, perm fs.FileMode) error {
+	return r.WriteFrom(name, bytes.NewReader(data), perm)
+}
+
+// WriteFrom is WriteFile for contents that are read from src as they are written.
+// If reading or writing fails nothing is left behind.
+func (r *Root) WriteFrom(name string, src io.Reader, perm fs.FileMode) error {
 	rel, err := r.rel(name)
 	if err != nil {
 		return err
@@ -50,7 +62,7 @@ func (r *Root) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	if err := r.root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		return err
 	}
-	tmp, err := r.writeTemp(filepath.Dir(rel), data, perm)
+	tmp, err := r.writeTemp(filepath.Dir(rel), src, perm)
 	if err != nil {
 		return err
 	}
@@ -65,7 +77,7 @@ func (r *Root) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	return r.log("write %s", rel)
 }
 
-func (r *Root) writeTemp(dir string, data []byte, perm fs.FileMode) (string, error) {
+func (r *Root) writeTemp(dir string, src io.Reader, perm fs.FileMode) (string, error) {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err
@@ -75,7 +87,7 @@ func (r *Root) writeTemp(dir string, data []byte, perm fs.FileMode) (string, err
 	if err != nil {
 		return "", err
 	}
-	_, err = f.Write(data)
+	_, err = io.Copy(f, src)
 	if err == nil {
 		err = f.Sync()
 	}
@@ -190,6 +202,17 @@ func (r *Root) MkdirAll(name string, perm fs.FileMode) error {
 	return nil
 }
 
+func (r *Root) Chtimes(name string, atime, mtime time.Time) error {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	if err := r.root.Chtimes(rel, atime, mtime); err != nil {
+		return err
+	}
+	return r.log("chtimes %s", rel)
+}
+
 func (r *Root) Chmod(name string, perm fs.FileMode) error {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -240,6 +263,48 @@ func (r *Root) Rename(oldname, newname string) error {
 		return err
 	}
 	return r.log("rename %s %s", oldRel, newRel)
+}
+
+// Replace rewrites the contents of an existing regular file in the staging
+// area, in place so that hard links see the change. It is the only call that
+// overwrites, and it refuses any path outside Staging. The file is not changed
+// atomically: a keg that fails halfway is discarded, never installed.
+func (r *Root) Replace(name string, data []byte) (err error) {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(rel, Staging+string(filepath.Separator)) {
+		return fmt.Errorf("%s: not in the staging area", rel)
+	}
+	fi, err := r.root.Lstat(rel)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s: not a regular file", rel)
+	}
+	if perm := fi.Mode().Perm(); perm&0o200 == 0 {
+		if err := r.root.Chmod(rel, perm|0o200); err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, r.root.Chmod(rel, perm)) }()
+	}
+	f, err := r.root.OpenFile(rel, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return r.log("replace %s", rel)
 }
 
 func (r *Root) Remove(name string) error {

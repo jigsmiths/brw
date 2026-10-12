@@ -3,11 +3,13 @@ package fsx
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newRoot(t *testing.T) (*Root, string, *bytes.Buffer) {
@@ -403,5 +405,168 @@ func TestRenameNeverReplaces(t *testing.T) {
 	}
 	if err := r.Rename("../x", "y"); err == nil {
 		t.Error("Rename moved a path in from outside the root")
+	}
+}
+
+// slowReader returns n bytes of a pattern in small chunks, then optionally an error.
+type slowReader struct {
+	n    int
+	fail error
+}
+
+func (s *slowReader) Read(p []byte) (int, error) {
+	if s.n == 0 {
+		if s.fail != nil {
+			return 0, s.fail
+		}
+		return 0, io.EOF
+	}
+	n := min(len(p), s.n, 4096)
+	for i := range n {
+		p[i] = byte(s.n - i)
+	}
+	s.n -= n
+	return n, nil
+}
+
+func TestWriteFromStreams(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	const size = 5 << 20
+	if err := r.WriteFrom("big/file", &slowReader{n: size}, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(filepath.Join(dir, "big/file"))
+	if err != nil || fi.Size() != size || fi.Mode().Perm() != 0o555 {
+		t.Fatalf("size = %d, mode = %v, %v", fi.Size(), fi.Mode().Perm(), err)
+	}
+	if got := journal.String(); got != "write big/file\n" {
+		t.Errorf("journal = %q", got)
+	}
+}
+
+func TestWriteFromNeverClobbers(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	if err := os.WriteFile(filepath.Join(dir, "x"), []byte("orig"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.WriteFrom("x", strings.NewReader("new"), 0o644); !errors.Is(err, ErrExists) {
+		t.Fatalf("error = %v, want ErrExists", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "x")); string(got) != "orig" {
+		t.Errorf("file was modified: %q", got)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("leftover temp files: %v", entries)
+	}
+}
+
+func TestWriteFromFailureLeavesNothing(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	boom := errors.New("connection reset")
+	err := r.WriteFrom("a/file", &slowReader{n: 10000, fail: boom}, 0o644)
+	if !errors.Is(err, boom) {
+		t.Fatalf("error = %v, want the reader's", err)
+	}
+	var left []string
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, _ error) error {
+		if !d.IsDir() {
+			left = append(left, p)
+		}
+		return nil
+	})
+	if len(left) != 0 {
+		t.Errorf("files left behind: %v", left)
+	}
+	if journal.Len() != 0 {
+		t.Errorf("journal = %q, want nothing for a failed write", journal.String())
+	}
+}
+
+func TestChtimes(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	if err := r.WriteFile("f", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+	when := time.Date(2026, 6, 20, 15, 36, 55, 0, time.UTC)
+	if err := r.Chtimes("f", when, when); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(filepath.Join(dir, "f")); !fi.ModTime().Equal(when) {
+		t.Errorf("mtime = %v, want %v", fi.ModTime(), when)
+	}
+	if got := journal.String(); got != "chtimes f\n" {
+		t.Errorf("journal = %q", got)
+	}
+	if err := r.Chtimes("../out", when, when); err == nil {
+		t.Error("Chtimes escaped the root")
+	}
+	if err := r.Chtimes("missing", when, when); err == nil {
+		t.Error("Chtimes on a missing file succeeded")
+	}
+}
+
+func TestReplaceInStaging(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	one, two := Staging+"/id/jq/1.0/lib/libjq.dylib", Staging+"/id/jq/1.0/lib/libjq.1.dylib"
+	if err := r.WriteFile(one, []byte("@@HOMEBREW_PREFIX@@/lib"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Link(one, two); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+	if err := r.Replace(one, []byte("/opt/brw/lib")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{one, two} {
+		got, err := os.ReadFile(filepath.Join(dir, p))
+		if err != nil || string(got) != "/opt/brw/lib" {
+			t.Errorf("%s = %q, %v; both names of a hard linked file must change", p, got, err)
+		}
+	}
+	if fi, _ := os.Stat(filepath.Join(dir, one)); fi.Mode().Perm() != 0o555 {
+		t.Errorf("perm = %v, want the read only mode back", fi.Mode().Perm())
+	}
+	if got := journal.String(); got != "replace "+one+"\n" {
+		t.Errorf("journal = %q", got)
+	}
+}
+
+func TestReplaceRefusesAnythingElse(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	if err := r.WriteFile("Cellar/jq/1.0/bin/jq", []byte("live"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Replace("Cellar/jq/1.0/bin/jq", []byte("changed")); err == nil {
+		t.Error("Replace rewrote a file outside the staging area")
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "Cellar/jq/1.0/bin/jq")); string(got) != "live" {
+		t.Errorf("live file changed: %q", got)
+	}
+	if err := r.Replace(Staging+"/../jq/1.0/bin/jq", []byte("changed")); err == nil {
+		t.Error("a path that climbs out of staging was accepted")
+	}
+
+	if err := r.Mkdir(Staging, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Replace(Staging+"/missing", nil); err == nil {
+		t.Error("Replace created a file")
+	}
+	if err := r.Mkdir(Staging+"/d", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Replace(Staging+"/d", nil); err == nil {
+		t.Error("Replace accepted a directory")
+	}
+	if err := r.Symlink("../../Cellar/jq/1.0/bin/jq", Staging+"/link"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Replace(Staging+"/link", []byte("changed")); err == nil {
+		t.Error("Replace followed a symlink")
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "Cellar/jq/1.0/bin/jq")); string(got) != "live" {
+		t.Errorf("a file behind a symlink changed: %q", got)
 	}
 }
