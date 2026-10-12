@@ -636,3 +636,56 @@ func TestAbs(t *testing.T) {
 		}
 	}
 }
+
+func TestReadlinkAndReadDir(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	if err := r.WriteFile("d/b", []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.WriteFile("d/a", []byte("2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Symlink("../d/a", "d/link"); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+
+	if got, err := r.Readlink("d/link"); err != nil || got != "../d/a" {
+		t.Errorf("Readlink = %q, %v", got, err)
+	}
+	if _, err := r.Readlink("d/a"); err == nil {
+		t.Error("Readlink of a regular file succeeded")
+	}
+	entries, err := r.ReadDir("d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if !reflect.DeepEqual(names, []string{"a", "b", "link"}) {
+		t.Errorf("ReadDir = %v, want the names in order", names)
+	}
+	if entries[2].Type()&os.ModeSymlink == 0 {
+		t.Error("ReadDir did not report the symlink as one")
+	}
+	if journal.Len() != 0 {
+		t.Errorf("reading was journaled: %q", journal.String())
+	}
+	if _, err := r.ReadDir("missing"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing directory: %v", err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "evil")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"../x", outside, "evil"} {
+		if _, err := r.ReadDir(p); err == nil {
+			t.Errorf("ReadDir(%q) read outside the root", p)
+		}
+	}
+	if _, err := r.Readlink("../x"); err == nil {
+		t.Error("Readlink escaped the root")
+	}
+}

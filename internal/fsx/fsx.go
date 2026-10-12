@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -164,6 +165,32 @@ func (r *Root) Abs(name string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(r.dir, rel), nil
+}
+
+// Readlink returns the target of a symlink in the root, as written.
+func (r *Root) Readlink(name string) (string, error) {
+	rel, err := r.rel(name)
+	if err != nil {
+		return "", err
+	}
+	return r.root.Readlink(rel)
+}
+
+// ReadDir lists a directory in the root, sorted by name. It does not follow
+// symlinks among the entries.
+func (r *Root) ReadDir(name string) ([]fs.DirEntry, error) {
+	rel, err := r.rel(name)
+	if err != nil {
+		return nil, err
+	}
+	d, err := r.root.Open(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = d.Close() }()
+	entries, err := d.ReadDir(-1)
+	slices.SortFunc(entries, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+	return entries, err
 }
 
 // ReadFile reads a file inside the root. It changes nothing and is not journaled.
