@@ -25,12 +25,14 @@ const Staging = "Cellar/.brw-staging"
 var (
 	ErrExists = errors.New("path already exists")
 	ErrRoot   = errors.New("refusing to remove the root")
+	ErrDryRun = errors.New("a dry run writes nothing")
 )
 
 type Root struct {
 	dir     string
 	root    *os.Root
 	journal io.Writer
+	dry     bool
 }
 
 // Open confines operations to dir. journal may be nil.
@@ -44,6 +46,16 @@ func Open(dir string, journal io.Writer) (*Root, error) {
 		return nil, err
 	}
 	return &Root{dir: abs, root: root, journal: journal}, nil
+}
+
+// OpenDryRun is Open for a root that changes nothing: each change is checked and
+// journaled as "would ...", then skipped.
+func OpenDryRun(dir string, journal io.Writer) (*Root, error) {
+	r, err := Open(dir, journal)
+	if r != nil {
+		r.dry = true
+	}
+	return r, err
 }
 
 func (r *Root) Close() error { return r.root.Close() }
@@ -61,6 +73,12 @@ func (r *Root) WriteFrom(name string, src io.Reader, perm fs.FileMode, mtime tim
 	rel, err := r.rel(name)
 	if err != nil {
 		return err
+	}
+	if r.dry {
+		if err := errors.Join(r.hasParent(rel), r.mustNotExist(rel)); err != nil {
+			return err
+		}
+		return r.log("write %s", rel)
 	}
 	f, err := r.root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -94,6 +112,12 @@ func (r *Root) write(name string, src io.Reader, perm fs.FileMode) error {
 	rel, err := r.rel(name)
 	if err != nil {
 		return err
+	}
+	if r.dry {
+		if err := r.mustNotExist(rel); err != nil {
+			return err
+		}
+		return r.log("write %s", rel)
 	}
 	if err := r.root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		return err
@@ -145,6 +169,9 @@ func (r *Root) OpenLock(name string) (*os.File, error) {
 	rel, err := r.rel(name)
 	if err != nil {
 		return nil, err
+	}
+	if r.dry {
+		return nil, ErrDryRun
 	}
 	if err := r.root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		return nil, err
@@ -219,6 +246,12 @@ func (r *Root) Symlink(target, name string) error {
 	if err := r.checkTarget(target, rel); err != nil {
 		return err
 	}
+	if r.dry {
+		if err := r.mustNotExist(rel); err != nil {
+			return err
+		}
+		return r.log("symlink %s -> %s", rel, target)
+	}
 	if err := r.root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		return err
 	}
@@ -240,6 +273,12 @@ func (r *Root) Mkdir(name string, perm fs.FileMode) error {
 	}
 	if rel == "." {
 		return fmt.Errorf("%s: %w", rel, ErrExists)
+	}
+	if r.dry {
+		if err := errors.Join(r.hasParent(rel), r.mustNotExist(rel)); err != nil {
+			return err
+		}
+		return r.log("mkdir %s", rel)
 	}
 	if err := r.root.Mkdir(rel, perm); err != nil {
 		if errors.Is(err, fs.ErrExist) {
@@ -273,8 +312,10 @@ func (r *Root) MkdirAll(name string, perm fs.FileMode) error {
 		if !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
-		if err := r.root.Mkdir(cur, perm); err != nil {
-			return err
+		if !r.dry {
+			if err := r.root.Mkdir(cur, perm); err != nil {
+				return err
+			}
 		}
 		if err := r.log("mkdir %s", cur); err != nil {
 			return err
@@ -288,6 +329,12 @@ func (r *Root) Chtimes(name string, atime, mtime time.Time) error {
 	if err != nil {
 		return err
 	}
+	if r.dry {
+		if _, err := r.root.Stat(rel); err != nil {
+			return err
+		}
+		return r.log("chtimes %s", rel)
+	}
 	if err := r.root.Chtimes(rel, atime, mtime); err != nil {
 		return err
 	}
@@ -298,6 +345,12 @@ func (r *Root) Chmod(name string, perm fs.FileMode) error {
 	rel, err := r.rel(name)
 	if err != nil {
 		return err
+	}
+	if r.dry {
+		if _, err := r.root.Stat(rel); err != nil {
+			return err
+		}
+		return r.log("chmod %s %o", rel, perm.Perm())
 	}
 	if err := r.root.Chmod(rel, perm); err != nil {
 		return err
@@ -314,6 +367,15 @@ func (r *Root) Link(oldname, newname string) error {
 	newRel, err := r.rel(newname)
 	if err != nil {
 		return err
+	}
+	if r.dry {
+		if _, err := r.root.Lstat(oldRel); err != nil {
+			return err
+		}
+		if err := r.mustNotExist(newRel); err != nil {
+			return err
+		}
+		return r.log("link %s %s", oldRel, newRel)
 	}
 	if err := r.root.Link(oldRel, newRel); err != nil {
 		if errors.Is(err, fs.ErrExist) {
@@ -340,6 +402,12 @@ func (r *Root) Rename(oldname, newname string) error {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
+	if r.dry {
+		if _, err := r.root.Lstat(oldRel); err != nil {
+			return err
+		}
+		return r.log("rename %s %s", oldRel, newRel)
+	}
 	if err := r.root.Rename(oldRel, newRel); err != nil {
 		return err
 	}
@@ -363,6 +431,9 @@ func (r *Root) Replace(name string, data []byte) (err error) {
 	}
 	if !fi.Mode().IsRegular() {
 		return fmt.Errorf("%s: not a regular file", rel)
+	}
+	if r.dry {
+		return r.log("replace %s", rel)
 	}
 	if perm := fi.Mode().Perm(); perm&0o200 == 0 {
 		if err := r.root.Chmod(rel, perm|0o200); err != nil {
@@ -395,6 +466,12 @@ func (r *Root) Remove(name string) error {
 	if rel == "." {
 		return ErrRoot
 	}
+	if r.dry {
+		if _, err := r.root.Lstat(rel); err != nil {
+			return err
+		}
+		return r.log("remove %s", rel)
+	}
 	if err := r.root.Remove(rel); err != nil {
 		return err
 	}
@@ -409,6 +486,9 @@ func (r *Root) RemoveAll(name string) error {
 	}
 	if rel == "." {
 		return ErrRoot
+	}
+	if r.dry {
+		return r.log("removeall %s", rel)
 	}
 	if err := r.root.RemoveAll(rel); err != nil {
 		return err
@@ -434,6 +514,9 @@ func (r *Root) RemoveKeg(name string) error {
 	}
 	if !fi.IsDir() {
 		return fmt.Errorf("%s: not a keg directory", rel)
+	}
+	if r.dry {
+		return r.log("removekeg %s", rel)
 	}
 	if err := r.makeWritable(rel); err != nil {
 		return err
@@ -501,9 +584,37 @@ func escapes(rel string) bool {
 	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// hasParent is the check a real run gets when it creates rel in a directory that
+// is not there.
+func (r *Root) hasParent(rel string) error {
+	fi, err := r.root.Stat(filepath.Dir(rel))
+	switch {
+	case err != nil:
+		return err
+	case !fi.IsDir():
+		return fmt.Errorf("%s: not a directory", filepath.Dir(rel))
+	}
+	return nil
+}
+
+// mustNotExist is the check a real run gets from the system when it creates rel.
+func (r *Root) mustNotExist(rel string) error {
+	_, err := r.root.Lstat(rel)
+	switch {
+	case err == nil:
+		return fmt.Errorf("%s: %w", rel, ErrExists)
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	}
+	return err
+}
+
 func (r *Root) log(format string, args ...any) error {
 	if r.journal == nil {
 		return nil
+	}
+	if r.dry {
+		format = "would " + format
 	}
 	_, err := fmt.Fprintf(r.journal, format+"\n", args...)
 	return err
