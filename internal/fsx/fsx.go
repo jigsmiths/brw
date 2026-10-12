@@ -53,11 +53,10 @@ func (r *Root) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	return r.write(name, bytes.NewReader(data), perm)
 }
 
-// WriteFrom creates name from src without replacing anything; ErrExists if it
-// exists. The parent must exist. It is for unpacking into the staging area, so
-// unlike WriteFile it creates the file in place, without syncing: fsync costs
-// about 8ms a file on APFS, and brew does not do it either. If reading or
-// writing fails the file is removed. A zero mtime leaves the current time.
+// WriteFrom creates name from src; ErrExists if it exists, and the parent must
+// exist. It is for unpacking into staging: the file is made in place and not
+// synced (fsync costs about 8ms a file on APFS, and brew skips it too). A failed
+// write removes the file. A zero mtime leaves the current time.
 func (r *Root) WriteFrom(name string, src io.Reader, perm fs.FileMode, mtime time.Time) (err error) {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -347,10 +346,9 @@ func (r *Root) Rename(oldname, newname string) error {
 	return r.log("rename %s %s", oldRel, newRel)
 }
 
-// Replace rewrites the contents of an existing regular file in the staging
-// area, in place so that hard links see the change. It is the only call that
-// overwrites, and it refuses any path outside Staging. The file is not changed
-// atomically: a keg that fails halfway is discarded, never installed.
+// Replace rewrites an existing regular file in staging in place, so hard links
+// see the change. It is the only call that overwrites and it refuses paths
+// outside Staging. It is not atomic: a keg that fails halfway is discarded.
 func (r *Root) Replace(name string, data []byte) (err error) {
 	rel, err := r.rel(name)
 	if err != nil {

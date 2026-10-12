@@ -17,9 +17,8 @@ import (
 
 var invalidSignature = regexp.MustCompile(`(?i)invalid signature`)
 
-// relocatedName maps a name that starts with the cellar or prefix placeholder
-// to its place in this prefix. Names such as @rpath/x, @loader_path/x and
-// /usr/lib/x start with neither, so they are left alone.
+// relocatedName maps a name starting with a cellar or prefix placeholder into
+// this prefix. Other names (@rpath/x, /usr/lib/x) are left alone.
 func (l Locations) relocatedName(name string) (string, bool) {
 	switch {
 	case strings.HasPrefix(name, CellarPlaceholder):
@@ -30,9 +29,8 @@ func (l Locations) relocatedName(name string) (string, bool) {
 	return "", false
 }
 
-// MachO rewrites the dylib id, linked libraries and rpaths of the listed files
-// of the staged keg, which are paths relative to it, and returns the files it
-// changed. They have to be signed again: see Codesign.
+// MachO rewrites the id, libraries and rpaths of the listed files and returns
+// the ones it changed, which must be signed again (Codesign).
 func MachO(root *fsx.Root, keg string, files []string, loc Locations) ([]string, error) {
 	var modified []string
 	for _, rel := range files {
@@ -102,10 +100,8 @@ func execCodesign(args ...string) ([]byte, error) {
 	return exec.Command("codesign", args...).CombinedOutput()
 }
 
-// Codesign signs the changed files of a staged keg again, since editing a
-// Mach-O file breaks its signature. On Apple Silicon, where the kernel refuses
-// code with a bad signature, every file is signed; on Intel only files whose
-// signature is now invalid are, as in brew.
+// Codesign signs edited files again. Apple Silicon rejects bad signatures, so
+// every file is signed; on Intel only invalid ones are, as in brew.
 func Codesign(root *fsx.Root, keg string, files []string) error {
 	return signStaged(root, keg, files, runtime.GOARCH == "arm64", execCodesign)
 }

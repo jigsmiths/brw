@@ -17,11 +17,9 @@ type Pour struct {
 	Path      string // where the API data brew would have read from lives
 }
 
-// NewPourReceipt builds the receipt for a poured bottle from the tab in the
-// bottle's manifest, the way brew does: the tab supplies the build details
-// (homebrew_version, built_on, the relocation lists and the runtime
-// dependencies) and brew overwrites ten fields. Keys in the tab that this code
-// does not model are dropped, as brew drops them.
+// NewPourReceipt builds a poured bottle's receipt like brew: the manifest tab
+// gives the build details and brew overwrites ten fields. Tab keys we do not
+// model are dropped, as brew drops them.
 func NewPourReceipt(tab []byte, p Pour) (*Receipt, error) {
 	r, err := ParseReceipt(tab)
 	if err != nil {

@@ -1,6 +1,5 @@
-// Package machoedit rewrites the library names in a Mach-O file the way brew
-// does when it pours a bottle: a load command is replaced in place, the ones
-// behind it shift, and the file keeps its size.
+// Package machoedit rewrites library names in Mach-O files as brew does: a load
+// command is replaced in place and the file keeps its size.
 package machoedit
 
 import (
@@ -114,7 +113,6 @@ func (f *File) str(c command, fieldOff int) string {
 	return string(s)
 }
 
-// DylibID is the install name of a dylib, if the file has one.
 func (f *File) DylibID() (string, bool) {
 	if !f.IsDylib() {
 		return "", false
@@ -150,7 +148,6 @@ func (f *File) Rpaths() []string {
 	return paths
 }
 
-// ChangeID replaces the install name of a dylib.
 func (f *File) ChangeID(name string) error {
 	if !f.IsDylib() {
 		return fmt.Errorf("%w: not a dylib", ErrNotFound)

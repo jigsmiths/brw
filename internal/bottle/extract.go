@@ -14,16 +14,14 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// Extract unpacks a bottle into dest, which must not exist yet and is
-// relative to the prefix. The archive must hold exactly one keg, name/version,
-// and nothing else. The keg ends up at dest/name/version. If anything goes
-// wrong, dest is removed.
+// Extract unpacks a bottle into dest (relative to the prefix, must not exist)
+// and leaves the keg at dest/name/version. dest is removed on any failure.
 //
-// The archive is untrusted. Extract refuses paths that climb out, devices,
-// setuid bits, symlinks that would leave the prefix once the keg is in the
-// Cellar, hard links to anything but an earlier file of the keg, and any entry
-// whose parent is not a directory it created itself (so nothing is ever written
-// through a symlink).
+// The archive is untrusted and must hold exactly that keg. Extract refuses
+// paths that climb out, devices, setuid bits, symlinks that would leave the
+// prefix once the keg is in the Cellar, hard links to anything but an earlier
+// file of the keg, and entries whose parent it did not create itself, so
+// nothing is written through a symlink.
 func Extract(root *fsx.Root, tarball, dest, name, version string) (err error) {
 	if err := root.MkdirAll(path.Dir(dest), 0o755); err != nil {
 		return err

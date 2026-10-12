@@ -28,9 +28,8 @@ type Locations struct {
 	OpenJDK string
 }
 
-// ForPrefix works out where brew's repository is for a prefix: the prefix itself
-// (the standard layout and clones of brew), or a Homebrew directory below it
-// (Intel macOS and Linux).
+// ForPrefix finds brew's repository: the prefix itself, or its Homebrew
+// subdirectory (Intel macOS and Linux).
 func ForPrefix(prefix string) Locations {
 	repo := prefix
 	if !isDir(path.Join(prefix, "Library", "Homebrew")) && (prefix == "/usr/local" || isDir(path.Join(prefix, "Homebrew", "Library"))) {
@@ -70,11 +69,9 @@ func (l Locations) replacer() *strings.Replacer {
 	return strings.NewReplacer(pairs...)
 }
 
-// Text replaces the placeholders in the listed files of the staged keg, which
-// are paths relative to it, and returns the files that changed. Like brew, it
-// rewrites only regular files that sit inside the keg without going through a
-// symlink, and it skips everything else without complaint. Hard linked names
-// are rewritten once and reported together.
+// Text replaces the placeholders in the listed files (relative to the keg) and
+// returns the ones that changed. As in brew, only regular files reached without
+// a symlink are touched, and hard links are rewritten once and reported together.
 func Text(root *fsx.Root, keg string, files []string, loc Locations) ([]string, error) {
 	type group struct{ names []string }
 	var order [][2]any
@@ -121,9 +118,8 @@ func Text(root *fsx.Root, keg string, files []string, loc Locations) ([]string, 
 	return changed, nil
 }
 
-// regularInside reports whether keg/rel is a regular file in the keg and no
-// part of its path is a symlink. Lstat does not follow links, so a symlink is
-// neither a directory nor a regular file and fails the checks below.
+// regularInside reports whether keg/rel is a regular file reached without a
+// symlink. Lstat does not follow links, so symlinks fail the type checks.
 func regularInside(root *fsx.Root, keg, rel string) bool {
 	if rel == "" || path.IsAbs(rel) || path.Clean(rel) != rel || rel == ".." || strings.HasPrefix(rel, "../") {
 		return false
