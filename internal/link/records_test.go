@@ -221,3 +221,17 @@ func TestUnlinkOfAKegThatWasNeverLinked(t *testing.T) {
 		t.Errorf("Unlink = %v", err)
 	}
 }
+
+func TestOptlinkWorksWithoutAnOptDirectory(t *testing.T) {
+	l, dir := newLinker(t)
+	if err := os.Remove(filepath.Join(dir, "opt")); err != nil {
+		t.Fatal(err)
+	}
+	k := install(t, dir, "jq", "1.8.2", files{"bin/jq"})
+	if err := l.Optlink(k); err != nil {
+		t.Fatal(err)
+	}
+	if got := links(t, dir); !reflect.DeepEqual(got, []string{"opt/jq -> ../Cellar/jq/1.8.2"}) {
+		t.Errorf("got %v", got)
+	}
+}

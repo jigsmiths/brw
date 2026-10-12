@@ -252,6 +252,9 @@ func (l *Linker) removeOldAliases(k Keg) error {
 		}
 	}
 	entries, err := l.Root.ReadDir("opt")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
