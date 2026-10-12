@@ -34,6 +34,9 @@ type Installer struct {
 	Log     io.Writer
 }
 
+// standardDirs are the directories every prefix has, which linking relies on.
+var standardDirs = []string{"Cellar", "bin", "etc", "include", "lib", "sbin", "share", "opt", "var/homebrew/linked"}
+
 // Result is what happened to one formula.
 type Result struct {
 	Name, Version string
@@ -61,12 +64,17 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, unlock()) }()
+	for _, d := range standardDirs {
+		if err := in.Root.MkdirAll(d, 0o755); err != nil {
+			return nil, err
+		}
+	}
 
 	reqs := make([]bottle.Request, len(plan.Items))
 	for i, it := range plan.Items {
 		reqs[i] = bottle.Request{Name: it.Formula.Name, PkgVersion: it.PkgVersion, Rebuild: it.Formula.Bottle.Stable.Rebuild, Tag: it.Tag, File: it.Bottle}
 	}
-	in.logf("==> Fetching %d bottles", len(reqs))
+	in.logf("==> Fetching %s", plural(len(reqs), "bottle"))
 	fetched, err := in.Fetcher.FetchAll(ctx, reqs)
 	if err != nil {
 		return nil, err
@@ -157,6 +165,7 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	result = Result{Name: f.Name, Version: it.PkgVersion}
 	if abs, err := in.Root.Abs(keg); err == nil {
 		result.Size, _ = cellar.Keg{Path: abs}.Abv()
+		in.logf("    %s: %s", abs, result.Size)
 	}
 	k := link.Keg{Name: f.Name, Version: it.PkgVersion, Aliases: receipt.Aliases}
 	if it.KegOnly {
@@ -206,6 +215,13 @@ func (in *Installer) relocate(it Item, staged string, r *cellar.Receipt) error {
 		sign = relocate.Codesign
 	}
 	return sign(in.Root, staged, modified)
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 func randomID() string {

@@ -1,22 +1,15 @@
 package install
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,132 +17,18 @@ import (
 	"github.com/jigsmiths/brw/internal/bottle"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
+	"github.com/jigsmiths/brw/internal/install/installtest"
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/lock"
 )
 
 var fixedTime = time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
 
-// entry is a file of a test bottle, relative to name/version; a name ending in a
-// slash is a directory.
-type entry struct {
-	name, body string
-	mode       int64
-}
-
-type bottleSpec struct {
-	name, version string
-	entries       []entry
-	changed       []string // the tab's changed_files
-	linkage       []string // and linkage_files
-	deps          []string // and the formulae in runtime_dependencies
-}
-
-// registry serves bottles and their manifests like ghcr.io.
-type registry struct {
-	t        *testing.T
-	server   *httptest.Server
-	blobs    map[string][]byte // by digest
-	tabs     map[string]string // manifest tag path to tab JSON
-	digests  map[string]string // manifest tag path to digest
-	tamper   map[string]bool
-	manifest atomic.Int32
-}
-
-func newRegistry(t *testing.T) *registry {
-	t.Helper()
-	r := &registry{t: t, blobs: map[string][]byte{}, tabs: map[string]string{}, digests: map[string]string{}, tamper: map[string]bool{}}
-	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		digest := strings.TrimPrefix(req.URL.Path, "/blob/")
-		body := r.blobs[digest]
-		if r.tamper[digest] {
-			body = append([]byte("x"), body...)
-		}
-		_, _ = w.Write(body)
-	}))
-	r.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		path := strings.TrimPrefix(req.URL.Path, "/v2/homebrew/core/")
-		switch {
-		case strings.Contains(path, "/manifests/"):
-			r.manifest.Add(1)
-			digest := r.digests[path]
-			_ = json.NewEncoder(w).Encode(map[string]any{"manifests": []map[string]any{
-				{"annotations": map[string]string{"sh.brew.bottle.digest": digest, "sh.brew.tab": r.tabs[path]}},
-			}})
-		case strings.Contains(path, "/blobs/sha256:"):
-			_, digest, _ := strings.Cut(path, "sha256:")
-			http.Redirect(w, req, cdn.URL+"/blob/"+digest, http.StatusTemporaryRedirect)
-		default:
-			http.NotFound(w, req)
-		}
-	}))
-	t.Cleanup(func() { r.server.Close(); cdn.Close() })
-	return r
-}
-
-// add stores a bottle and returns its file as the API would describe it.
-func (r *registry) add(spec bottleSpec, cellar string) api.BottleFile {
-	r.t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	keg := spec.name + "/" + spec.version
-	write := func(name string, typ byte, body string, mode int64) {
-		h := &tar.Header{Name: name, Typeflag: typ, Mode: mode, Size: int64(len(body)), ModTime: fixedTime}
-		if err := tw.WriteHeader(h); err != nil {
-			r.t.Fatal(err)
-		}
-		if _, err := tw.Write([]byte(body)); err != nil {
-			r.t.Fatal(err)
-		}
-	}
-	write(keg, tar.TypeDir, "", 0o755)
-	for _, e := range spec.entries {
-		if strings.HasSuffix(e.name, "/") {
-			write(keg+"/"+e.name, tar.TypeDir, "", 0o755)
-		} else {
-			write(keg+"/"+e.name, tar.TypeReg, e.body, cmpMode(e.mode))
-		}
-	}
-	if err := tw.Close(); err != nil {
-		r.t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		r.t.Fatal(err)
-	}
-	sum := sha256.Sum256(buf.Bytes())
-	digest := hex.EncodeToString(sum[:])
-	r.blobs[digest] = buf.Bytes()
-
-	var runtime []map[string]any
-	for _, d := range spec.deps {
-		runtime = append(runtime, map[string]any{"full_name": d, "version": "1.0", "revision": 0, "bottle_rebuild": 0, "pkg_version": "1.0", "declared_directly": true})
-	}
-	tab, err := json.Marshal(map[string]any{
-		"homebrew_version": "6.0.22", "changed_files": spec.changed, "linkage_files": spec.linkage, "binary_relocation_files": []string{},
-		"source_modified_time": 1, "compiler": "clang", "runtime_dependencies": runtime, "arch": "arm64",
-		"built_on": map[string]any{"os": "Macintosh"},
-	})
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	r.tabs[spec.name+"/manifests/"+spec.version] = string(tab)
-	r.digests[spec.name+"/manifests/"+spec.version] = digest
-	return api.BottleFile{Cellar: cellar, SHA256: digest, URL: r.server.URL + "/v2/homebrew/core/" + spec.name + "/blobs/sha256:" + digest}
-}
-
-func cmpMode(m int64) int64 {
-	if m == 0 {
-		return 0o644
-	}
-	return m
-}
-
 type env struct {
 	t      *testing.T
 	prefix string
 	root   *fsx.Root
-	reg    *registry
+	reg    *installtest.Registry
 	in     *Installer
 	signed [][]string
 	log    bytes.Buffer
@@ -168,7 +47,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = root.Close() })
-	e := &env{t: t, prefix: prefix, root: root, reg: newRegistry(t)}
+	e := &env{t: t, prefix: prefix, root: root, reg: installtest.NewRegistry(t)}
 	e.in = &Installer{
 		Root: root, Prefix: prefix,
 		Fetcher: &bottle.Fetcher{Dir: filepath.Join(t.TempDir(), "downloads")},
@@ -182,6 +61,10 @@ func newEnv(t *testing.T) *env {
 		},
 	}
 	return e
+}
+
+func file(name, body string, mode int64) installtest.File {
+	return installtest.File{Name: name, Body: body, Mode: mode}
 }
 
 func formulaJSON(t *testing.T, name string, extra map[string]any) *api.Formula {
@@ -202,12 +85,12 @@ func formulaJSON(t *testing.T, name string, extra map[string]any) *api.Formula {
 	return &fs[0]
 }
 
-func (e *env) item(spec bottleSpec, onRequest, kegOnly bool, extra map[string]any) Item {
+func (e *env) item(spec installtest.Bottle, onRequest, kegOnly bool, extra map[string]any) Item {
 	e.t.Helper()
 	cellarKind := ":any"
 	return Item{
-		Formula: formulaJSON(e.t, spec.name, extra), Tag: "arm64_tahoe", Bottle: e.reg.add(spec, cellarKind),
-		PkgVersion: spec.version, OnRequest: onRequest, KegOnly: kegOnly,
+		Formula: formulaJSON(e.t, spec.Name, extra), Tag: "arm64_tahoe", Bottle: e.reg.Add(spec, cellarKind),
+		PkgVersion: spec.Version, OnRequest: onRequest, KegOnly: kegOnly,
 	}
 }
 
@@ -239,14 +122,14 @@ func (e *env) readlink(rel string) string {
 	return target
 }
 
-var jq = bottleSpec{
-	name: "jq", version: "1.0",
-	entries: []entry{
-		{"bin/jq", "#!/bin/sh\necho jq", 0o755},
-		{"lib/pkgconfig/jq.pc", "prefix=@@HOMEBREW_CELLAR@@/jq/1.0\nlibdir=@@HOMEBREW_PREFIX@@/lib\n", 0},
-		{"share/man/man1/jq.1", "man page", 0},
+var jq = installtest.Bottle{
+	Name: "jq", Version: "1.0",
+	Files: []installtest.File{
+		file("bin/jq", "#!/bin/sh\necho jq", 0o755),
+		file("lib/pkgconfig/jq.pc", "prefix=@@HOMEBREW_CELLAR@@/jq/1.0\nlibdir=@@HOMEBREW_PREFIX@@/lib\n", 0),
+		file("share/man/man1/jq.1", "man page", 0),
 	},
-	changed: []string{"lib/pkgconfig/jq.pc"},
+	Changed: []string{"lib/pkgconfig/jq.pc"},
 }
 
 func TestInstallPoursRelocatesAndLinks(t *testing.T) {
@@ -289,8 +172,8 @@ func TestInstallPoursRelocatesAndLinks(t *testing.T) {
 
 func TestInstallWritesTheReceiptBrewWould(t *testing.T) {
 	e := newEnv(t)
-	dep := bottleSpec{name: "libx", version: "2.0", entries: []entry{{"lib/libx.a", "x", 0}}}
-	app := bottleSpec{name: "app", version: "1.0", entries: []entry{{"bin/app", "app", 0o755}}, deps: []string{"libx"}}
+	dep := installtest.Bottle{Name: "libx", Version: "2.0", Files: []installtest.File{file("lib/libx.a", "x", 0)}}
+	app := installtest.Bottle{Name: "app", Version: "1.0", Files: []installtest.File{file("bin/app", "app", 0o755)}, Deps: []string{"libx"}}
 	if _, err := e.install(e.item(dep, false, false, nil), e.item(app, true, false, map[string]any{"aliases": []string{"a"}, "version_scheme": 2})); err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +242,7 @@ func machO(name string) string {
 
 func TestInstallRelocatesAndSignsMachOFiles(t *testing.T) {
 	e := newEnv(t)
-	spec := bottleSpec{name: "tool", version: "1.0", entries: []entry{{"bin/tool", machO("@@HOMEBREW_PREFIX@@/opt/dep/lib/libdep.dylib"), 0o755}}, linkage: []string{"bin/tool"}}
+	spec := installtest.Bottle{Name: "tool", Version: "1.0", Files: []installtest.File{file("bin/tool", machO("@@HOMEBREW_PREFIX@@/opt/dep/lib/libdep.dylib"), 0o755)}, Linkage: []string{"bin/tool"}}
 	if _, err := e.install(e.item(spec, true, false, nil)); err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +256,7 @@ func TestInstallRelocatesAndSignsMachOFiles(t *testing.T) {
 
 func TestInstallSkipsMachORelocationForBottlesThatNeedNone(t *testing.T) {
 	e := newEnv(t)
-	spec := bottleSpec{name: "tool", version: "1.0", entries: []entry{{"bin/tool", machO("@@HOMEBREW_PREFIX@@/x"), 0o755}, {"share/t.txt", "@@HOMEBREW_PREFIX@@/etc", 0}}, changed: []string{"share/t.txt"}, linkage: []string{"bin/tool"}}
+	spec := installtest.Bottle{Name: "tool", Version: "1.0", Files: []installtest.File{file("bin/tool", machO("@@HOMEBREW_PREFIX@@/x"), 0o755), file("share/t.txt", "@@HOMEBREW_PREFIX@@/etc", 0)}, Changed: []string{"share/t.txt"}, Linkage: []string{"bin/tool"}}
 	item := e.item(spec, true, false, nil)
 	item.Bottle.Cellar = ":any_skip_relocation"
 	if _, err := e.install(item); err != nil {
@@ -411,7 +294,7 @@ func TestInstallLinkConflictLeavesAPouredUnlinkedKeg(t *testing.T) {
 func TestInstallFailureBeforeTheRenameLeavesNothing(t *testing.T) {
 	e := newEnv(t)
 	good := e.item(jq, true, false, nil)
-	e.reg.tamper[good.Bottle.SHA256] = true // the registry serves other bytes than the checksum says
+	e.reg.Tamper(good.Bottle) // the registry serves other bytes than the checksum says
 	if _, err := e.install(good); err == nil {
 		t.Fatal("expected a checksum error")
 	}
@@ -424,7 +307,7 @@ func TestInstallFailureBeforeTheRenameLeavesNothing(t *testing.T) {
 
 func TestInstallBadArchiveLeavesNothing(t *testing.T) {
 	e := newEnv(t)
-	bad := bottleSpec{name: "evil", version: "1.0", entries: []entry{{"../../escape", "x", 0}}}
+	bad := installtest.Bottle{Name: "evil", Version: "1.0", Files: []installtest.File{file("../../escape", "x", 0)}}
 	item := e.item(bad, true, false, nil)
 	_, err := e.install(item)
 	if err == nil {
@@ -459,9 +342,9 @@ func TestInstallNeverReplacesAnExistingKeg(t *testing.T) {
 
 func TestInstallStopsAtTheFirstFailureAndKeepsWhatWasInstalled(t *testing.T) {
 	e := newEnv(t)
-	first := e.item(bottleSpec{name: "first", version: "1.0", entries: []entry{{"bin/first", "1", 0o755}}}, true, false, nil)
-	second := e.item(bottleSpec{name: "second", version: "1.0", entries: []entry{{"../../x", "2", 0}}}, true, false, nil)
-	third := e.item(bottleSpec{name: "third", version: "1.0", entries: []entry{{"bin/third", "3", 0o755}}}, true, false, nil)
+	first := e.item(installtest.Bottle{Name: "first", Version: "1.0", Files: []installtest.File{file("bin/first", "1", 0o755)}}, true, false, nil)
+	second := e.item(installtest.Bottle{Name: "second", Version: "1.0", Files: []installtest.File{file("../../x", "2", 0)}}, true, false, nil)
+	third := e.item(installtest.Bottle{Name: "third", Version: "1.0", Files: []installtest.File{file("bin/third", "3", 0o755)}}, true, false, nil)
 	results, err := e.install(first, second, third)
 	if err == nil {
 		t.Fatal("expected an error")
@@ -484,11 +367,11 @@ func TestInstallLocksTheFormulae(t *testing.T) {
 		t.Fatal(err)
 	}
 	item := e.item(jq, true, false, nil)
-	before := e.reg.manifest.Load()
+	before := e.reg.ManifestRequests()
 	if _, err := e.install(item); !errors.Is(err, lock.ErrInProgress) {
 		t.Errorf("error = %v, want ErrInProgress", err)
 	}
-	if e.exists("Cellar/jq") || e.reg.manifest.Load() != before {
+	if e.exists("Cellar/jq") || e.reg.ManifestRequests() != before {
 		t.Error("a locked formula was downloaded or installed")
 	}
 	if err := held.Release(); err != nil {
@@ -512,8 +395,8 @@ func TestInstallLocksAllOrNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = held.Release() }()
-	a := e.item(bottleSpec{name: "a", version: "1.0", entries: []entry{{"bin/a", "a", 0o755}}}, true, false, nil)
-	b := e.item(bottleSpec{name: "b", version: "1.0", entries: []entry{{"bin/b", "b", 0o755}}}, true, false, nil)
+	a := e.item(installtest.Bottle{Name: "a", Version: "1.0", Files: []installtest.File{file("bin/a", "a", 0o755)}}, true, false, nil)
+	b := e.item(installtest.Bottle{Name: "b", Version: "1.0", Files: []installtest.File{file("bin/b", "b", 0o755)}}, true, false, nil)
 	if _, err := e.install(a, b); !errors.Is(err, lock.ErrInProgress) {
 		t.Fatalf("error = %v", err)
 	}
@@ -544,5 +427,28 @@ func TestInstallNothing(t *testing.T) {
 	results, err := e.in.Install(context.Background(), &Plan{})
 	if err != nil || len(results) != 0 {
 		t.Errorf("%v, %v", results, err)
+	}
+}
+
+func TestInstallIntoABarePrefix(t *testing.T) {
+	e := newEnv(t)
+	bare := t.TempDir()
+	root, err := fsx.Open(bare, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	e.in.Root, e.in.Prefix, e.in.Linker = root, bare, &link.Linker{Root: root, Prefix: bare}
+	results, err := e.install(e.item(jq, true, false, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !results[0].Linked {
+		t.Fatalf("result = %+v", results[0])
+	}
+	for _, d := range []string{"bin", "etc", "include", "lib", "sbin", "share", "opt", "var/homebrew/linked", "Cellar"} {
+		if fi, err := os.Stat(filepath.Join(bare, d)); err != nil || !fi.IsDir() {
+			t.Errorf("%s is not there: %v", d, err)
+		}
 	}
 }
