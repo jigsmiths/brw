@@ -10,7 +10,7 @@ import (
 )
 
 // This test installs formulae with brew into two fresh copies of a brew
-// checkout, then removes them with brew in one and brw in the other and
+// checkout, links, unlinks and removes them with brew in one and brw in the other and
 // compares the prefixes after each step. It needs the checkout described in
 // conformance_install_test.go and BRW_CONFORMANCE_UNINSTALL=1.
 
@@ -40,8 +40,9 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 
 	failed := false
-	// step runs the same command with both tools and compares the prefixes.
-	step := func(name string, wantFail bool, extraEnv []string, cmd string, args ...string) {
+	// step runs the same command with both tools and compares the prefixes. It
+	// returns what each printed, with the prefix made the same.
+	step := func(name string, wantFail bool, extraEnv []string, cmd string, args ...string) (outBrew, outBrw string) {
 		t.Helper()
 		outBrew, errBrew := try(append(slices.Clone(env), extraEnv...), filepath.Join(theirs, "bin", "brew"), append([]string{cmd}, args...)...)
 		outBrw, errBrw := try(append(slices.Clone(brwEnv), extraEnv...), bin, append([]string{cmd, "-prefix", mine}, args...)...)
@@ -50,8 +51,48 @@ func TestConformanceUninstall(t *testing.T) {
 			failed = true
 		}
 		compare(t, name, theirs, mine)
+		return strings.ReplaceAll(outBrew, theirs, "<prefix>"), strings.ReplaceAll(outBrw, mine, "<prefix>")
+	}
+	// sameLine checks that both tools printed the line that starts with prefix.
+	sameLine := func(name, outBrew, outBrw, start string) {
+		t.Helper()
+		find := func(out string) string {
+			for _, l := range strings.Split(out, "\n") {
+				if strings.HasPrefix(l, start) {
+					return l
+				}
+			}
+			return ""
+		}
+		if a, b := find(outBrew), find(outBrw); a == "" || a != b {
+			t.Errorf("%s: the %q line differs\nbrew: %q\nbrw:  %q", name, start, a, b)
+		}
 	}
 	noAutoremove := []string{"HOMEBREW_NO_AUTOREMOVE=1"}
+
+	// Linking and unlinking, and what they print.
+	a, b := step("unlink", false, nil, "unlink", "jq")
+	sameLine("unlink", a, b, "Unlinking ")
+	a, b = step("link again", false, nil, "link", "jq")
+	sameLine("link", a, b, "Linking ")
+	step("link when already linked", false, nil, "link", "jq")
+	step("a keg-only formula without --force", false, nil, "link", "rustup")
+	a, b = step("a keg-only formula with --force", false, nil, "link", "--force", "rustup")
+	sameLine("link --force", a, b, "Linking ")
+	a, b = step("unlink a keg-only formula", false, nil, "unlink", "rustup")
+	sameLine("unlink keg-only", a, b, "Unlinking ")
+	// brew's own dry run of link creates empty directories, so only brw's is
+	// run: it has to change nothing.
+	beforeDry := snapshot(t, mine)
+	for _, args := range [][]string{{"link", "-n", "--force", "rustup"}, {"unlink", "-n", "jq"}} {
+		out, err := try(brwEnv, bin, append([]string{args[0], "-prefix", mine}, args[1:]...)...)
+		if err != nil || !strings.Contains(out, "would ") {
+			t.Errorf("brw %v: %q, %v", args, out, err)
+		}
+	}
+	if snapshot(t, mine) != beforeDry {
+		t.Error("a dry run of brw link or unlink changed the prefix")
+	}
 
 	step("refusing to remove a dependency", true, nil, "uninstall", "oniguruma")
 
