@@ -640,3 +640,35 @@ func TestIndexMatchesAFreshParse(t *testing.T) {
 		t.Errorf("python@3.13 lost data: %+v", f)
 	}
 }
+
+func TestBottles(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	defer ts.Close()
+	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	if _, err := c.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Bottles(map[string]string{"jq": "arm64_tahoe", "xz": "arm64_tahoe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jq := got["jq"]
+	if jq.Cellar != ":any" || len(jq.SHA256) != 64 || !strings.HasPrefix(jq.URL, "https://") || !strings.HasSuffix(jq.URL, "sha256:"+jq.SHA256) {
+		t.Errorf("jq = %+v", jq)
+	}
+	if len(got) != 2 || got["xz"].SHA256 == "" {
+		t.Errorf("got %d bottles: %+v", len(got), got)
+	}
+	if got, err := c.Bottles(nil); err != nil || len(got) != 0 {
+		t.Errorf("Bottles(nil) = %v, %v", got, err)
+	}
+
+	for name, want := range map[string]map[string]string{
+		"an unknown formula": {"nosuchformula": "arm64_tahoe"},
+		"a tag it lacks":     {"jq": "arm64_windows"},
+	} {
+		if _, err := c.Bottles(want); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}

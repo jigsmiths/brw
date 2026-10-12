@@ -155,11 +155,21 @@ func Text(f *api.Formula, env Env) (string, error) {
 	if f.Versions.Head != "" {
 		b.WriteString("==> Options\n--HEAD\n\tInstall HEAD version\n")
 	}
-	if f.Caveats != "" {
-		text := strings.NewReplacer("$HOMEBREW_PREFIX", string(env.Prefix), "$HOMEBREW_CELLAR", string(env.Prefix)+"/Cellar").Replace(f.Caveats)
-		b.WriteString("==> Caveats\n" + strings.TrimSuffix(text, "\n") + "\n")
+	if c := Caveats(f, string(env.Prefix)); c != "" {
+		b.WriteString("==> Caveats\n" + c)
 	}
 	return b.String(), nil
+}
+
+// Caveats is the formula's own caveats text, with the prefix filled in and a
+// single final newline, or "". Brew adds more, such as keg-only advice, which
+// depends on the user's shell and tools.
+func Caveats(f *api.Formula, prefix string) string {
+	if f.Caveats == "" {
+		return ""
+	}
+	text := strings.NewReplacer("$HOMEBREW_PREFIX", prefix, "$HOMEBREW_CELLAR", prefix+"/Cellar").Replace(f.Caveats)
+	return strings.TrimSuffix(text, "\n") + "\n"
 }
 
 var deprecationReasons = map[string]string{
@@ -177,8 +187,16 @@ var deprecationReasons = map[string]string{
 		"We can re-package this once upstream has confirmed that they retagged their release",
 }
 
-// deprecation is the notice for a deprecated or disabled formula, or "".
 func (e Env) deprecation(f *api.Formula) string {
+	now := e.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	return Deprecation(f, now)
+}
+
+// Deprecation is the notice for a deprecated or disabled formula, or "".
+func Deprecation(f *api.Formula, now time.Time) string {
 	var kind, reason, replacement string
 	switch {
 	case f.Deprecated:
@@ -205,10 +223,6 @@ func (e Env) deprecation(f *api.Formula) string {
 		}
 	}
 	if disableDate != "" {
-		now := e.Now
-		if now.IsZero() {
-			now = time.Now()
-		}
 		if disableDate < now.Format(time.DateOnly) {
 			msg += " It was disabled on " + disableDate + "."
 		} else {

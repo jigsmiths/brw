@@ -10,10 +10,9 @@ import (
 	"syscall"
 )
 
-// Usage counts the files in a keg and the bytes they take, as brew does.
-// Sizes are apparent sizes. Hardlinks count once, directories and symlinks to
-// directories add their own size but are not files, and .DS_Store files are
-// not counted as files.
+// Usage counts the files and bytes of a keg by brew's rules: apparent sizes,
+// hard links once, directories and directory symlinks add size but are not
+// files, .DS_Store is not a file.
 func (k Keg) Usage() (files int, size int64, err error) {
 	seen := map[[2]any]bool{} // device and inode; field types differ by platform
 	err = filepath.WalkDir(k.Path, func(path string, d fs.DirEntry, err error) error {

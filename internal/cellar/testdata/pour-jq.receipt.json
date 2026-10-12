@@ -1,0 +1,53 @@
+{
+  "homebrew_version": "6.0.22-271-gaebd696",
+  "used_options": [],
+  "unused_options": [],
+  "built_as_bottle": true,
+  "poured_from_bottle": true,
+  "loaded_from_api": true,
+  "loaded_from_internal_api": true,
+  "installed_on_request": true,
+  "changed_files": [
+    "lib/pkgconfig/libjq.pc"
+  ],
+  "linkage_files": [
+    "bin/jq",
+    "lib/libjq.1.dylib"
+  ],
+  "binary_relocation_files": [],
+  "time": 1791753509,
+  "source_modified_time": 1781962615,
+  "compiler": "clang",
+  "aliases": [],
+  "runtime_dependencies": [
+    {
+      "full_name": "oniguruma",
+      "version": "6.9.10",
+      "revision": 0,
+      "bottle_rebuild": 0,
+      "pkg_version": "6.9.10",
+      "declared_directly": true
+    }
+  ],
+  "source": {
+    "spec": "stable",
+    "versions": {
+      "stable": "1.8.2",
+      "head": null,
+      "version_scheme": 0,
+      "compatibility_version": null
+    },
+    "path": "/cache/api/internal/packages.arm64_golden_gate.jws.json",
+    "tap_git_head": null,
+    "tap": "homebrew/core"
+  },
+  "arch": "arm64",
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "dunno",
+    "xcode": "27.0",
+    "clt": "27.0.0.0.1788430756",
+    "preferred_perl": "5.34"
+  }
+}
