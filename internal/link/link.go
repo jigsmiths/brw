@@ -340,6 +340,20 @@ func (l *Linker) Unlink(k Keg) error {
 	return nil
 }
 
+// Forget tidies up after a keg is deleted, as brew does: the rack goes if it is
+// empty, and so does the opt record if it led to this keg, even with other
+// versions left.
+func (l *Linker) Forget(k Keg) error {
+	l.rmdirIfPossible(k.rack())
+	if l.isSymlink(k.opt()) && l.resolved(k.opt()) == k.path() {
+		if err := l.Root.Remove(k.opt()); err != nil {
+			return err
+		}
+		l.rmdirIfPossible("opt")
+	}
+	return nil
+}
+
 // walk visits the entries below root (and root first if withRoot) in sorted
 // order, parents first. visit says whether to go into a directory. Symlinks are
 // never followed.

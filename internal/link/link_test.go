@@ -347,3 +347,63 @@ func TestLinkRefusesAKegThatHasARecord(t *testing.T) {
 		t.Errorf("a refused link changed the prefix: %v", got)
 	}
 }
+
+func TestForgetDropsTheOptRecordOfTheKegAndAnEmptyRack(t *testing.T) {
+	l, dir := newLinker(t)
+	k := install(t, dir, "jq", "1.0", files{"bin/jq"})
+	linkAll(t, l, dir, k)
+	if err := l.Unlink(k); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "Cellar/jq/1.0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Forget(k); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "Cellar/jq")); !os.IsNotExist(err) {
+		t.Errorf("the empty rack is still there: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt/jq")); !os.IsNotExist(err) {
+		t.Errorf("opt/jq is still there: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt")); !os.IsNotExist(err) {
+		t.Errorf("the empty opt directory is still there, brew removes it: %v", err)
+	}
+}
+
+func TestForgetKeepsWhatBelongsToOtherVersions(t *testing.T) {
+	l, dir := newLinker(t)
+	old := install(t, dir, "jq", "1.0", files{"bin/jq"})
+	cur := install(t, dir, "jq", "2.0", files{"bin/jq"})
+	other := install(t, dir, "tool", "1.0", files{"bin/tool"})
+	linkAll(t, l, dir, other)
+	linkAll(t, l, dir, cur) // opt/jq leads to 2.0
+	if err := os.RemoveAll(filepath.Join(dir, "Cellar/jq/1.0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Forget(old); err != nil {
+		t.Fatal(err)
+	}
+	check(t, links(t, dir), []string{
+		"bin/jq -> ../Cellar/jq/2.0/bin/jq",
+		"bin/tool -> ../Cellar/tool/1.0/bin/tool",
+		"opt/jq -> ../Cellar/jq/2.0",
+		"opt/tool -> ../Cellar/tool/1.0",
+		"var/homebrew/linked/jq -> ../../../Cellar/jq/2.0",
+		"var/homebrew/linked/tool -> ../../../Cellar/tool/1.0",
+	})
+	// The opt record of the keg that is removed goes, though another version stays.
+	if err := os.RemoveAll(filepath.Join(dir, "Cellar/jq/2.0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Forget(cur); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt/jq")); !os.IsNotExist(err) {
+		t.Errorf("opt/jq stayed: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt/tool")); err != nil {
+		t.Errorf("opt/tool went: %v", err)
+	}
+}
