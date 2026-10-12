@@ -247,16 +247,3 @@ func TestInstallRunsPostInstallAndReportsFailures(t *testing.T) {
 		t.Errorf("stderr = %q", w)
 	}
 }
-
-func TestInstallWarnsAboutServices(t *testing.T) {
-	s := newStore(t)
-	s.formula(installtest.Bottle{Name: "daemon", Version: "1.0", Files: []installtest.File{file("bin/d", "d", 0o755)}}, nil,
-		map[string]any{"service": map[string]any{"run": []string{"/x"}}})
-	e, prefix := s.env()
-	if _, err := runCmd(t, e, "install", "-prefix", prefix, "daemon"); err != nil {
-		t.Fatal(err)
-	}
-	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, "service") {
-		t.Errorf("stderr = %q", w)
-	}
-}

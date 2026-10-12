@@ -203,9 +203,6 @@ func (p *Planner) check(it *Item, problems *[]error) error {
 	if u := poststep.Unsupported(f.PostInstallSteps); len(u) > 0 {
 		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.Name, ErrPostInstall, strings.Join(u, ", ")))
 	}
-	if len(f.Service) > 0 && string(f.Service) != "null" {
-		it.Warnings = append(it.Warnings, f.Name+" has a service definition, and brw does not write its launchd or systemd files")
-	}
 	tag, ok := platform.Select(p.Host, f.BottleTags())
 	if !ok {
 		hostTag, _ := platform.Tag(p.Host)

@@ -317,14 +317,3 @@ func TestPlanNamesTheUnsupportedSteps(t *testing.T) {
 		t.Errorf("error = %v, want the unsupported steps once each and not the supported one", err)
 	}
 }
-
-func TestPlanWarnsAboutServiceFiles(t *testing.T) {
-	idx := index(t, with(f("daemon"), "service", map[string]any{"run": []string{"/x"}}), f("plain"))
-	plan, err := planner(t, mac, idx).Plan([]string{"daemon", "plain"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Items[0].Warnings) != 1 || !strings.Contains(plan.Items[0].Warnings[0], "service") || len(plan.Items[1].Warnings) != 0 {
-		t.Errorf("warnings = %v / %v", plan.Items[0].Warnings, plan.Items[1].Warnings)
-	}
-}
