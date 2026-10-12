@@ -270,6 +270,12 @@ func TestSignStagedMakesFilesWritableAndRestoresThem(t *testing.T) {
 	oneAbs := filepath.Join(dir, keg, "bin/one")
 	inode := func(p string) uint64 { fi, _ := os.Stat(p); return fi.Sys().(*syscall.Stat_t).Ino }
 	before := inode(oneAbs)
+	// Linux reuses a freed inode number at once; an open handle keeps it taken.
+	held, err := os.Open(oneAbs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = held.Close() })
 
 	var writable []bool
 	failures := 0 // bin/one fails in the batch and on its own, then signs after the new inode
