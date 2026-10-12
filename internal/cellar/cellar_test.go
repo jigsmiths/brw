@@ -305,3 +305,21 @@ func TestPinned(t *testing.T) {
 		}
 	}
 }
+
+func TestOnRequestRecorded(t *testing.T) {
+	for in, want := range map[string]bool{
+		`{}`:                                false,
+		`{"installed_on_request": false}`:   true,
+		`{"installed_on_request": true}`:    true,
+		`{"installed_on_request": null}`:    false,
+		`{"installed_as_dependency": true}`: false,
+	} {
+		r, err := ParseReceipt([]byte(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := r.OnRequestRecorded(); got != want {
+			t.Errorf("OnRequestRecorded(%s) = %v, want %v", in, got, want)
+		}
+	}
+}
