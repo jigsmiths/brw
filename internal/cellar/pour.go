@@ -38,7 +38,10 @@ func NewPourReceipt(tab []byte, p Pour) (*Receipt, error) {
 	if r.Aliases == nil {
 		r.Aliases = []string{}
 	}
-	src, err := pourSource(p)
+	for i := range r.RuntimeDependencies {
+		r.RuntimeDependencies[i].CompatibilityVersion = nil
+	}
+	src, err := pourSource(p, r.Source.scmRevision())
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +50,7 @@ func NewPourReceipt(tab []byte, p Pour) (*Receipt, error) {
 }
 
 // pourSource is brew's source block for an API formula, in brew's key order.
-func pourSource(p Pour) (Source, error) {
+func pourSource(p Pour, scm string) (Source, error) {
 	type versions struct {
 		Stable               string  `json:"stable"`
 		Head                 *string `json:"head"`
@@ -58,14 +61,24 @@ func pourSource(p Pour) (Source, error) {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	err := enc.Encode(struct {
-		Spec       string   `json:"spec"`
-		Versions   versions `json:"versions"`
-		Path       string   `json:"path"`
-		TapGitHead *string  `json:"tap_git_head"`
-		Tap        string   `json:"tap"`
-	}{"stable", versions{Stable: p.Stable, VersionScheme: p.Scheme}, p.Path, nil, p.Tap})
+		SCMRevision string   `json:"scm_revision,omitempty"`
+		Spec        string   `json:"spec"`
+		Versions    versions `json:"versions"`
+		Path        string   `json:"path"`
+		TapGitHead  *string  `json:"tap_git_head"`
+		Tap         string   `json:"tap"`
+	}{scm, "stable", versions{Stable: p.Stable, VersionScheme: p.Scheme}, p.Path, nil, p.Tap})
 	if err != nil {
 		return Source{}, err
 	}
 	return Source{Tap: p.Tap, scheme: p.Scheme, raw: bytes.TrimSuffix(buf.Bytes(), []byte("\n"))}, nil
+}
+
+// scmRevision is the commit the bottle was built from, which brew keeps.
+func (s Source) scmRevision() string {
+	var v struct {
+		SCMRevision string `json:"scm_revision"`
+	}
+	_ = json.Unmarshal(s.raw, &v)
+	return v.SCMRevision
 }

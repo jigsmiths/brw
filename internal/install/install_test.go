@@ -453,6 +453,19 @@ func TestInstallIntoABarePrefix(t *testing.T) {
 	}
 }
 
+func TestInstallCreatesFrameworksOnlyOnMacs(t *testing.T) {
+	for os_, want := range map[string]bool{"darwin": true, "linux": false} {
+		e := newEnv(t)
+		e.in.OS = os_
+		if _, err := e.install(e.item(jq, true, false, nil)); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.exists("Frameworks"); got != want {
+			t.Errorf("%s: Frameworks exists = %v", os_, got)
+		}
+	}
+}
+
 func steps(t *testing.T, raw string) map[string]any {
 	t.Helper()
 	var v []any

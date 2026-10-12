@@ -70,7 +70,11 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, unlock()) }()
-	for _, d := range standardDirs {
+	dirs := standardDirs
+	if cmp.Or(in.OS, runtime.GOOS) == "darwin" {
+		dirs = append(slices.Clone(dirs), "Frameworks")
+	}
+	for _, d := range dirs {
 		if err := in.Root.MkdirAll(d, 0o755); err != nil {
 			return nil, err
 		}

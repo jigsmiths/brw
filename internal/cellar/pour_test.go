@@ -125,3 +125,43 @@ func TestPourReceiptRejectsABadTab(t *testing.T) {
 		t.Errorf("an empty tab is fine: %v", err)
 	}
 }
+
+func TestPourReceiptKeepsScmRevisionAndDropsDependencyCompatibility(t *testing.T) {
+	var tab map[string]any
+	if err := json.Unmarshal(read(t, "pour-jq.tab.json"), &tab); err != nil {
+		t.Fatal(err)
+	}
+	tab["source"] = map[string]any{"scm_revision": "abc123"}
+	tab["runtime_dependencies"] = []any{map[string]any{
+		"full_name": "xz", "version": "5.8.4", "revision": 0, "bottle_rebuild": 0,
+		"pkg_version": "5.8.4", "declared_directly": true, "compatibility_version": 1,
+	}}
+	raw, err := json.Marshal(tab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewPourReceipt(raw, Pour{Stable: "1.8.2", Tap: "homebrew/core", Time: time.Unix(1, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out struct {
+		Source map[string]json.RawMessage `json:"source"`
+		Deps   []map[string]any           `json:"runtime_dependencies"`
+	}
+	if err := json.Unmarshal(got, &out); err != nil {
+		t.Fatal(err)
+	}
+	if string(out.Source["scm_revision"]) != `"abc123"` {
+		t.Errorf("source = %v", out.Source)
+	}
+	if _, ok := out.Deps[0]["compatibility_version"]; ok {
+		t.Errorf("dependency kept compatibility_version: %v", out.Deps[0])
+	}
+	if !strings.Contains(string(got), "\"source\": {\n    \"scm_revision\"") {
+		t.Errorf("scm_revision is not the first key of source:\n%s", got)
+	}
+}
