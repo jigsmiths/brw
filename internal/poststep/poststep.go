@@ -63,6 +63,8 @@ type step struct {
 	Permissions           string `json:"permissions"`
 	Content               string `json:"content"`
 	Message               string `json:"message"`
+	Using                 string `json:"using"`
+	Locale                string `json:"locale"`
 	Prefix                string `json:"prefix"`
 	Suffix                string `json:"suffix"`
 	SymlinkTargetContains string `json:"symlink_target_contains"`
@@ -79,7 +81,7 @@ type step struct {
 
 var supported = []string{
 	"mkdir", "mkdir_p", "touch", "symlink", "copy", "move", "remove", "link_dir", "link_children",
-	"write", "warn", "set_permissions", "run",
+	"write", "warn", "set_permissions", "run", "init_data_dir",
 }
 
 // Unsupported lists, without repeats, the steps that Run would refuse.
@@ -331,6 +333,8 @@ func (r *runner) do(s step) error {
 		return r.setPermissions(s)
 	case "run":
 		return r.run(s)
+	case "init_data_dir":
+		return r.initDataDir(s)
 	}
 	return fmt.Errorf("unsupported step %q", s.Type)
 }
