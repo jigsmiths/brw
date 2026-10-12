@@ -240,3 +240,168 @@ func TestLstat(t *testing.T) {
 		t.Error("Lstat escaped the root")
 	}
 }
+
+func TestMkdir(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	if err := r.Mkdir("a", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "a")); err != nil || !fi.IsDir() {
+		t.Fatalf("a was not created: %v", err)
+	}
+	if err := r.Mkdir("a", 0o755); !errors.Is(err, ErrExists) {
+		t.Errorf("second Mkdir error = %v, want ErrExists", err)
+	}
+	if err := r.Mkdir("x/y", 0o755); err == nil {
+		t.Error("Mkdir created a directory under a missing parent")
+	}
+	for _, p := range []string{"../out", "a/../../out"} {
+		if err := r.Mkdir(p, 0o755); err == nil {
+			t.Errorf("Mkdir(%q) escaped the root", p)
+		}
+	}
+	if got := journal.String(); got != "mkdir a\n" {
+		t.Errorf("journal = %q", got)
+	}
+}
+
+func TestMkdirAll(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	if err := os.Mkdir(filepath.Join(dir, "Cellar"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.MkdirAll("Cellar/jq/1.0/bin", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.MkdirAll("Cellar/jq/1.0/bin", 0o755); err != nil {
+		t.Errorf("MkdirAll on an existing directory failed: %v", err)
+	}
+	want := "mkdir Cellar/jq\nmkdir Cellar/jq/1.0\nmkdir Cellar/jq/1.0/bin\n"
+	if got := journal.String(); got != want {
+		t.Errorf("journal = %q, want only the directories it created: %q", got, want)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.MkdirAll("file/sub", 0o755); err == nil {
+		t.Error("MkdirAll went through a regular file")
+	}
+	if err := r.MkdirAll("file", 0o755); err == nil {
+		t.Error("MkdirAll reported success for a path that is a regular file")
+	}
+	if err := r.MkdirAll("../out", 0o755); err == nil {
+		t.Error("MkdirAll escaped the root")
+	}
+}
+
+func TestChmod(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	if err := r.WriteFile("bin/tool", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+	if err := r.Chmod("bin/tool", 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(filepath.Join(dir, "bin/tool")); fi.Mode().Perm() != 0o555 {
+		t.Errorf("perm = %v", fi.Mode().Perm())
+	}
+	if got := journal.String(); got != "chmod bin/tool 555\n" {
+		t.Errorf("journal = %q", got)
+	}
+	if err := r.Chmod("../out", 0o755); err == nil {
+		t.Error("Chmod escaped the root")
+	}
+}
+
+func TestLink(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	if err := r.WriteFile("a/one", []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+	if err := r.Link("a/one", "a/two"); err != nil {
+		t.Fatal(err)
+	}
+	one, _ := os.Stat(filepath.Join(dir, "a/one"))
+	two, _ := os.Stat(filepath.Join(dir, "a/two"))
+	if !os.SameFile(one, two) {
+		t.Error("the two names are not the same file")
+	}
+	if err := r.Link("a/one", "a/two"); !errors.Is(err, ErrExists) {
+		t.Errorf("second Link error = %v, want ErrExists", err)
+	}
+	if got := journal.String(); got != "link a/one a/two\n" {
+		t.Errorf("journal = %q", got)
+	}
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Link(outside, "a/leak"); err == nil {
+		t.Error("Link took a file from outside the root")
+	}
+	if err := r.Link("a/one", "../out"); err == nil {
+		t.Error("Link wrote outside the root")
+	}
+}
+
+func TestRename(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	if err := r.WriteFile("stage/jq/1.0/bin/jq", []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Rename("stage/jq/1.0", "Cellar/jq-1.0"); err == nil {
+		t.Fatal("Rename created the missing parent")
+	}
+	if err := r.Mkdir("Cellar", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+	if err := r.Rename("stage/jq/1.0", "Cellar/jq-1.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "Cellar/jq-1.0/bin/jq")); err != nil {
+		t.Errorf("directory did not move: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "stage/jq/1.0")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("source still exists: %v", err)
+	}
+	if got := journal.String(); got != "rename stage/jq/1.0 Cellar/jq-1.0\n" {
+		t.Errorf("journal = %q", got)
+	}
+}
+
+func TestRenameNeverReplaces(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	for _, f := range []string{"new/f", "old/g"} {
+		if err := r.WriteFile(f, []byte(f), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// An existing empty directory would be replaced by a plain rename.
+	if err := r.Mkdir("empty", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, dst := range []string{"old", "empty", "old/g"} {
+		if err := r.Rename("new", dst); !errors.Is(err, ErrExists) {
+			t.Errorf("Rename onto %s: error = %v, want ErrExists", dst, err)
+		}
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "new/f")); string(got) != "new/f" {
+		t.Error("source was disturbed")
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "old/g")); string(got) != "old/g" {
+		t.Error("destination was disturbed")
+	}
+	if err := r.Rename("missing", "elsewhere"); err == nil {
+		t.Error("renaming a missing path succeeded")
+	}
+	outside := t.TempDir()
+	if err := r.Rename("new", filepath.Join(outside, "x")); err == nil {
+		t.Error("Rename moved a path out of the root")
+	}
+	if err := r.Rename("../x", "y"); err == nil {
+		t.Error("Rename moved a path in from outside the root")
+	}
+}

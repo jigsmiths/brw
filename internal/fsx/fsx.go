@@ -138,6 +138,110 @@ func (r *Root) Symlink(target, name string) error {
 	return r.log("symlink %s -> %s", rel, target)
 }
 
+// Mkdir creates one directory, whose parent must exist; ErrExists if name
+// exists. perm is subject to the umask.
+func (r *Root) Mkdir(name string, perm fs.FileMode) error {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	if rel == "." {
+		return fmt.Errorf("%s: %w", rel, ErrExists)
+	}
+	if err := r.root.Mkdir(rel, perm); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%s: %w", rel, ErrExists)
+		}
+		return err
+	}
+	return r.log("mkdir %s", rel)
+}
+
+// MkdirAll creates name and any missing parents, and journals each directory it
+// creates. Existing directories are left alone.
+func (r *Root) MkdirAll(name string, perm fs.FileMode) error {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	if rel == "." {
+		return nil
+	}
+	cur := ""
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		fi, err := r.root.Stat(cur)
+		if err == nil {
+			if !fi.IsDir() {
+				return fmt.Errorf("%s: not a directory", cur)
+			}
+			continue
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err := r.root.Mkdir(cur, perm); err != nil {
+			return err
+		}
+		if err := r.log("mkdir %s", cur); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Root) Chmod(name string, perm fs.FileMode) error {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	if err := r.root.Chmod(rel, perm); err != nil {
+		return err
+	}
+	return r.log("chmod %s %o", rel, perm.Perm())
+}
+
+// Link makes newname another name for the file oldname; ErrExists if newname exists.
+func (r *Root) Link(oldname, newname string) error {
+	oldRel, err := r.rel(oldname)
+	if err != nil {
+		return err
+	}
+	newRel, err := r.rel(newname)
+	if err != nil {
+		return err
+	}
+	if err := r.root.Link(oldRel, newRel); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%s: %w", newRel, ErrExists)
+		}
+		return err
+	}
+	return r.log("link %s %s", oldRel, newRel)
+}
+
+// Rename moves oldname to newname without replacing anything; ErrExists if
+// newname exists, even as an empty directory.
+func (r *Root) Rename(oldname, newname string) error {
+	oldRel, err := r.rel(oldname)
+	if err != nil {
+		return err
+	}
+	newRel, err := r.rel(newname)
+	if err != nil {
+		return err
+	}
+	if _, err := r.root.Lstat(newRel); err == nil {
+		return fmt.Errorf("%s: %w", newRel, ErrExists)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := r.root.Rename(oldRel, newRel); err != nil {
+		return err
+	}
+	return r.log("rename %s %s", oldRel, newRel)
+}
+
 func (r *Root) Remove(name string) error {
 	rel, err := r.rel(name)
 	if err != nil {
