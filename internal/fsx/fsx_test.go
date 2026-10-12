@@ -689,3 +689,80 @@ func TestReadlinkAndReadDir(t *testing.T) {
 		t.Error("Readlink escaped the root")
 	}
 }
+
+func TestRemoveKeg(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "keep"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	keg := filepath.Join(dir, "Cellar/jq/1.0")
+	for _, p := range []string{"bin", "share/doc/jq", "share/man"} {
+		if err := os.MkdirAll(filepath.Join(keg, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(keg, "bin/jq"), []byte("x"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(keg, "share/doc/jq/README"), []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(keg, "out")); err != nil {
+		t.Fatal(err)
+	}
+	// Read only directories, as bottles ship them; the deepest first.
+	for _, p := range []string{"share/doc/jq", "share/doc", "share/man", "share", "bin"} {
+		if err := os.Chmod(filepath.Join(keg, p), 0o555); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := filepath.Join(dir, "Cellar/jq/2.0")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.RemoveKeg("Cellar/jq/1.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(keg); !os.IsNotExist(err) {
+		t.Errorf("keg still exists: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("another version was removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "keep")); err != nil {
+		t.Errorf("RemoveKeg followed a symlink out of the keg: %v", err)
+	}
+	if !strings.Contains(journal.String(), "removekeg Cellar/jq/1.0\n") {
+		t.Errorf("journal = %q", journal.String())
+	}
+}
+
+func TestRemoveKegRefusesAnythingElse(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	for _, p := range []string{"Cellar/jq/1.0/bin", "Cellar/.brw-staging/x", "Cellar/.hidden/1.0", "bin/tool/1.0", "etc/jq/1.0", "var/Cellar/jq"} {
+		if err := os.MkdirAll(filepath.Join(dir, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(dir, "etc"), filepath.Join(dir, "Cellar/jq/2.0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Cellar/jq/3.0"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{
+		"", ".", "Cellar", "Cellar/jq", "Cellar/jq/1.0/bin", "Cellar/.brw-staging/x", "Cellar/.hidden/1.0",
+		"bin/tool/1.0", "etc/jq/1.0", "Cellar/jq/2.0", "Cellar/jq/3.0", "Cellar/nothing/1.0", "../Cellar/jq/1.0", "Cellar/jq/../jq/1.0/..",
+	} {
+		if err := r.RemoveKeg(p); err == nil {
+			t.Errorf("RemoveKeg(%q) succeeded", p)
+		}
+	}
+	for _, p := range []string{"Cellar/jq/1.0/bin", "Cellar/.brw-staging/x", "etc", "Cellar/jq/3.0"} {
+		if _, err := os.Lstat(filepath.Join(dir, p)); err != nil {
+			t.Errorf("%s was damaged: %v", p, err)
+		}
+	}
+}

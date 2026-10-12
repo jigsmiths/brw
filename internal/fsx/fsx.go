@@ -416,6 +416,59 @@ func (r *Root) RemoveAll(name string) error {
 	return r.log("removeall %s", rel)
 }
 
+// RemoveKeg deletes one installed keg, Cellar/<name>/<version>, and nothing
+// else. Kegs ship with read only directories, so each one is made writable
+// first. Symlinks inside the keg are removed, never followed.
+func (r *Root) RemoveKeg(name string) error {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	if len(parts) != 3 || parts[0] != "Cellar" || strings.HasPrefix(parts[1], ".") || strings.HasPrefix(parts[2], ".") {
+		return fmt.Errorf("%s: not a keg", rel)
+	}
+	fi, err := r.root.Lstat(rel)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("%s: not a keg directory", rel)
+	}
+	if err := r.makeWritable(rel); err != nil {
+		return err
+	}
+	if err := r.root.RemoveAll(rel); err != nil {
+		return err
+	}
+	return r.log("removekeg %s", rel)
+}
+
+// makeWritable gives the owner write access to dir and the directories below it.
+func (r *Root) makeWritable(dir string) error {
+	fi, err := r.root.Lstat(dir)
+	if err != nil || !fi.IsDir() {
+		return err
+	}
+	if fi.Mode().Perm()&0o700 != 0o700 {
+		if err := r.root.Chmod(dir, fi.Mode().Perm()|0o700); err != nil {
+			return err
+		}
+	}
+	entries, err := r.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			if err := r.makeWritable(filepath.Join(dir, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (r *Root) rel(name string) (string, error) {
 	if filepath.IsAbs(name) {
 		rel, err := filepath.Rel(r.dir, name)
