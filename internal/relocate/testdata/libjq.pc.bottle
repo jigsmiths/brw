@@ -1,0 +1,11 @@
+prefix=@@HOMEBREW_CELLAR@@/jq/1.8.2
+exec_prefix=${prefix}
+libdir=@@HOMEBREW_CELLAR@@/jq/1.8.2/lib
+includedir=${prefix}/include
+
+Name: libjq
+URL: https://jqlang.org/
+Description: Library to process JSON using a query language
+Version: 1.8.2
+Libs: -L${libdir} -ljq
+Cflags: -I${includedir}
