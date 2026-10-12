@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	osexec "os/exec"
@@ -53,6 +55,9 @@ func TestConformanceInstall(t *testing.T) {
 		t.Errorf("trees differ:\n%s", strings.Join(d, "\n"))
 	}
 	for _, name := range installSet {
+		for _, d := range kegDiff(t, theirs, mine, name) {
+			t.Errorf("%s keg: %s", name, d)
+		}
 		ra, rb := receipt(t, theirs, name), receipt(t, mine, name)
 		for _, d := range lineDiff(strings.Join(ra, "\n"), strings.Join(rb, "\n")) {
 			t.Errorf("%s receipt: %.300s", name, d)
@@ -176,4 +181,83 @@ func receipt(t *testing.T, prefix, name string) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// kegDiff compares the files of a keg in the two prefixes: names, modes, link
+// targets, and the contents of text files with the prefix paths made equal.
+// Mach-O files are not compared, since signatures differ; other binaries
+// are compared by size. The receipt is
+// compared on its own, and the SBOM is left as the bottle shipped it.
+func kegDiff(t *testing.T, theirs, mine, name string) []string {
+	t.Helper()
+	list := func(prefix string) map[string]string {
+		out := map[string]string{}
+		root := filepath.Join(prefix, "Cellar", name)
+		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(root, p)
+			base := filepath.Base(p)
+			if base == "INSTALL_RECEIPT.json" || base == "sbom.spdx.json" {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			desc := info.Mode().String()
+			switch {
+			case d.Type()&fs.ModeSymlink != 0:
+				target, _ := os.Readlink(p)
+				desc += " -> " + strings.ReplaceAll(target, prefix, "<prefix>")
+			case d.Type().IsRegular():
+				data, err := os.ReadFile(p)
+				if err != nil {
+					return err
+				}
+				if isMachO(data) {
+					desc += " mach-o"
+				} else if bytes.IndexByte(data, 0) >= 0 {
+					desc += fmt.Sprintf(" binary %d bytes", len(data))
+				} else {
+					desc += " text " + strings.ReplaceAll(string(data), prefix, "<prefix>")
+				}
+			}
+			out[rel] = desc
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	a, b := list(theirs), list(mine)
+	var diffs []string
+	for k, v := range a {
+		switch w, ok := b[k]; {
+		case !ok:
+			diffs = append(diffs, "brew only: "+k)
+		case v != w:
+			diffs = append(diffs, fmt.Sprintf("%s differs\nbrew: %.200s\nbrw:  %.200s", k, v, w))
+		}
+	}
+	for k := range b {
+		if _, ok := a[k]; !ok {
+			diffs = append(diffs, "brw only: "+k)
+		}
+	}
+	slices.Sort(diffs)
+	return diffs
+}
+
+func isMachO(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	switch binary.BigEndian.Uint32(data) {
+	case 0xcffaedfe, 0xcefaedfe, 0xfeedfacf, 0xfeedface, 0xcafebabe:
+		return true
+	}
+	return false
 }
