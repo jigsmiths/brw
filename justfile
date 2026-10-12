@@ -1,3 +1,5 @@
+set positional-arguments
+
 default:
     @just --list
 
@@ -7,7 +9,7 @@ build:
 
 # Run brw with the given arguments
 run *args:
-    go run ./cmd/brw {{ args }}
+    go run ./cmd/brw "$@"
 
 # Install brw into GOBIN
 install:
@@ -27,6 +29,10 @@ check:
     test -z "$(gofmt -l .)"
     just lint
     just test
+
+# Compare the read-only commands with the real brew on this machine (slow)
+conformance:
+    BRW_CONFORMANCE=1 go test ./cmd/brw -run Conformance -v -timeout 30m
 
 # Point git at the repo hooks
 setup:
