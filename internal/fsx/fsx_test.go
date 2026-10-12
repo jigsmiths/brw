@@ -432,14 +432,27 @@ func (s *slowReader) Read(p []byte) (int, error) {
 func TestWriteFromStreams(t *testing.T) {
 	r, dir, journal := newRoot(t)
 	const size = 5 << 20
-	if err := r.WriteFrom("big/file", &slowReader{n: size}, 0o555); err != nil {
+	if err := r.Mkdir("big", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 6, 20, 15, 36, 55, 0, time.UTC)
+	if err := r.WriteFrom("big/file", &slowReader{n: size}, 0o555, when); err != nil {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(filepath.Join(dir, "big/file"))
-	if err != nil || fi.Size() != size || fi.Mode().Perm() != 0o555 {
-		t.Fatalf("size = %d, mode = %v, %v", fi.Size(), fi.Mode().Perm(), err)
+	if err != nil || fi.Size() != size || fi.Mode().Perm() != 0o555 || !fi.ModTime().Equal(when) {
+		t.Fatalf("size = %d, mode = %v, mtime = %v, %v", fi.Size(), fi.Mode().Perm(), fi.ModTime(), err)
 	}
-	if got := journal.String(); got != "write big/file\n" {
+	if err := r.WriteFrom("big/now", strings.NewReader("x"), 0o644, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(filepath.Join(dir, "big/now")); time.Since(fi.ModTime()) > time.Minute {
+		t.Errorf("a zero time should leave the current time, got %v", fi.ModTime())
+	}
+	if err := r.WriteFrom("missing/file", strings.NewReader("x"), 0o644, time.Time{}); err == nil {
+		t.Error("WriteFrom created a missing parent")
+	}
+	if got := journal.String(); got != "mkdir big\nwrite big/file\nwrite big/now\n" {
 		t.Errorf("journal = %q", got)
 	}
 }
@@ -449,7 +462,7 @@ func TestWriteFromNeverClobbers(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "x"), []byte("orig"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.WriteFrom("x", strings.NewReader("new"), 0o644); !errors.Is(err, ErrExists) {
+	if err := r.WriteFrom("x", strings.NewReader("new"), 0o644, time.Time{}); !errors.Is(err, ErrExists) {
 		t.Fatalf("error = %v, want ErrExists", err)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "x")); string(got) != "orig" {
@@ -463,7 +476,11 @@ func TestWriteFromNeverClobbers(t *testing.T) {
 func TestWriteFromFailureLeavesNothing(t *testing.T) {
 	r, dir, journal := newRoot(t)
 	boom := errors.New("connection reset")
-	err := r.WriteFrom("a/file", &slowReader{n: 10000, fail: boom}, 0o644)
+	if err := r.Mkdir("a", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+	err := r.WriteFrom("a/file", &slowReader{n: 10000, fail: boom}, 0o644, time.Time{})
 	if !errors.Is(err, boom) {
 		t.Fatalf("error = %v, want the reader's", err)
 	}

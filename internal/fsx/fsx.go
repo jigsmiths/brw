@@ -47,14 +47,50 @@ func Open(dir string, journal io.Writer) (*Root, error) {
 
 func (r *Root) Close() error { return r.root.Close() }
 
-// WriteFile atomically creates name; ErrExists if it exists.
+// WriteFile atomically creates name and syncs it to disk; ErrExists if it exists.
 func (r *Root) WriteFile(name string, data []byte, perm fs.FileMode) error {
-	return r.WriteFrom(name, bytes.NewReader(data), perm)
+	return r.write(name, bytes.NewReader(data), perm)
 }
 
-// WriteFrom is WriteFile for contents that are read from src as they are written.
-// If reading or writing fails nothing is left behind.
-func (r *Root) WriteFrom(name string, src io.Reader, perm fs.FileMode) error {
+// WriteFrom creates name from src without replacing anything; ErrExists if it
+// exists. The parent must exist. It is for unpacking into the staging area, so
+// unlike WriteFile it creates the file in place, without syncing: fsync costs
+// about 8ms a file on APFS, and brew does not do it either. If reading or
+// writing fails the file is removed. A zero mtime leaves the current time.
+func (r *Root) WriteFrom(name string, src io.Reader, perm fs.FileMode, mtime time.Time) (err error) {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	f, err := r.root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%s: %w", rel, ErrExists)
+		}
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = r.root.Remove(rel)
+		}
+	}()
+	_, err = io.Copy(f, src)
+	if err == nil {
+		err = f.Chmod(perm)
+	}
+	if err == nil && !mtime.IsZero() {
+		err = syscall.Futimes(int(f.Fd()), []syscall.Timeval{syscall.NsecToTimeval(mtime.UnixNano()), syscall.NsecToTimeval(mtime.UnixNano())})
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return r.log("write %s", rel)
+}
+
+func (r *Root) write(name string, src io.Reader, perm fs.FileMode) error {
 	rel, err := r.rel(name)
 	if err != nil {
 		return err
