@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -405,5 +406,61 @@ func TestForgetKeepsWhatBelongsToOtherVersions(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(dir, "opt/tool")); err != nil {
 		t.Errorf("opt/tool went: %v", err)
+	}
+}
+
+// symlinkCount is the number of symlinks in the prefix outside the Cellar.
+func symlinkCount(t *testing.T, dir string) int {
+	t.Helper()
+	n := 0
+	for _, e := range links(t, dir) {
+		if strings.Contains(e, " -> ") && !strings.HasPrefix(e, "Cellar/") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestLinkCountMatchesTheLinksIntoThePrefix(t *testing.T) {
+	l, dir := newLinker(t)
+	k := install(t, dir, "jq", "1.0", files{"bin/jq", "lib/libjq.dylib", "lib/pkgconfig/jq.pc", "share/man/man1/jq.1", "include/jq.h", "etc/jq.conf"})
+	before := symlinkCount(t, dir)
+	n, err := l.LinkCount(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Like brew, the opt and linked records are not counted.
+	if got := symlinkCount(t, dir) - before; n != got-2 || n < 5 {
+		t.Errorf("LinkCount = %d, symlinks created = %d", n, got)
+	}
+	removed, err := l.UnlinkCount(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := symlinkCount(t, dir); removed != n || got != before+1 { // the opt record stays
+		t.Errorf("UnlinkCount = %d (want %d), %d symlinks left (want %d)", removed, n, got, before+1)
+	}
+}
+
+func TestLinkCountLeavesOutLinksThatWereAlreadyRight(t *testing.T) {
+	l, dir := newLinker(t)
+	k := install(t, dir, "jq", "1.0", files{"bin/jq", "share/man/man1/jq.1"})
+	if _, err := l.LinkCount(k); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Root.Remove("var/homebrew/linked/jq"); err != nil { // links stay, the record goes
+		t.Fatal(err)
+	}
+	if n, err := l.LinkCount(k); err != nil || n != 0 {
+		t.Errorf("only the records were made again, and they are not counted: n = %d, err = %v", n, err)
+	}
+	if err := os.Remove(filepath.Join(dir, "bin/jq")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Root.Remove("var/homebrew/linked/jq"); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := l.LinkCount(k); err != nil || n != 1 {
+		t.Errorf("one link was missing: n = %d, err = %v", n, err)
 	}
 }
