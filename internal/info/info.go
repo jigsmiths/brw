@@ -155,11 +155,21 @@ func Text(f *api.Formula, env Env) (string, error) {
 	if f.Versions.Head != "" {
 		b.WriteString("==> Options\n--HEAD\n\tInstall HEAD version\n")
 	}
-	if f.Caveats != "" {
-		text := strings.NewReplacer("$HOMEBREW_PREFIX", string(env.Prefix), "$HOMEBREW_CELLAR", string(env.Prefix)+"/Cellar").Replace(f.Caveats)
-		b.WriteString("==> Caveats\n" + strings.TrimSuffix(text, "\n") + "\n")
+	if c := Caveats(f, string(env.Prefix)); c != "" {
+		b.WriteString("==> Caveats\n" + c)
 	}
 	return b.String(), nil
+}
+
+// Caveats is the formula's own caveats text, with the prefix filled in and a
+// single final newline, or "". Brew adds more, such as keg-only advice, which
+// depends on the user's shell and tools.
+func Caveats(f *api.Formula, prefix string) string {
+	if f.Caveats == "" {
+		return ""
+	}
+	text := strings.NewReplacer("$HOMEBREW_PREFIX", prefix, "$HOMEBREW_CELLAR", prefix+"/Cellar").Replace(f.Caveats)
+	return strings.TrimSuffix(text, "\n") + "\n"
 }
 
 var deprecationReasons = map[string]string{

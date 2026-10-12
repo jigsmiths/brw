@@ -376,3 +376,13 @@ func TestPlusYear(t *testing.T) {
 		}
 	}
 }
+
+func TestCaveatsHelper(t *testing.T) {
+	f := &api.Formula{Caveats: "Use $HOMEBREW_PREFIX/etc and $HOMEBREW_CELLAR/x.\n"}
+	if got, want := Caveats(f, "/opt/brw"), "Use /opt/brw/etc and /opt/brw/Cellar/x.\n"; got != want {
+		t.Errorf("Caveats = %q, want %q", got, want)
+	}
+	if got := Caveats(&api.Formula{}, "/opt/brw"); got != "" {
+		t.Errorf("Caveats of a formula without any = %q", got)
+	}
+}
