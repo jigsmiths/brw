@@ -156,6 +156,15 @@ func (r *Root) OpenLock(name string) (*os.File, error) {
 	return r.root.OpenFile(rel, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o644)
 }
 
+// ReadFile reads a file inside the root. It changes nothing and is not journaled.
+func (r *Root) ReadFile(name string) ([]byte, error) {
+	rel, err := r.rel(name)
+	if err != nil {
+		return nil, err
+	}
+	return r.root.ReadFile(rel)
+}
+
 func (r *Root) Lstat(name string) (fs.FileInfo, error) {
 	rel, err := r.rel(name)
 	if err != nil {

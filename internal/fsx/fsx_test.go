@@ -587,3 +587,36 @@ func TestReplaceRefusesAnythingElse(t *testing.T) {
 		t.Errorf("a file behind a symlink changed: %q", got)
 	}
 }
+
+func TestReadFile(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	if err := r.WriteFile("a/f", []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+	got, err := r.ReadFile("a/f")
+	if err != nil || string(got) != "data" {
+		t.Fatalf("ReadFile = %q, %v", got, err)
+	}
+	if journal.Len() != 0 {
+		t.Errorf("reading was journaled: %q", journal.String())
+	}
+	if _, err := r.ReadFile(filepath.Join(dir, "a/f")); err != nil {
+		t.Errorf("absolute path inside the root: %v", err)
+	}
+	if _, err := r.ReadFile("missing"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing file error = %v", err)
+	}
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "evil")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"../secret", outside, "evil"} {
+		if got, err := r.ReadFile(p); err == nil {
+			t.Errorf("ReadFile(%q) read outside the root: %q", p, got)
+		}
+	}
+}
