@@ -14,10 +14,9 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// Keg names an installed keg in the Cellar.
 type Keg struct {
 	Name, Version string
-	Aliases       []string // the formula's aliases, from the receipt
+	Aliases       []string // from the receipt
 }
 
 func (k Keg) path() string   { return "Cellar/" + k.Name + "/" + k.Version }
@@ -25,10 +24,9 @@ func (k Keg) rack() string   { return "Cellar/" + k.Name }
 func (k Keg) opt() string    { return "opt/" + k.Name }
 func (k Keg) record() string { return "var/homebrew/linked/" + k.Name }
 
-// Linker changes the prefix that Root is open on.
 type Linker struct {
 	Root   *fsx.Root
-	Prefix string // the absolute path of the root, to recognise absolute symlinks into it
+	Prefix string // absolute path of Root, to read absolute symlinks into it
 }
 
 // The directories of the prefix that stay when the last link in them goes.
@@ -46,9 +44,8 @@ func relPath(dir, target string) string {
 	return strings.Repeat("../", up) + target
 }
 
-// resolved is where the symlink p points, cleaned without following any other
-// link, or p itself if it is not a symlink. Targets outside the prefix are
-// returned as they are.
+// resolved is where the symlink p points, cleaned lexically, or p itself if it
+// is not a symlink.
 func (l *Linker) resolved(p string) string {
 	target, err := l.Root.Readlink(p)
 	if err != nil {
@@ -112,9 +109,6 @@ func (l *Linker) realpath(p string) (string, bool) {
 	return "", false
 }
 
-// remove deletes a file, a symlink or an empty directory, like Pathname#delete.
-func (l *Linker) remove(p string) error { return l.Root.Remove(p) }
-
 // rmdirIfPossible removes an empty directory, or one that holds only a
 // .DS_Store, and does nothing otherwise.
 func (l *Linker) rmdirIfPossible(dir string) {
@@ -141,9 +135,8 @@ func (l *Linker) Linked(k Keg) bool {
 	return err == nil && fi.IsDir() && l.resolved(k.record()) == k.path()
 }
 
-// makeRelativeSymlink makes dst a relative symlink to src, which is relative to
-// the prefix like dst. A link that already points there is left alone, and a
-// dangling link in the way is replaced.
+// makeRelativeSymlink links dst to src. A link that already points there is
+// left alone and a dangling one in the way is replaced.
 func (l *Linker) makeRelativeSymlink(dst, src string) error {
 	if l.isSymlink(dst) && l.resolved(dst) == src {
 		return nil
@@ -161,7 +154,7 @@ func (l *Linker) makeRelativeSymlink(dst, src string) error {
 		case l.exists(dst):
 			return &ConflictError{Dst: dst, Src: src, Owner: l.owner(dst)}
 		case l.isSymlink(dst): // dangling
-			if err := l.remove(dst); err != nil {
+			if err := l.Root.Remove(dst); err != nil {
 				return &LinkError{Dst: dst, Src: src, Err: err}
 			}
 		default:
@@ -235,7 +228,7 @@ func (l *Linker) Optlink(k Keg) error {
 
 func (l *Linker) replaceRecord(record, kegPath string) error {
 	if l.isSymlink(record) || l.exists(record) {
-		if err := l.remove(record); err != nil {
+		if err := l.Root.Remove(record); err != nil {
 			return &LinkError{Dst: record, Src: kegPath, Err: err}
 		}
 	}
@@ -291,17 +284,16 @@ func (l *Linker) removeAliasSymlink(alias, match string, matchParent bool) error
 			real = path.Dir(real)
 		}
 		if matchReal, ok := l.realpath(match); ok && real == matchReal {
-			return l.remove(alias)
+			return l.Root.Remove(alias)
 		}
 	case l.isSymlink(alias) || l.exists(alias):
-		return l.remove(alias)
+		return l.Root.Remove(alias)
 	}
 	return nil
 }
 
-// Unlink removes the symlinks in the prefix that lead into the keg, then the
-// directories that held nothing else, apart from the standard ones, and the
-// linked record. The opt record stays.
+// Unlink removes the symlinks that lead into the keg, then emptied directories
+// (except the standard ones) and the linked record. The opt record stays.
 func (l *Linker) Unlink(k Keg) error {
 	var dirs []string
 	for _, d := range unlinkDirs {
@@ -318,7 +310,7 @@ func (l *Linker) Unlink(k Keg) error {
 			if !l.isSymlink(dst) || l.resolved(dst) != src {
 				return true
 			}
-			if err := l.remove(dst); err != nil {
+			if err := l.Root.Remove(dst); err != nil {
 				walkErr = fmt.Errorf("unlinking %s: %w", dst, err)
 				return false
 			}
@@ -332,7 +324,7 @@ func (l *Linker) Unlink(k Keg) error {
 		return err
 	}
 	if l.Linked(k) {
-		if err := l.remove(k.record()); err != nil {
+		if err := l.Root.Remove(k.record()); err != nil {
 			return err
 		}
 		l.rmdirIfPossible(path.Dir(k.record()))
@@ -345,9 +337,9 @@ func (l *Linker) Unlink(k Keg) error {
 	return nil
 }
 
-// walk visits the entries below root, and root first if withRoot, in sorted
-// order and parents before their contents. The callback says whether to go into
-// a directory. Symlinks are never followed.
+// walk visits the entries below root (and root first if withRoot) in sorted
+// order, parents first. visit says whether to go into a directory. Symlinks are
+// never followed.
 func (l *Linker) walk(root string, withRoot bool, visit func(p string, isDir bool) (descend bool)) {
 	if withRoot {
 		fi, err := l.Root.Lstat(root)
