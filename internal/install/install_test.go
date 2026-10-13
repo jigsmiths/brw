@@ -883,3 +883,154 @@ func TestUpgradeUpdatesTheSBOMToo(t *testing.T) {
 		t.Errorf("the SBOM:\n%s", got)
 	}
 }
+
+// installCurrent installs jq 1.0, linked or not, and returns an item that reinstalls it.
+func (e *env) installCurrent(linked bool) Item {
+	e.t.Helper()
+	if _, err := e.install(e.item(jq, true, !linked, nil)); err != nil {
+		e.t.Fatal(err)
+	}
+	kegs, err := cellar.Prefix(e.prefix).Kegs()
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	it := e.item(jq, true, false, nil)
+	it.Upgrade, it.Linked, it.Reinstall = kegs, &linked, true
+	return it
+}
+
+func TestReinstallPutsTheOldKegAsideAndPoursAgain(t *testing.T) {
+	e := newEnv(t)
+	it := e.installCurrent(true)
+	if err := os.WriteFile(filepath.Join(e.prefix, "Cellar/jq/1.0/bin/jq"), []byte("damaged"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e.log.Reset()
+	results, err := e.install(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || !results[0].Reinstalled || results[0].OldVersion != "1.0" || !results[0].Linked || results[0].Err != nil {
+		t.Fatalf("results = %+v", results)
+	}
+	if e.read("Cellar/jq/1.0/bin/jq") != "#!/bin/sh\necho jq" {
+		t.Error("the keg was not poured afresh")
+	}
+	if e.exists("Cellar/jq/1.0.reinstall") {
+		t.Error("the backup of the old keg should be deleted once the new one is in")
+	}
+	if got := e.readlink("bin/jq"); got != "../Cellar/jq/1.0/bin/jq" {
+		t.Errorf("bin/jq -> %s", got)
+	}
+	if got := e.readlink("var/homebrew/linked/jq"); got != "../../../Cellar/jq/1.0" {
+		t.Errorf("linked record -> %s", got)
+	}
+	if want := "==> Reinstalling jq\n"; !strings.Contains(e.log.String(), want) || strings.Contains(e.log.String(), "==> Upgrading") {
+		t.Errorf("log = %q", e.log.String())
+	}
+}
+
+func TestReinstallOfAnOutdatedKegReplacesIt(t *testing.T) {
+	e := newEnv(t)
+	it := e.installOld(true, true) // 0.9, linked, to be replaced by 1.0
+	it.Reinstall = true
+	if _, err := e.install(it); err != nil {
+		t.Fatal(err)
+	}
+	if e.exists("Cellar/jq/0.9") || e.exists("Cellar/jq/0.9.reinstall") || !e.exists("Cellar/jq/1.0") {
+		t.Error("the old version should be gone, unlike after an upgrade")
+	}
+	if got := e.readlink("bin/jq"); got != "../Cellar/jq/1.0/bin/jq" {
+		t.Errorf("bin/jq -> %s", got)
+	}
+}
+
+func TestReinstallKeepsAnUnlinkedKegUnlinked(t *testing.T) {
+	e := newEnv(t)
+	it := e.installCurrent(false)
+	results, err := e.install(it)
+	if err != nil || results[0].Linked || e.exists("bin/jq") || e.exists("var/homebrew/linked/jq") {
+		t.Errorf("err = %v, results = %+v", err, results)
+	}
+	if got := e.readlink("opt/jq"); got != "../Cellar/jq/1.0" {
+		t.Errorf("opt/jq -> %s", got)
+	}
+}
+
+// brokenJq is a jq whose archive is unsafe to unpack, so pouring it fails after
+// the old keg was put aside.
+func brokenJq() installtest.Bottle {
+	return installtest.Bottle{Name: "jq", Version: "1.0", Files: []installtest.File{file("../../escape", "x", 0)}}
+}
+
+func TestReinstallThatFailsRestoresTheOldKegAndLinksIt(t *testing.T) {
+	e := newEnv(t)
+	it := e.installCurrent(true)
+	if err := os.WriteFile(filepath.Join(e.prefix, "Cellar/jq/1.0/bin/jq"), []byte("the old one"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	broken := e.item(brokenJq(), true, false, nil)
+	broken.Upgrade, broken.Linked, broken.Reinstall = it.Upgrade, it.Linked, true
+	if _, err := e.install(broken); err == nil {
+		t.Fatal("the unsafe archive should fail")
+	}
+	if e.read("Cellar/jq/1.0/bin/jq") != "the old one" || e.exists("Cellar/jq/1.0.reinstall") {
+		t.Error("the old keg should be back where it was, and nothing left over")
+	}
+	for link, want := range map[string]string{"bin/jq": "../Cellar/jq/1.0/bin/jq", "opt/jq": "../Cellar/jq/1.0", "var/homebrew/linked/jq": "../../../Cellar/jq/1.0"} {
+		if got := e.readlink(link); got != want {
+			t.Errorf("%s -> %s, want %s", link, got, want)
+		}
+	}
+}
+
+func TestReinstallThatFailsLeavesAnUnlinkedKegUnlinked(t *testing.T) {
+	e := newEnv(t)
+	it := e.installCurrent(false)
+	broken := e.item(brokenJq(), true, false, nil)
+	broken.Upgrade, broken.Linked, broken.Reinstall = it.Upgrade, it.Linked, true
+	if _, err := e.install(broken); err == nil {
+		t.Fatal("expected a failure")
+	}
+	if !e.exists("Cellar/jq/1.0/bin/jq") || e.exists("bin/jq") || e.exists("var/homebrew/linked/jq") {
+		t.Error("the keg should be back, and still not linked")
+	}
+}
+
+func TestReinstallReplacesALeftoverBackup(t *testing.T) {
+	e := newEnv(t)
+	it := e.installCurrent(true)
+	stale := filepath.Join(e.prefix, "Cellar/jq/1.0.reinstall/bin")
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "old"), []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(stale, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.install(it); err != nil {
+		t.Fatal(err)
+	}
+	if e.exists("Cellar/jq/1.0.reinstall") {
+		t.Error("a leftover backup from an earlier run is replaced and then deleted")
+	}
+}
+
+func TestReinstallLeavesOtherKegsAlone(t *testing.T) {
+	e := newEnv(t)
+	older := installtest.Bottle{Name: "jq", Version: "0.8", Files: []installtest.File{file("bin/jq", "older", 0o755)}}
+	if _, err := e.install(e.item(older, true, true, nil)); err != nil { // an old keg-only one
+		t.Fatal(err)
+	}
+	it := e.installOld(true, true)
+	kegs, _ := cellar.Prefix(e.prefix).Kegs()
+	it.Upgrade, it.Reinstall = kegs, true
+	if _, err := e.install(it); err != nil {
+		t.Fatal(err)
+	}
+	if !e.exists("Cellar/jq/0.8/bin/jq") || e.exists("Cellar/jq/0.9") || !e.exists("Cellar/jq/1.0") {
+		t.Error("only the keg in use is replaced; 0.8 is for cleanup to remove")
+	}
+}
