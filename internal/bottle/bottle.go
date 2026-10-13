@@ -36,6 +36,9 @@ type Request struct {
 type Result struct {
 	Path string          // the tarball
 	Tab  json.RawMessage // the sh.brew.tab annotation of the bottle's manifest
+	// SBOMSupplement is the sh.brew.sbom.supplement annotation of the manifest,
+	// empty when it has none.
+	SBOMSupplement json.RawMessage
 }
 
 // Fetcher downloads bottles into Dir, keeping them for the next install.
@@ -74,52 +77,67 @@ func (r Request) stem() string {
 }
 
 // Fetch returns the bottle, downloading it unless a copy that still matches its
-// checksum is in the cache.
+// checksum is in the cache. What the manifest says about it is kept beside it, so
+// a cached bottle needs no request; an entry that lacks that is completed from
+// the manifest alone.
 func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
-	path := filepath.Join(f.Dir, req.stem()+".tar.gz")
-	tabPath := filepath.Join(f.Dir, req.stem()+".tab.json")
-	if res, ok := f.cached(path, tabPath, req.File.SHA256); ok {
-		return res, nil
+	stem := filepath.Join(f.Dir, req.stem())
+	path, tabPath, suppPath := stem+".tar.gz", stem+".tab.json", stem+".sbom.json"
+	haveBottle := verified(path, req.File.SHA256)
+	if haveBottle {
+		tab, errTab := os.ReadFile(tabPath)
+		supp, errSupp := os.ReadFile(suppPath)
+		if errTab == nil && errSupp == nil {
+			return Result{Path: path, Tab: tab, SBOMSupplement: supp}, nil
+		}
 	}
 
-	tab, err := f.tab(ctx, req)
+	ann, err := f.annotations(ctx, req)
 	if err != nil {
 		return Result{}, err
 	}
 	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
 		return Result{}, err
 	}
-	if err := f.download(ctx, req.File, path); err != nil {
+	if !haveBottle {
+		if err := f.download(ctx, req.File, path); err != nil {
+			return Result{}, err
+		}
+	}
+	if err := writeAtomic(tabPath, ann.tab); err != nil {
 		return Result{}, err
 	}
-	if err := writeAtomic(tabPath, tab); err != nil {
+	if err := writeAtomic(suppPath, ann.supplement); err != nil {
 		return Result{}, err
 	}
-	return Result{Path: path, Tab: tab}, nil
+	return Result{Path: path, Tab: ann.tab, SBOMSupplement: ann.supplement}, nil
 }
 
-func (f *Fetcher) cached(path, tabPath, want string) (Result, bool) {
-	tab, err := os.ReadFile(tabPath)
-	if err != nil {
-		return Result{}, false
-	}
+// verified says whether the file is there and has the checksum.
+func verified(path, want string) bool {
 	file, err := os.Open(path)
 	if err != nil {
-		return Result{}, false
+		return false
 	}
 	defer func() { _ = file.Close() }()
 	h := sha256.New()
-	if _, err := io.Copy(h, file); err != nil || hex.EncodeToString(h.Sum(nil)) != want {
-		return Result{}, false
+	if _, err := io.Copy(h, file); err != nil {
+		return false
 	}
-	return Result{Path: path, Tab: tab}, true
+	return hex.EncodeToString(h.Sum(nil)) == want
 }
 
-// tab finds the manifest of this bottle in the image index and returns its sh.brew.tab.
-func (f *Fetcher) tab(ctx context.Context, req Request) (json.RawMessage, error) {
+// annotations are the parts of a bottle's manifest we keep.
+type annotations struct {
+	tab        json.RawMessage // sh.brew.tab
+	supplement json.RawMessage // sh.brew.sbom.supplement, possibly empty
+}
+
+// annotations finds the manifest of this bottle in the image index.
+func (f *Fetcher) annotations(ctx context.Context, req Request) (annotations, error) {
 	base, _, ok := strings.Cut(req.File.URL, "/blobs/")
 	if !ok {
-		return nil, fmt.Errorf("%s: %q is not a bottle blob URL", req.Name, req.File.URL)
+		return annotations{}, fmt.Errorf("%s: %q is not a bottle blob URL", req.Name, req.File.URL)
 	}
 	tag := req.PkgVersion
 	if req.Rebuild > 0 {
@@ -127,7 +145,7 @@ func (f *Fetcher) tab(ctx context.Context, req Request) (json.RawMessage, error)
 	}
 	resp, err := f.get(ctx, base+"/manifests/"+tag, "application/vnd.oci.image.index.v1+json")
 	if err != nil {
-		return nil, fmt.Errorf("%s manifest: %w", req.Name, err)
+		return annotations{}, fmt.Errorf("%s manifest: %w", req.Name, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	var index struct {
@@ -136,16 +154,16 @@ func (f *Fetcher) tab(ctx context.Context, req Request) (json.RawMessage, error)
 		} `json:"manifests"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&index); err != nil {
-		return nil, fmt.Errorf("%s manifest: %w", req.Name, err)
+		return annotations{}, fmt.Errorf("%s manifest: %w", req.Name, err)
 	}
 	for _, m := range index.Manifests {
 		if m.Annotations["sh.brew.bottle.digest"] == req.File.SHA256 {
 			if tab := m.Annotations["sh.brew.tab"]; tab != "" {
-				return json.RawMessage(tab), nil
+				return annotations{tab: json.RawMessage(tab), supplement: json.RawMessage(m.Annotations["sh.brew.sbom.supplement"])}, nil
 			}
 		}
 	}
-	return nil, fmt.Errorf("%s: no manifest matches the bottle checksum %s", req.Name, req.File.SHA256)
+	return annotations{}, fmt.Errorf("%s: no manifest matches the bottle checksum %s", req.Name, req.File.SHA256)
 }
 
 func (f *Fetcher) download(ctx context.Context, file api.BottleFile, path string) error {

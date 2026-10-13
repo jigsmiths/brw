@@ -247,3 +247,35 @@ func TestInstallRunsPostInstallAndReportsFailures(t *testing.T) {
 		t.Errorf("stderr = %q", w)
 	}
 }
+
+func TestSBOMCreatorNamesBrwWithItsVersionOrCommit(t *testing.T) {
+	const base = "Tool: https://github.com/jigsmiths/brw"
+	for _, tt := range []struct{ version, revision, want string }{
+		{"v0.3.1", "abcdef1234567", base + "@v0.3.1"},
+		{"(devel)", "abcdef1234567", base + "@abcdef1"},
+		{"", "abcdef1234567", base + "@abcdef1"},
+		{"(devel)", "abc", base},
+		{"", "", base},
+	} {
+		if got := sbomCreatorFor(tt.version, tt.revision); got != tt.want {
+			t.Errorf("sbomCreatorFor(%q, %q) = %q, want %q", tt.version, tt.revision, got, tt.want)
+		}
+	}
+	if got := sbomCreator(); !strings.HasPrefix(got, base) {
+		t.Errorf("sbomCreator() = %q", got)
+	}
+}
+
+func TestInstallWritesBrwIntoTheSBOM(t *testing.T) {
+	s := newStore(t)
+	sbom := `{"creationInfo":{"created":"2026-10-01T00:00:00Z","creators":["Tool: https://github.com/Homebrew/brew"]},"packages":[]}`
+	s.formula(installtest.Bottle{Name: "app", Version: "1.0", Files: []installtest.File{file("bin/app", "app", 0o755), file("sbom.spdx.json", sbom, 0)}}, nil, nil)
+	e, prefix := s.env()
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "app"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(prefix, "Cellar/app/1.0/sbom.spdx.json"))
+	if err != nil || !strings.Contains(string(b), "Tool: https://github.com/jigsmiths/brw") || strings.Contains(string(b), "2026-10-01") {
+		t.Errorf("the SBOM = %s, %v", b, err)
+	}
+}

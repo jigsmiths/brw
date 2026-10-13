@@ -6,9 +6,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -778,5 +780,106 @@ func TestUpgradeNamesTheKegInUseAndLeavesEveryOldKegUnlinked(t *testing.T) {
 	}
 	if got := e.readlink("bin/jq"); got != "../Cellar/jq/1.0/bin/jq" {
 		t.Errorf("bin/jq -> %s", got)
+	}
+}
+
+// shippedSBOM is the SBOM a bottle carries, as the build left it.
+const shippedSBOM = `{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "creationInfo": {
+    "created": "2026-10-01T00:00:00Z",
+    "creators": [
+      "Tool: https://github.com/Homebrew/brew"
+    ]
+  },
+  "packages": [
+    {
+      "name": "jq"
+    }
+  ]
+}`
+
+func sbomBottle(supplement string) installtest.Bottle {
+	b := jq
+	b.Files = append(slices.Clone(jq.Files), file("sbom.spdx.json", shippedSBOM, 0))
+	b.SBOMSupplement = supplement
+	return b
+}
+
+func TestInstallUpdatesTheSBOMOfTheBottle(t *testing.T) {
+	e := newEnv(t)
+	e.in.SBOMCreator = "Tool: https://github.com/jigsmiths/brw@test"
+	if _, err := e.install(e.item(sbomBottle(`{"packages":[{"name":"extra"}]}`), true, false, nil)); err != nil {
+		t.Fatal(err)
+	}
+	got := e.read("Cellar/jq/1.0/sbom.spdx.json")
+	for _, want := range []string{`"created": "2026-10-12T12:00:00Z"`, `"Tool: https://github.com/jigsmiths/brw@test"`, `"name": "jq"`, `"name": "extra"`, `"SPDXID": "SPDXRef-DOCUMENT"`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the SBOM lacks %s:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "2026-10-01") || strings.HasSuffix(got, "\n") {
+		t.Errorf("the old time stayed, or a newline was added:\n%s", got)
+	}
+	// The time is the one in the receipt.
+	if r := e.read("Cellar/jq/1.0/INSTALL_RECEIPT.json"); !strings.Contains(r, fmt.Sprintf(`"time": %d`, fixedTime.Unix())) {
+		t.Errorf("receipt: %s", r)
+	}
+	if fi, err := os.Stat(filepath.Join(e.prefix, "Cellar/jq/1.0/sbom.spdx.json")); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %v, %v", fi.Mode(), err)
+	}
+}
+
+func TestInstallTakesTheSupplementOfTheBottleTag(t *testing.T) {
+	e := newEnv(t)
+	supp := `{"tags":{"arm64_tahoe":{"packages":[{"name":"for-tahoe"}]},"x86_64_linux":{"packages":[{"name":"for-linux"}]}}}`
+	if _, err := e.install(e.item(sbomBottle(supp), true, false, nil)); err != nil {
+		t.Fatal(err)
+	}
+	got := e.read("Cellar/jq/1.0/sbom.spdx.json")
+	if !strings.Contains(got, "for-tahoe") || strings.Contains(got, "for-linux") {
+		t.Errorf("the SBOM:\n%s", got)
+	}
+}
+
+func TestInstallNamesBrwAsTheCreatorByDefault(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.install(e.item(sbomBottle(""), true, false, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.read("Cellar/jq/1.0/sbom.spdx.json"); !strings.Contains(got, `"Tool: https://github.com/jigsmiths/brw"`) {
+		t.Errorf("the SBOM:\n%s", got)
+	}
+}
+
+func TestInstallLeavesABottleWithoutAnSBOMAndAnUnreadableOneAlone(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.install(e.item(jq, true, false, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if e.exists("Cellar/jq/1.0/sbom.spdx.json") {
+		t.Error("an SBOM appeared from nowhere")
+	}
+	broken := jq
+	broken.Name = "broken"
+	broken.Files = []installtest.File{file("sbom.spdx.json", "{not json", 0), file("bin/broken", "x", 0o755)}
+	if _, err := e.install(e.item(broken, true, false, nil)); err != nil {
+		t.Fatalf("an unreadable SBOM must not fail the install: %v", err)
+	}
+	if got := e.read("Cellar/broken/1.0/sbom.spdx.json"); got != "{not json" {
+		t.Errorf("the SBOM = %q", got)
+	}
+}
+
+func TestUpgradeUpdatesTheSBOMToo(t *testing.T) {
+	e := newEnv(t)
+	old := e.installOld(true, true)
+	upgrade := e.item(sbomBottle(`{"packages":[{"name":"extra"}]}`), true, false, nil)
+	upgrade.Upgrade, upgrade.Linked = old.Upgrade, old.Linked
+	if _, err := e.install(upgrade); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.read("Cellar/jq/1.0/sbom.spdx.json"); !strings.Contains(got, "extra") || !strings.Contains(got, "2026-10-12T12:00:00Z") {
+		t.Errorf("the SBOM:\n%s", got)
 	}
 }

@@ -39,6 +39,7 @@ type registry struct {
 	maxInFlight atomic.Int32
 	delay       time.Duration
 	failBlob    int
+	supplement  string // the sh.brew.sbom.supplement annotation of the matching manifest, if any
 }
 
 func newRegistry(t *testing.T, body string) *registry {
@@ -73,9 +74,13 @@ func newRegistry(t *testing.T, body string) *registry {
 				http.Error(w, "wrong accept", http.StatusNotAcceptable)
 				return
 			}
+			matching := map[string]string{"sh.brew.bottle.digest": r.sum, "sh.brew.tab": tabJSON}
+			if r.supplement != "" {
+				matching["sh.brew.sbom.supplement"] = r.supplement
+			}
 			index := map[string]any{"manifests": []map[string]any{
-				{"annotations": map[string]string{"sh.brew.bottle.digest": strings.Repeat("0", 64), "sh.brew.tab": `{"wrong":true}`}},
-				{"annotations": map[string]string{"sh.brew.bottle.digest": r.sum, "sh.brew.tab": tabJSON}},
+				{"annotations": map[string]string{"sh.brew.bottle.digest": strings.Repeat("0", 64), "sh.brew.tab": `{"wrong":true}`, "sh.brew.sbom.supplement": `{"wrong":true}`}},
+				{"annotations": matching},
 			}}
 			_ = json.NewEncoder(w).Encode(index)
 		case strings.Contains(req.URL.Path, "/blobs/"):
@@ -260,5 +265,81 @@ func TestFetchAllReportsEveryFailure(t *testing.T) {
 	}
 	if errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "bad") {
 		t.Errorf("the cancellation hid the real error: %v", err)
+	}
+}
+
+const supplementJSON = `{"packages":[{"name":"extra"}]}`
+
+func TestFetchReturnsTheSBOMSupplementOfTheMatchingManifest(t *testing.T) {
+	r := newRegistry(t, "bottle bytes")
+	r.supplement = supplementJSON
+	f := fetcher(t)
+	first, err := f.Fetch(context.Background(), r.request("jq"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.Fetch(context.Background(), r.request("jq"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first.SBOMSupplement) != supplementJSON || string(second.SBOMSupplement) != supplementJSON {
+		t.Errorf("supplements = %q, %q", first.SBOMSupplement, second.SBOMSupplement)
+	}
+	if r.manifests.Load() != 1 || r.blobs.Load() != 1 {
+		t.Errorf("manifests %d, blobs %d: the cached supplement needs no requests", r.manifests.Load(), r.blobs.Load())
+	}
+}
+
+func TestFetchRemembersThatABottleHasNoSupplement(t *testing.T) {
+	r := newRegistry(t, "bottle bytes")
+	f := fetcher(t)
+	for range 2 {
+		res, err := f.Fetch(context.Background(), r.request("jq"))
+		if err != nil || len(res.SBOMSupplement) != 0 {
+			t.Fatalf("res = %+v, err = %v", res, err)
+		}
+	}
+	if r.manifests.Load() != 1 {
+		t.Errorf("manifests = %d: no supplement is a fact worth caching", r.manifests.Load())
+	}
+}
+
+func TestFetchFillsInAnOlderCacheEntryWithoutDownloadingTheBottleAgain(t *testing.T) {
+	r := newRegistry(t, "bottle bytes")
+	r.supplement = supplementJSON
+	f := fetcher(t)
+	res, err := f.Fetch(context.Background(), r.request("jq"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What an earlier brw left: the bottle and its tab, no supplement.
+	if err := os.Remove(strings.TrimSuffix(res.Path, ".tar.gz") + ".sbom.json"); err != nil {
+		t.Fatal(err)
+	}
+	res, err = f.Fetch(context.Background(), r.request("jq"))
+	if err != nil || string(res.SBOMSupplement) != supplementJSON {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if r.manifests.Load() != 2 || r.blobs.Load() != 1 {
+		t.Errorf("manifests %d, blobs %d: the manifest is read again, the bottle is not downloaded again", r.manifests.Load(), r.blobs.Load())
+	}
+	if _, err := f.Fetch(context.Background(), r.request("jq")); err != nil || r.manifests.Load() != 2 {
+		t.Errorf("the entry is complete now: manifests = %d, err = %v", r.manifests.Load(), err)
+	}
+}
+
+func TestFetchFillsInAMissingTabWithoutDownloadingTheBottleAgain(t *testing.T) {
+	r := newRegistry(t, "bottle bytes")
+	f := fetcher(t)
+	res, err := f.Fetch(context.Background(), r.request("jq"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(strings.TrimSuffix(res.Path, ".tar.gz") + ".tab.json"); err != nil {
+		t.Fatal(err)
+	}
+	res, err = f.Fetch(context.Background(), r.request("jq"))
+	if err != nil || string(res.Tab) != tabJSON || r.blobs.Load() != 1 {
+		t.Errorf("res = %+v, err = %v, blobs = %d", res, err, r.blobs.Load())
 	}
 }

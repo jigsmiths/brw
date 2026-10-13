@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/bottle"
@@ -93,6 +94,8 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 		APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+hostTag+".jws.json"),
 		Log:     e.out,
 		User:    os.Getenv("USER"),
+
+		SBOMCreator: sbomCreator(),
 	}
 	for _, opt := range opts {
 		opt(in)
@@ -130,6 +133,34 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 		problems = append(problems, fmt.Errorf("%d of %d formulae installed but their post_install did not complete", postFailed, len(results)))
 	}
 	return errors.Join(problems...)
+}
+
+// sbomCreator names brw in the SBOMs of what it installs.
+func sbomCreator() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return sbomCreatorFor("", "")
+	}
+	revision := ""
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" {
+			revision = setting.Value
+		}
+	}
+	return sbomCreatorFor(info.Main.Version, revision)
+}
+
+// sbomCreatorFor adds the version brw was installed as, or else the start of the
+// commit it was built from, when there is one.
+func sbomCreatorFor(version, revision string) string {
+	const creator = "Tool: https://github.com/jigsmiths/brw"
+	switch {
+	case version != "" && version != "(devel)":
+		return creator + "@" + version
+	case len(revision) >= 7:
+		return creator + "@" + revision[:7]
+	}
+	return creator
 }
 
 // printCaveats shows the keg-only notices and the caveats of what was installed.

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"path"
 	"runtime"
 	"slices"
@@ -20,6 +21,7 @@ import (
 	"github.com/jigsmiths/brw/internal/lock"
 	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/relocate"
+	"github.com/jigsmiths/brw/internal/sbom"
 )
 
 // Installer carries out a Plan in the prefix that Root is open on.
@@ -36,6 +38,9 @@ type Installer struct {
 	Log     io.Writer
 	OS      string // for the post_install guards; runtime.GOOS if empty
 	User    string // for {{user}} in post_install steps
+	// SBOMCreator names the tool in the SBOM of what it pours, for example
+	// "Tool: https://github.com/jigsmiths/brw@abc1234".
+	SBOMCreator string
 
 	// KeepGoing records a formula's failure in its Result and carries on with the
 	// next, as an upgrade of many formulae does.
@@ -191,6 +196,9 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	if err := in.relocate(it, staged, receipt); err != nil {
 		return Result{}, err
 	}
+	if err := in.updateSBOM(staged, it, res, time.Unix(receipt.Time, 0)); err != nil {
+		return Result{}, err
+	}
 
 	rack := path.Join("Cellar", f.Name)
 	madeRack := !in.exists(rack)
@@ -265,6 +273,28 @@ func (in *Installer) leaveOldKegs(it Item) (old string, restore func(), err erro
 		}
 	}
 	return current.Version, restore, nil
+}
+
+// updateSBOM gives the SBOM in the staged keg the time and tool of this pour and
+// the supplement of the bottle's manifest, as brew does. A bottle without an
+// SBOM, or with one that cannot be read, is left as it is.
+func (in *Installer) updateSBOM(staged string, it Item, res bottle.Result, when time.Time) error {
+	file := path.Join(staged, sbom.File)
+	data, err := in.Root.ReadFile(file)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	out, ok := sbom.Update(data, sbom.Params{
+		Created: when, Creator: cmp.Or(in.SBOMCreator, "Tool: https://github.com/jigsmiths/brw"),
+		Supplement: res.SBOMSupplement, Tag: it.Tag,
+	})
+	if !ok {
+		return nil
+	}
+	return in.Root.Replace(file, out)
 }
 
 func (in *Installer) now() time.Time {
