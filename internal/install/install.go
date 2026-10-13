@@ -61,8 +61,9 @@ type Result struct {
 	// PostInstallErr is why the post_install steps failed. The keg stays, as in brew.
 	PostInstallErr error
 
-	Upgraded   bool
-	OldVersion string // the version an upgrade replaced
+	Upgraded    bool
+	Reinstalled bool
+	OldVersion  string // the version an upgrade or reinstall replaced
 	// Err is why the formula was not installed, when the installer is told to
 	// keep going after a failure.
 	Err error
@@ -155,15 +156,16 @@ func (in *Installer) lockAll(items []Item) (unlock func() error, err error) {
 
 func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error) {
 	f := it.Formula
-	oldVersion := ""
+	var old *oldKegs
 	if len(it.Upgrade) > 0 {
-		var restore func()
-		if oldVersion, restore, err = in.leaveOldKegs(it); err != nil {
+		if old, err = in.leaveOldKegs(it); err != nil {
 			return Result{}, err
 		}
 		defer func() {
 			if err != nil {
-				restore()
+				old.restore()
+			} else {
+				old.commit()
 			}
 		}()
 	}
@@ -213,7 +215,10 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 		return Result{}, err
 	}
 
-	result = Result{Name: f.Name, Version: it.PkgVersion, Upgraded: len(it.Upgrade) > 0, OldVersion: oldVersion}
+	result = Result{Name: f.Name, Version: it.PkgVersion}
+	if old != nil {
+		result.Upgraded, result.Reinstalled, result.OldVersion = !it.Reinstall, it.Reinstall, old.version
+	}
 	if abs, err := in.Root.Abs(keg); err == nil {
 		result.Size, _ = cellar.Keg{Path: abs}.Abv()
 		in.logf("    %s: %s", abs, result.Size)
@@ -242,14 +247,25 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	return result, nil
 }
 
-// leaveOldKegs says an upgrade is starting and unlinks the old kegs, so they
-// cannot get in the way of the new one. The function it returns links the old
-// keg again, for when the upgrade fails.
-func (in *Installer) leaveOldKegs(it Item) (old string, restore func(), err error) {
+// oldKegs is what an upgrade or reinstall does with the kegs it replaces.
+type oldKegs struct {
+	version string
+	restore func() // puts things back when the new keg could not be poured
+	commit  func() // finishes with the old keg once the new one is in
+}
+
+// leaveOldKegs says an upgrade or reinstall is starting and unlinks the old
+// kegs, so they cannot get in the way of the new one. A reinstall also sets the
+// keg in use aside, to be deleted once the new one is in and put back if not.
+func (in *Installer) leaveOldKegs(it Item) (*oldKegs, error) {
 	f := it.Formula
 	current := cellar.Prefix(in.Prefix).DefaultKeg(it.Upgrade)
-	in.logf("==> Upgrading %s", f.Name)
-	in.logf("  %s -> %s", current.Version, it.PkgVersion)
+	if it.Reinstall {
+		in.logf("==> Reinstalling %s", f.Name)
+	} else {
+		in.logf("==> Upgrading %s", f.Name)
+		in.logf("  %s -> %s", current.Version, it.PkgVersion)
+	}
 	keg := func(k cellar.Keg) link.Keg {
 		lk := link.Keg{Name: k.Name, Version: k.Version}
 		if k.Receipt != nil {
@@ -258,7 +274,7 @@ func (in *Installer) leaveOldKegs(it Item) (old string, restore func(), err erro
 		return lk
 	}
 	wasLinked := it.Linked != nil && *it.Linked
-	restore = func() {
+	relink := func() {
 		if !wasLinked {
 			return
 		}
@@ -268,11 +284,40 @@ func (in *Installer) leaveOldKegs(it Item) (old string, restore func(), err erro
 	}
 	for _, k := range it.Upgrade {
 		if err := in.Linker.Unlink(keg(k)); err != nil {
-			restore()
-			return "", nil, fmt.Errorf("unlinking %s %s: %w", k.Name, k.Version, err)
+			relink()
+			return nil, fmt.Errorf("unlinking %s %s: %w", k.Name, k.Version, err)
 		}
 	}
-	return current.Version, restore, nil
+	old := &oldKegs{version: current.Version, restore: relink, commit: func() {}}
+	if !it.Reinstall {
+		return old, nil
+	}
+
+	kegPath := path.Join("Cellar", f.Name, current.Version)
+	backup := kegPath + ".reinstall"
+	if in.exists(backup) { // left by an earlier run
+		if err := in.Root.RemoveKeg(backup); err != nil {
+			relink()
+			return nil, fmt.Errorf("removing the old backup %s: %w", backup, err)
+		}
+	}
+	if err := in.Root.Rename(kegPath, backup); err != nil {
+		relink()
+		return nil, fmt.Errorf("setting %s aside: %w", kegPath, err)
+	}
+	old.restore = func() {
+		if err := in.Root.Rename(backup, kegPath); err != nil {
+			in.logf("brw: could not put %s back: %v", kegPath, err)
+			return
+		}
+		relink()
+	}
+	old.commit = func() {
+		if err := in.Root.RemoveKeg(backup); err != nil {
+			in.logf("brw: could not remove %s: %v; brw cleanup will", backup, err)
+		}
+	}
+	return old, nil
 }
 
 // updateSBOM gives the SBOM in the staged keg the time and tool of this pour and

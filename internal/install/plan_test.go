@@ -460,3 +460,76 @@ func TestPlanUpgradeMergesSharedNewDependenciesOnceWhenOneFormulaFails(t *testin
 		t.Errorf("plan = %v, errs = %v", got, errs)
 	}
 }
+
+func TestPlanReinstallPlansAFormulaWhoseCurrentVersionIsInstalled(t *testing.T) {
+	idx := index(t, f("app"), f("other"))
+	p := upgradePlanner(t, idx, true, onRequest(keg("app", "1.0")), keg("other", "1.0"))
+	plan, errs := p.PlanReinstall([]string{"app", "other"})
+	if len(errs) != 0 || !slices.Equal(names(plan), []string{"app", "other"}) {
+		t.Fatalf("plan = %v, errs = %v", names(plan), errs)
+	}
+	for _, it := range plan.Items {
+		if !it.Reinstall || len(it.Upgrade) != 1 || it.Upgrade[0].Version != "1.0" || it.Linked == nil || !*it.Linked {
+			t.Errorf("%s: %+v", it.Formula.Name, it)
+		}
+	}
+	if !plan.Items[0].OnRequest || plan.Items[1].OnRequest {
+		t.Errorf("each keeps what its receipt said: %v, %v", plan.Items[0].OnRequest, plan.Items[1].OnRequest)
+	}
+}
+
+func TestPlanReinstallOfAnOutdatedFormulaIsAnUpgradeToo(t *testing.T) {
+	plan, errs := upgradePlanner(t, index(t, f("app")), false, keg("app", "0.9")).PlanReinstall([]string{"app"})
+	if len(errs) != 0 || plan.Items[0].PkgVersion != "1.0" || !plan.Items[0].Reinstall || plan.Items[0].Upgrade[0].Version != "0.9" {
+		t.Fatalf("errs = %v, item = %+v", errs, plan.Items[0])
+	}
+	if plan.Items[0].Linked == nil || *plan.Items[0].Linked {
+		t.Error("it was not linked, so it stays unlinked")
+	}
+}
+
+func TestPlanReinstallOfAFormulaThatIsNotInstalledIsAPlainInstall(t *testing.T) {
+	plan, errs := upgradePlanner(t, index(t, f("app", "lib"), f("lib")), true).PlanReinstall([]string{"app"})
+	if len(errs) != 0 || !slices.Equal(names(plan), []string{"lib", "app"}) {
+		t.Fatalf("plan = %v, errs = %v", names(plan), errs)
+	}
+	for _, it := range plan.Items {
+		if it.Reinstall || it.Upgrade != nil || it.Linked != nil {
+			t.Errorf("%s has nothing to reinstall: %+v", it.Formula.Name, it)
+		}
+	}
+	if !plan.Items[1].OnRequest || plan.Items[0].OnRequest {
+		t.Error("the named formula is on request, its dependency is not")
+	}
+}
+
+func TestPlanReinstallKeepsOrderAndReportsFailuresOneByOne(t *testing.T) {
+	noBottle := with(f("bad"), "bottle", map[string]any{"stable": map[string]any{"files": map[string]any{"x86_64_linux": map[string]any{}}}})
+	idx := index(t, f("app", "lib"), f("lib"), with(f("vault"), "keg_only", true), noBottle)
+	p := upgradePlanner(t, idx, true, keg("app", "1.0"), keg("lib", "1.0"), keg("vault", "1.0"), keg("bad", "1.0"))
+	plan, errs := p.PlanReinstall([]string{"app", "bad", "vault", "lib"})
+	if got := names(plan); !slices.Equal(got, []string{"vault", "lib", "app"}) || len(errs) != 1 || !errors.Is(errs[0], ErrNoBottle) {
+		t.Errorf("plan = %v, errs = %v", got, errs)
+	}
+	for _, it := range plan.Items {
+		if !it.Reinstall || len(it.Upgrade) != 1 {
+			t.Errorf("%s: one failure must not turn the others into plain installs: %+v", it.Formula.Name, it)
+		}
+	}
+}
+
+func TestPlanReinstallStillRefusesAFormulaFromAnotherTap(t *testing.T) {
+	other := keg("app", "1.0")
+	other.Receipt.Source.Tap = "someone/tap"
+	plan, errs := upgradePlanner(t, index(t, f("app")), true, other).PlanReinstall([]string{"app"})
+	if len(plan.Items) != 0 || len(errs) != 1 || !errors.Is(errs[0], ErrOtherTap) {
+		t.Errorf("plan = %v, errs = %v", names(plan), errs)
+	}
+}
+
+func TestPlanUpgradeIsNotAReinstall(t *testing.T) {
+	plan, errs := upgradePlanner(t, index(t, f("app")), true, keg("app", "0.9")).PlanUpgrade([]string{"app"})
+	if len(errs) != 0 || plan.Items[0].Reinstall {
+		t.Errorf("an upgrade keeps the old keg until cleanup: %+v, %v", plan.Items[0], errs)
+	}
+}
