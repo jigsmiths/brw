@@ -527,6 +527,35 @@ func (r *Root) RemoveKeg(name string) error {
 	return r.log("removekeg %s", rel)
 }
 
+// RemoveStaging deletes something left in the staging area, made writable first
+// like a keg. It refuses anything outside Cellar/.brw-staging.
+func (r *Root) RemoveStaging(name string) error {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(rel, Staging+string(filepath.Separator)) {
+		return fmt.Errorf("%s: not in the staging area", rel)
+	}
+	fi, err := r.root.Lstat(rel)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("%s: not a staging directory", rel)
+	}
+	if r.dry {
+		return r.log("removestaging %s", rel)
+	}
+	if err := r.makeWritable(rel); err != nil {
+		return err
+	}
+	if err := r.root.RemoveAll(rel); err != nil {
+		return err
+	}
+	return r.log("removestaging %s", rel)
+}
+
 // makeWritable gives the owner write access to dir and the directories below it.
 func (r *Root) makeWritable(dir string) error {
 	fi, err := r.root.Lstat(dir)

@@ -827,19 +827,20 @@ func TestDryRunChangesNothingAndSaysWhatItWould(t *testing.T) {
 
 	later := time.Now().Add(time.Hour)
 	for name, fn := range map[string]func() error{
-		"write":     func() error { return r.WriteFile("new/dir/f", []byte("x"), 0o644) },
-		"writefrom": func() error { return r.WriteFrom("Cellar/.brw-staging/x/g", strings.NewReader("x"), 0o644, later) },
-		"symlink":   func() error { return r.Symlink("../file", "bin/new/link") },
-		"mkdir":     func() error { return r.Mkdir("fresh", 0o755) },
-		"mkdirall":  func() error { return r.MkdirAll("a/b/c", 0o755) },
-		"chtimes":   func() error { return r.Chtimes("file", later, later) },
-		"chmod":     func() error { return r.Chmod("file", 0o600) },
-		"link":      func() error { return r.Link("file", "file2") },
-		"rename":    func() error { return r.Rename("file", "moved") },
-		"replace":   func() error { return r.Replace("Cellar/.brw-staging/x/f", []byte("changed")) },
-		"remove":    func() error { return r.Remove("file") },
-		"removeall": func() error { return r.RemoveAll("etc") },
-		"removekeg": func() error { return r.RemoveKeg("Cellar/jq/1.0") },
+		"write":         func() error { return r.WriteFile("new/dir/f", []byte("x"), 0o644) },
+		"writefrom":     func() error { return r.WriteFrom("Cellar/.brw-staging/x/g", strings.NewReader("x"), 0o644, later) },
+		"symlink":       func() error { return r.Symlink("../file", "bin/new/link") },
+		"mkdir":         func() error { return r.Mkdir("fresh", 0o755) },
+		"mkdirall":      func() error { return r.MkdirAll("a/b/c", 0o755) },
+		"chtimes":       func() error { return r.Chtimes("file", later, later) },
+		"chmod":         func() error { return r.Chmod("file", 0o600) },
+		"link":          func() error { return r.Link("file", "file2") },
+		"rename":        func() error { return r.Rename("file", "moved") },
+		"replace":       func() error { return r.Replace("Cellar/.brw-staging/x/f", []byte("changed")) },
+		"remove":        func() error { return r.Remove("file") },
+		"removeall":     func() error { return r.RemoveAll("etc") },
+		"removekeg":     func() error { return r.RemoveKeg("Cellar/jq/1.0") },
+		"removestaging": func() error { return r.RemoveStaging("Cellar/.brw-staging/x") },
 	} {
 		if err := fn(); err != nil {
 			t.Errorf("%s: %v", name, err)
@@ -852,7 +853,7 @@ func TestDryRunChangesNothingAndSaysWhatItWould(t *testing.T) {
 	for _, want := range []string{
 		"would write new/dir/f", "would write Cellar/.brw-staging/x/g", "would symlink bin/new/link -> ../file", "would mkdir fresh",
 		"would mkdir a", "would mkdir a/b", "would mkdir a/b/c", "would chtimes file", "would chmod file 600", "would link file file2",
-		"would rename file moved", "would replace Cellar/.brw-staging/x/f", "would remove file", "would removeall etc", "would removekeg Cellar/jq/1.0",
+		"would rename file moved", "would replace Cellar/.brw-staging/x/f", "would remove file", "would removeall etc", "would removekeg Cellar/jq/1.0", "would removestaging Cellar/.brw-staging/x",
 	} {
 		if !slices.Contains(lines, want) {
 			t.Errorf("the journal lacks %q:\n%s", want, journal.String())
@@ -959,5 +960,61 @@ func TestDryRunReportsWhatIsMissingLikeARealRun(t *testing.T) {
 	}
 	if err := r.RemoveAll("missing"); err != nil {
 		t.Errorf("RemoveAll of nothing is fine in a real run: %v", err)
+	}
+}
+
+func TestRemoveStaging(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	stage := filepath.Join(dir, Staging, "abc", "jq", "1.0", "bin")
+	if err := os.MkdirAll(stage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, "jq"), []byte("x"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(stage, 0o555); err != nil { // read only, as an unpacked keg is
+		t.Fatal(err)
+	}
+	other := filepath.Join(dir, Staging, "keep")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RemoveStaging(Staging + "/abc"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, Staging, "abc")); !os.IsNotExist(err) {
+		t.Errorf("the staging directory stayed: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("another staging directory went: %v", err)
+	}
+	if !strings.Contains(journal.String(), "removestaging "+Staging+"/abc\n") {
+		t.Errorf("journal = %q", journal.String())
+	}
+}
+
+func TestRemoveStagingRefusesAnythingElse(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	for _, p := range []string{"Cellar/jq/1.0", Staging + "/x", "etc"} {
+		if err := os.MkdirAll(filepath.Join(dir, p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, Staging, "link")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"", ".", "Cellar", Staging, "Cellar/jq/1.0", "etc", "../x", Staging + "/missing", Staging + "/link"} {
+		if err := r.RemoveStaging(p); err == nil {
+			t.Errorf("RemoveStaging(%q) succeeded", p)
+		}
+	}
+	for _, p := range []string{"Cellar/jq/1.0", "etc", Staging + "/x"} {
+		if _, err := os.Stat(filepath.Join(dir, p)); err != nil {
+			t.Errorf("%s was damaged: %v", p, err)
+		}
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Errorf("the target of a link was damaged: %v", err)
 	}
 }
