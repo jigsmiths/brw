@@ -9,7 +9,7 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-const usage = "usage: brw list|search|info|install|upgrade|uninstall|autoremove|link|unlink|cleanup|deps|uses|outdated|tag|dev [flags]"
+const usage = "usage: brw list|search|info|install|reinstall|upgrade|uninstall|autoremove|link|unlink|cleanup|deps|uses|outdated|tag|dev [flags]"
 
 // env is everything a command needs from the outside world.
 type env struct {
@@ -50,6 +50,8 @@ func run(e *env, cmd string, args []string) error {
 		return infoCommand(e, args)
 	case "install":
 		return installCommand(e, args)
+	case "reinstall":
+		return reinstallCommand(e, args)
 	case "upgrade":
 		return upgradeCommand(e, args)
 	case "uninstall":

@@ -110,11 +110,19 @@ func upgradeCommand(e *env, args []string) error {
 		upgradeNames[i] = r.Name
 	}
 	plan, planErrs := planner.PlanUpgrade(upgradeNames)
+	return applyPlan(e, prefix, *journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures)
+}
+
+// applyPlan reports what could not be planned, then shows the plan or carries it
+// out, cleaning up each formula's old kegs after it. The failures passed in are
+// returned with any new ones. what ends the "cannot be ..." message, for example
+// "upgraded".
+func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error) error {
 	for _, err := range planErrs {
 		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 	}
 	if len(planErrs) > 0 {
-		failures = append(failures, fmt.Errorf("%d formulae cannot be upgraded", len(planErrs)))
+		failures = append(failures, fmt.Errorf("%d formulae cannot be %s", len(planErrs), what))
 	}
 	for _, it := range plan.Items {
 		for _, w := range it.Warnings {
@@ -125,10 +133,10 @@ func upgradeCommand(e *env, args []string) error {
 		return errors.Join(failures...)
 	}
 	if dryRun {
-		return errors.Join(append(failures, printUpgradePlan(e, prefix, plan))...)
+		return errors.Join(append(failures, printPlan(e, prefix, plan))...)
 	}
-	err = withRoot(prefix, *journal, func(root *fsx.Root) error {
-		return runInstall(e, root, prefix, filepath.Join(client.CacheDir, "downloads"), plan, func(in *install.Installer) {
+	err := withRoot(prefix, journal, func(root *fsx.Root) error {
+		return runInstall(e, root, prefix, downloads, plan, func(in *install.Installer) {
 			in.KeepGoing = true
 			in.After = func(it install.Item, _ install.Result) { cleanAfterUpgrade(e, root, prefix, it) }
 		})
@@ -144,14 +152,17 @@ func pkgVersionOf(stable string, revision int) string {
 	return v.String()
 }
 
-// printUpgradePlan says what an upgrade would do.
-func printUpgradePlan(e *env, prefix string, plan *install.Plan) error {
-	var upgrades, installs []string
+// printPlan says what an upgrade or reinstall would do.
+func printPlan(e *env, prefix string, plan *install.Plan) error {
+	var upgrades, reinstalls, installs []string
 	for _, it := range plan.Items {
-		if len(it.Upgrade) > 0 {
+		switch {
+		case it.Reinstall:
+			reinstalls = append(reinstalls, fmt.Sprintf("%s %s", it.Formula.Name, it.PkgVersion))
+		case len(it.Upgrade) > 0:
 			old := cellar.Prefix(prefix).DefaultKeg(it.Upgrade)
 			upgrades = append(upgrades, fmt.Sprintf("%s %s -> %s", it.Formula.Name, old.Version, it.PkgVersion))
-		} else {
+		default:
 			installs = append(installs, fmt.Sprintf("%s %s", it.Formula.Name, it.PkgVersion))
 		}
 	}
@@ -170,6 +181,7 @@ func printUpgradePlan(e *env, prefix string, plan *install.Plan) error {
 		}
 	}
 	section("upgrade", upgrades)
+	section("reinstall", reinstalls)
 	section("install", installs)
 	_, err := e.out.Write(b.Bytes())
 	return err
