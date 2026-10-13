@@ -67,6 +67,9 @@ func formatAbv(files int, size int64) string {
 	return b.String()
 }
 
+// ReadableSize writes a size like brew, such as "66.3MB".
+func ReadableSize(bytes int64) string { return readableSize(bytes) }
+
 func withCommas(n int) string {
 	s := strconv.Itoa(n)
 	for i := len(s) - 3; i > 0; i -= 3 {
