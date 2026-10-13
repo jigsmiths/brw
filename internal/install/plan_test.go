@@ -533,3 +533,42 @@ func TestPlanUpgradeIsNotAReinstall(t *testing.T) {
 		t.Errorf("an upgrade keeps the old keg until cleanup: %+v, %v", plan.Items[0], errs)
 	}
 }
+
+func TestPlanLocksTheRuntimeClosureOfEveryItem(t *testing.T) {
+	idx := index(t,
+		f("app", "lib"), f("lib", "base"), f("base"),
+		with(f("other", "base"), "build_dependencies", []string{"cmake"}), f("cmake"))
+	p := planner(t, mac, idx)
+	p.Kegs = []cellar.Keg{keg("lib", "1.0"), keg("base", "1.0")}
+	plan, err := p.Plan([]string{"app", "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"app", "base", "lib", "other"}; !slices.Equal(plan.Locks, want) {
+		t.Errorf("locks = %v, want %v: installed dependencies and their own, no build dependencies", plan.Locks, want)
+	}
+}
+
+func TestPlanUpgradeAndReinstallLockTheirDependencies(t *testing.T) {
+	idx := index(t, f("app", "lib"), f("lib", "base"), f("base"))
+	p := upgradePlanner(t, idx, true, onRequest(keg("app", "1.0")), keg("lib", "1.0"), keg("base", "1.0"))
+	plan, errs := p.PlanReinstall([]string{"app"})
+	if len(errs) != 0 || !slices.Equal(plan.Locks, []string{"app", "base", "lib"}) {
+		t.Errorf("reinstall locks = %v, errs = %v", plan.Locks, errs)
+	}
+	p = upgradePlanner(t, idx, false, onRequest(keg("app", "0.9")), keg("lib", "1.0"), keg("base", "1.0"))
+	plan, errs = p.PlanUpgrade([]string{"app"})
+	if len(errs) != 0 || !slices.Equal(plan.Locks, []string{"app", "base", "lib"}) {
+		t.Errorf("upgrade locks = %v, errs = %v", plan.Locks, errs)
+	}
+}
+
+func TestPlanUpgradeLocksWhatIsLeftWhenOneFormulaFails(t *testing.T) {
+	noBottle := with(f("nobottle"), "bottle", map[string]any{"stable": map[string]any{"files": map[string]any{"x86_64_linux": map[string]any{}}}})
+	idx := index(t, f("good", "base"), noBottle, f("fine"), f("base"))
+	p := upgradePlanner(t, idx, true, keg("good", "0.9"), keg("nobottle", "0.9"), keg("fine", "0.9"), keg("base", "1.0"))
+	plan, errs := p.PlanUpgrade([]string{"good", "nobottle", "fine"})
+	if len(errs) != 1 || !slices.Equal(plan.Locks, []string{"base", "fine", "good"}) {
+		t.Errorf("locks = %v, errs = %v", plan.Locks, errs)
+	}
+}
