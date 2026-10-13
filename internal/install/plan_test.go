@@ -317,3 +317,146 @@ func TestPlanNamesTheUnsupportedSteps(t *testing.T) {
 		t.Errorf("error = %v, want the unsupported steps once each and not the supported one", err)
 	}
 }
+
+// onRequest is a keg whose receipt says it was installed on request.
+func onRequest(k cellar.Keg) cellar.Keg {
+	k.Receipt.InstalledOnRequest = true
+	return k
+}
+
+func upgradePlanner(t *testing.T, idx *api.Index, linked bool, kegs ...cellar.Keg) *Planner {
+	t.Helper()
+	p := planner(t, mac, idx)
+	p.Kegs = kegs
+	p.Linked = func(string) bool { return linked }
+	return p
+}
+
+func TestPlanUpgradeCarriesOverHowTheOldKegWasInstalled(t *testing.T) {
+	idx := index(t, f("asked"), f("needed"))
+	p := upgradePlanner(t, idx, true, onRequest(keg("asked", "0.9")), keg("needed", "0.9"))
+	plan, errs := p.PlanUpgrade([]string{"asked", "needed"})
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if got := names(plan); !slices.Equal(got, []string{"asked", "needed"}) {
+		t.Fatalf("plan = %v", got)
+	}
+	asked, needed := plan.Items[0], plan.Items[1]
+	if !asked.OnRequest || needed.OnRequest {
+		t.Errorf("on request: asked = %v, needed = %v; each keeps what its old receipt said", asked.OnRequest, needed.OnRequest)
+	}
+	for _, it := range plan.Items {
+		if len(it.Upgrade) != 1 || it.Upgrade[0].Version != "0.9" || it.Linked == nil || !*it.Linked {
+			t.Errorf("%s: upgrade = %v, linked = %v", it.Formula.Name, it.Upgrade, it.Linked)
+		}
+		if it.PkgVersion != "1.0" {
+			t.Errorf("%s: version = %s", it.Formula.Name, it.PkgVersion)
+		}
+	}
+}
+
+func TestPlanUpgradeKeepsAnUnlinkedKegUnlinked(t *testing.T) {
+	idx := index(t, f("app"))
+	plan, errs := upgradePlanner(t, idx, false, keg("app", "0.9")).PlanUpgrade([]string{"app"})
+	if len(errs) != 0 || plan.Items[0].Linked == nil || *plan.Items[0].Linked {
+		t.Errorf("errs = %v, linked = %v: it was not linked before", errs, plan.Items[0].Linked)
+	}
+}
+
+func TestPlanUpgradeAFreshInstallHasNothingToCarryOver(t *testing.T) {
+	plan, err := planner(t, mac, index(t, f("app"))).Plan([]string{"app"})
+	if err != nil || plan.Items[0].Upgrade != nil || plan.Items[0].Linked != nil {
+		t.Errorf("a plain install: %+v, %v", plan.Items[0], err)
+	}
+}
+
+func TestPlanUpgradeInstallsNewDependenciesButLeavesOutdatedOnesAlone(t *testing.T) {
+	idx := index(t, f("app", "newdep", "olddep"), f("newdep"), f("olddep"))
+	p := upgradePlanner(t, idx, true, onRequest(keg("app", "0.9")), keg("olddep", "0.5"))
+	plan, errs := p.PlanUpgrade([]string{"app"})
+	if len(errs) != 0 || !slices.Equal(names(plan), []string{"newdep", "app"}) {
+		t.Fatalf("plan = %v, errs = %v", names(plan), errs)
+	}
+	if plan.Items[0].Upgrade != nil || plan.Items[0].OnRequest {
+		t.Errorf("a new dependency is installed, as a dependency: %+v", plan.Items[0])
+	}
+}
+
+func TestPlanUpgradeOrdersDependenciesFirstAndKegOnlyFormulaeBeforeTheRest(t *testing.T) {
+	idx := index(t,
+		f("app", "lib"), f("lib"), f("plain"),
+		with(f("vault"), "keg_only", true),
+	)
+	p := upgradePlanner(t, idx, true,
+		keg("app", "0.9"), keg("lib", "0.9"), keg("plain", "0.9"), keg("vault", "0.9"))
+	plan, errs := p.PlanUpgrade([]string{"app", "plain", "vault", "lib"})
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if got := names(plan); !slices.Equal(got, []string{"vault", "lib", "app", "plain"}) {
+		t.Errorf("plan = %v: vault is keg-only so first, lib comes before app", got)
+	}
+}
+
+func TestPlanUpgradeOneFailureDoesNotStopTheOthers(t *testing.T) {
+	noBottle := with(f("nobottle"), "bottle", map[string]any{"stable": map[string]any{"files": map[string]any{"x86_64_linux": map[string]any{}}}})
+	idx := index(t, f("good"), noBottle, with(f("pi"), "post_install_steps", []any{map[string]any{"type": "configure_gcc_runtime"}}), f("fine"))
+	p := upgradePlanner(t, idx, true, keg("good", "0.9"), keg("nobottle", "0.9"), keg("pi", "0.9"), keg("fine", "0.9"))
+	plan, errs := p.PlanUpgrade([]string{"good", "nobottle", "pi", "fine"})
+	if got := names(plan); !slices.Equal(got, []string{"good", "fine"}) {
+		t.Errorf("plan = %v", got)
+	}
+	if len(errs) != 2 || !errors.Is(errs[0], ErrNoBottle) || !errors.Is(errs[1], ErrPostInstall) {
+		t.Errorf("errors = %v", errs)
+	}
+}
+
+func TestPlanUpgradeStillRefusesAFormulaFromAnotherTap(t *testing.T) {
+	idx := index(t, f("app"))
+	other := keg("app", "0.9")
+	other.Receipt.Source.Tap = "someone/tap"
+	plan, errs := upgradePlanner(t, idx, true, other).PlanUpgrade([]string{"app"})
+	if len(plan.Items) != 0 || len(errs) != 1 || !errors.Is(errs[0], ErrOtherTap) {
+		t.Errorf("plan = %v, errs = %v", names(plan), errs)
+	}
+}
+
+func TestPlanUpgradeOfNothing(t *testing.T) {
+	plan, errs := upgradePlanner(t, index(t, f("a")), true).PlanUpgrade(nil)
+	if len(plan.Items) != 0 || len(errs) != 0 {
+		t.Errorf("plan = %v, errs = %v", names(plan), errs)
+	}
+}
+
+func TestPlanUpgradeDoesNotChangeLaterInstallPlans(t *testing.T) {
+	idx := index(t, f("app"))
+	p := upgradePlanner(t, idx, true, keg("app", "0.9"))
+	if _, errs := p.PlanUpgrade([]string{"app"}); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	plan, err := p.Plan([]string{"app"})
+	if err != nil || len(plan.Items) != 0 || !slices.Equal(plan.AlreadyInstalled, []string{"app"}) {
+		t.Errorf("an install after an upgrade plan: %v, %v, %v", names(plan), plan.AlreadyInstalled, err)
+	}
+}
+
+func TestPlanUpgradeTakesTheReceiptOfTheKegInUse(t *testing.T) {
+	idx := index(t, f("app"))
+	older := keg("app", "0.8") // not asked for
+	newer := onRequest(keg("app", "0.9"))
+	plan, errs := upgradePlanner(t, idx, true, older, newer).PlanUpgrade([]string{"app"})
+	if len(errs) != 0 || !plan.Items[0].OnRequest || len(plan.Items[0].Upgrade) != 2 {
+		t.Errorf("errs = %v, item = %+v: the latest keg says it was asked for", errs, plan.Items[0])
+	}
+}
+
+func TestPlanUpgradeMergesSharedNewDependenciesOnceWhenOneFormulaFails(t *testing.T) {
+	noBottle := with(f("bad"), "bottle", map[string]any{"stable": map[string]any{"files": map[string]any{"x86_64_linux": map[string]any{}}}})
+	idx := index(t, f("a", "shared"), f("b", "shared"), f("shared"), noBottle)
+	p := upgradePlanner(t, idx, true, keg("a", "0.9"), keg("b", "0.9"), keg("bad", "0.9"))
+	plan, errs := p.PlanUpgrade([]string{"a", "bad", "b"})
+	if got := names(plan); !slices.Equal(got, []string{"shared", "a", "b"}) || len(errs) != 1 {
+		t.Errorf("plan = %v, errs = %v", got, errs)
+	}
+}

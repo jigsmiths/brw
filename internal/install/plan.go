@@ -4,6 +4,7 @@ package install
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,12 @@ type Item struct {
 	OnRequest  bool   // asked for by name, not only needed by something else
 	KegOnly    bool
 	Warnings   []string
+
+	// Upgrade holds the kegs of the older versions this one replaces, and Linked
+	// whether to link the new keg, which an upgrade takes from the old one. Both
+	// are unset for a fresh install.
+	Upgrade []cellar.Keg
+	Linked  *bool
 }
 
 // Plan lists what to install, dependencies first.
@@ -57,6 +64,8 @@ type Planner struct {
 	Kegs    []cellar.Keg
 	Linked  func(name string) bool
 	Now     time.Time // for deprecation notices; the zero value means now
+
+	upgrading map[string]bool // formulae being upgraded, which count as not installed
 }
 
 // Plan resolves the names, adds the dependencies that are not installed yet and
@@ -156,6 +165,85 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 	return plan, nil
 }
 
+// PlanUpgrade plans bringing the named installed formulae up to date. Each keeps
+// whether it was installed on request and whether it was linked, keg-only
+// formulae come first, and dependencies the new versions need are installed. A
+// formula that cannot be upgraded is reported and does not stop the others.
+func (p *Planner) PlanUpgrade(names []string) (*Plan, []error) {
+	hostTag, err := platform.Tag(p.Host)
+	if err != nil {
+		return &Plan{}, []error{err}
+	}
+	ordered := p.kegOnlyFirst(names, hostTag)
+	p.upgrading = map[string]bool{}
+	for _, n := range ordered {
+		if f, ok := p.Index.Lookup(n); ok {
+			p.upgrading[f.Name] = true
+		}
+	}
+	defer func() { p.upgrading = nil }()
+
+	if plan, err := p.Plan(ordered); err == nil {
+		p.markUpgrades(plan)
+		return plan, nil
+	}
+	merged := &Plan{}
+	var errs []error
+	for _, n := range ordered {
+		one, err := p.Plan([]string{n})
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		for _, it := range one.Items {
+			if !slices.ContainsFunc(merged.Items, func(x Item) bool { return x.Formula.Name == it.Formula.Name }) {
+				merged.Items = append(merged.Items, it)
+			}
+		}
+	}
+	p.markUpgrades(merged)
+	return merged, errs
+}
+
+func (p *Planner) kegOnlyFirst(names []string, tag string) []string {
+	var first, rest []string
+	for _, n := range names {
+		f, ok := p.Index.Lookup(n)
+		if ok {
+			if g, err := f.ForTag(tag); err == nil && g.KegOnly {
+				first = append(first, n)
+				continue
+			}
+		}
+		rest = append(rest, n)
+	}
+	return append(first, rest...)
+}
+
+// markUpgrades fills in what the items being upgraded take from their old kegs.
+func (p *Planner) markUpgrades(plan *Plan) {
+	for i := range plan.Items {
+		it := &plan.Items[i]
+		if !p.upgrading[it.Formula.Name] {
+			continue
+		}
+		var old []cellar.Keg
+		for _, k := range p.Kegs {
+			if k.Name == it.Formula.Name {
+				old = append(old, k)
+			}
+		}
+		if len(old) == 0 {
+			continue
+		}
+		it.Upgrade = old
+		current := cellar.Prefix(p.Prefix).DefaultKeg(old)
+		it.OnRequest = current.Receipt != nil && current.Receipt.InstalledOnRequest
+		linked := p.Linked(it.Formula.Name)
+		it.Linked = &linked
+	}
+}
+
 func (p *Planner) bottles(want map[string]string) (map[string]api.BottleFile, error) {
 	if len(want) == 0 {
 		return nil, nil
@@ -184,6 +272,9 @@ func (p *Planner) installed(f *api.Formula) (bool, error) {
 	}
 	if len(outdated.FromTap(named, f.Tap)) == 0 {
 		return false, fmt.Errorf("%s: %w", f.Name, ErrOtherTap)
+	}
+	if p.upgrading[f.Name] {
+		return false, nil
 	}
 	return true, nil
 }
