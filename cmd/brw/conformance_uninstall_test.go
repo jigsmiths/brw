@@ -10,7 +10,7 @@ import (
 )
 
 // This test installs formulae with brew into two fresh copies of a brew
-// checkout, links, unlinks and removes them with brew in one and brw in the other and
+// checkout, cleans up, links, unlinks and removes them with brew in one and brw in the other and
 // compares the prefixes after each step. It needs the checkout described in
 // conformance_install_test.go and BRW_CONFORMANCE_UNINSTALL=1.
 
@@ -69,6 +69,62 @@ func TestConformanceUninstall(t *testing.T) {
 		}
 	}
 	noAutoremove := []string{"HOMEBREW_NO_AUTOREMOVE=1"}
+
+	// Cleaning up: an old keg, a broken link, empty directories and .DS_Store
+	// files, made the same way in both prefixes.
+	for _, p := range []string{theirs, mine} {
+		cayley := filepath.Join(p, "Cellar", "cayley")
+		versions, _ := os.ReadDir(cayley)
+		if len(versions) != 1 {
+			t.Fatalf("cayley versions in %s: %v", p, versions)
+		}
+		sh(t, "", nil, "cp", "-R", filepath.Join(cayley, versions[0].Name()), filepath.Join(cayley, "0.1.0"))
+		if err := os.Symlink("../Cellar/gone/1.0/bin/gone", filepath.Join(p, "bin/zzz-broken")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(p, "share/zzz-empty/deeper"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range []string{"share/.DS_Store", "bin/.DS_Store", "Cellar/jq/.DS_Store"} {
+			if err := os.WriteFile(filepath.Join(p, f), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// brew's cleanup also tidies its logs, which live in the user's home by default.
+	cleanEnv := []string{"HOMEBREW_LOGS=" + filepath.Join(work, "logs")}
+	compare(t, "after making a mess", theirs, mine)
+	dryBrew, _ := try(append(slices.Clone(env), cleanEnv...), filepath.Join(theirs, "bin", "brew"), "cleanup", "-n")
+	dryBrw, err := try(append(slices.Clone(brwEnv), cleanEnv...), bin, "cleanup", "-prefix", mine, "-n")
+	if err != nil {
+		t.Errorf("brw cleanup -n: %v\n%s", err, dryBrw)
+	}
+	wouldRemove := func(out, prefix string) []string {
+		var lines []string
+		for _, l := range strings.Split(out, "\n") {
+			if strings.HasPrefix(l, "Would remove") && strings.Contains(l, prefix) && !strings.Contains(l, "/Library/") {
+				lines = append(lines, strings.ReplaceAll(l, prefix, "<prefix>"))
+			}
+		}
+		slices.Sort(lines)
+		return lines
+	}
+	if a, b := wouldRemove(dryBrew, theirs), wouldRemove(dryBrw, mine); !slices.Equal(a, b) || len(a) == 0 {
+		t.Errorf("the dry runs list different things\nbrew: %v\nbrw:  %v", a, b)
+	}
+	compare(t, "after the dry runs", theirs, mine)
+	step("cleanup", false, cleanEnv, "cleanup")
+	locks := func(p string) []string {
+		entries, _ := os.ReadDir(filepath.Join(p, "var/homebrew/locks"))
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		return names
+	}
+	if a, b := locks(theirs), locks(mine); !slices.Equal(a, b) {
+		t.Errorf("lock files differ after cleanup\nbrew: %v\nbrw:  %v", a, b)
+	}
 
 	// Linking and unlinking, and what they print.
 	a, b := step("unlink", false, nil, "unlink", "jq")
