@@ -805,3 +805,23 @@ func TestDownloadsOfNamedFormulaeOnly(t *testing.T) {
 		t.Errorf("a's old download exists = %v, b's = %v", has(t, oldA), has(t, oldB))
 	}
 }
+
+func TestOldKegsCanBeRemovedByACallerThatHoldsTheLock(t *testing.T) {
+	f := newFixture(t)
+	f.keg("jq", "1.0", false)
+	f.keg("jq", "2.0", true)
+	f.current["jq"] = Formula{PkgVersion: "2.0"}
+	held, err := lock.Acquire(f.root, "jq")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = held.Release() })
+	c := f.cleaner()
+	c.LocksHeld = true
+	if err := c.OldKegs(nil); err != nil {
+		t.Fatal(err)
+	}
+	if f.exists("Cellar/jq/1.0") {
+		t.Error("the caller holds the lock, so the cleaner does not need it")
+	}
+}
