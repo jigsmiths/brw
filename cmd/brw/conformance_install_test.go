@@ -9,6 +9,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -53,14 +54,19 @@ func TestConformanceInstall(t *testing.T) {
 	if d := lineDiff(a, b); len(d) > 0 {
 		t.Errorf("trees differ:\n%s", strings.Join(d, "\n"))
 	}
+	sboms := 0
 	for _, name := range installSet {
 		for _, d := range kegDiff(t, theirs, mine, name) {
 			t.Errorf("%s keg: %s", name, d)
 		}
+		sboms += sbomTime(t, theirs, name) + sbomTime(t, mine, name)
 		ra, rb := receipt(t, theirs, name), receipt(t, mine, name)
 		for _, d := range lineDiff(strings.Join(ra, "\n"), strings.Join(rb, "\n")) {
 			t.Errorf("%s receipt: %.300s", name, d)
 		}
+	}
+	if sboms == 0 {
+		t.Error("none of the installed kegs had an SBOM to compare")
 	}
 
 	// brew accepts what brw installed.
@@ -185,8 +191,8 @@ func receipt(t *testing.T, prefix, name string) []string {
 // kegDiff compares the files of a keg in the two prefixes: names, modes, link
 // targets, and the contents of text files with the prefix paths made equal.
 // Mach-O files are not compared, since signatures differ; other binaries
-// are compared by size. The receipt is
-// compared on its own, and the SBOM is left as the bottle shipped it.
+// are compared by size. The receipt is compared on its own. The SBOM is compared
+// with the time and the tool that wrote it made equal; sbomTime checks the time.
 func kegDiff(t *testing.T, theirs, mine, name string) []string {
 	t.Helper()
 	list := func(prefix string) map[string]string {
@@ -198,7 +204,7 @@ func kegDiff(t *testing.T, theirs, mine, name string) []string {
 			}
 			rel, _ := filepath.Rel(root, p)
 			base := filepath.Base(p)
-			if base == "INSTALL_RECEIPT.json" || base == "sbom.spdx.json" {
+			if base == "INSTALL_RECEIPT.json" {
 				return nil
 			}
 			info, err := d.Info()
@@ -220,7 +226,11 @@ func kegDiff(t *testing.T, theirs, mine, name string) []string {
 				} else if bytes.IndexByte(data, 0) >= 0 {
 					desc += fmt.Sprintf(" binary %d bytes", len(data))
 				} else {
-					desc += " text " + strings.ReplaceAll(string(data), prefix, "<prefix>")
+					text := strings.ReplaceAll(string(data), prefix, "<prefix>")
+					if base == "sbom.spdx.json" {
+						text = sbomWho.ReplaceAllString(sbomWhen.ReplaceAllString(text, `"created": "<time>"`), `"<tool>"`)
+					}
+					desc += " text " + text
 				}
 			}
 			out[rel] = desc
@@ -278,4 +288,40 @@ func workDir(t *testing.T, parent string) string {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(work) })
 	return work
+}
+
+var (
+	sbomWhen = regexp.MustCompile(`"created": "[^"]*"`)
+	sbomWho  = regexp.MustCompile(`"Tool: [^"]*"`)
+)
+
+// sbomTime checks that the SBOMs of a formula's kegs say they were made when the
+// receipt says the keg was installed, and returns how many it looked at.
+func sbomTime(t *testing.T, prefix, name string) int {
+	t.Helper()
+	checked := 0
+	files, _ := filepath.Glob(filepath.Join(prefix, "Cellar", name, "*", "sbom.spdx.json"))
+	for _, f := range files {
+		var sbom struct {
+			CreationInfo struct {
+				Created string `json:"created"`
+			} `json:"creationInfo"`
+		}
+		var receipt struct {
+			Time int64 `json:"time"`
+		}
+		b, err := os.ReadFile(f)
+		if err != nil || json.Unmarshal(b, &sbom) != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		r, err := os.ReadFile(filepath.Join(filepath.Dir(f), "INSTALL_RECEIPT.json"))
+		if err != nil || json.Unmarshal(r, &receipt) != nil {
+			t.Fatalf("%s: %v", filepath.Dir(f), err)
+		}
+		if want := time.Unix(receipt.Time, 0).UTC().Format("2006-01-02T15:04:05Z"); sbom.CreationInfo.Created != want {
+			t.Errorf("%s: the SBOM says %s, the receipt %s", f, sbom.CreationInfo.Created, want)
+		}
+		checked++
+	}
+	return checked
 }
