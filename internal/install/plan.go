@@ -47,6 +47,9 @@ type Item struct {
 	// are unset for a fresh install.
 	Upgrade []cellar.Keg
 	Linked  *bool
+	// Reinstall says the old keg is put aside and the formula installed afresh,
+	// and the old keg is deleted once that worked.
+	Reinstall bool
 }
 
 // Plan lists what to install, dependencies first.
@@ -170,6 +173,18 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 // formulae come first, and dependencies the new versions need are installed. A
 // formula that cannot be upgraded is reported and does not stop the others.
 func (p *Planner) PlanUpgrade(names []string) (*Plan, []error) {
+	return p.planInstalled(names, false)
+}
+
+// PlanReinstall plans installing the named formulae afresh at their current
+// version, keeping whether each was on request and linked. A name that is not
+// installed is a plain install. Failures are reported one formula at a time.
+func (p *Planner) PlanReinstall(names []string) (*Plan, []error) {
+	return p.planInstalled(names, true)
+}
+
+// planInstalled plans the named formulae as replacements of what is installed.
+func (p *Planner) planInstalled(names []string, reinstall bool) (*Plan, []error) {
 	hostTag, err := platform.Tag(p.Host)
 	if err != nil {
 		return &Plan{}, []error{err}
@@ -184,7 +199,7 @@ func (p *Planner) PlanUpgrade(names []string) (*Plan, []error) {
 	defer func() { p.upgrading = nil }()
 
 	if plan, err := p.Plan(ordered); err == nil {
-		p.markUpgrades(plan)
+		p.markUpgrades(plan, reinstall)
 		return plan, nil
 	}
 	merged := &Plan{}
@@ -201,7 +216,7 @@ func (p *Planner) PlanUpgrade(names []string) (*Plan, []error) {
 			}
 		}
 	}
-	p.markUpgrades(merged)
+	p.markUpgrades(merged, reinstall)
 	return merged, errs
 }
 
@@ -221,7 +236,7 @@ func (p *Planner) kegOnlyFirst(names []string, tag string) []string {
 }
 
 // markUpgrades fills in what the items being upgraded take from their old kegs.
-func (p *Planner) markUpgrades(plan *Plan) {
+func (p *Planner) markUpgrades(plan *Plan, reinstall bool) {
 	for i := range plan.Items {
 		it := &plan.Items[i]
 		if !p.upgrading[it.Formula.Name] {
@@ -237,6 +252,7 @@ func (p *Planner) markUpgrades(plan *Plan) {
 			continue
 		}
 		it.Upgrade = old
+		it.Reinstall = reinstall
 		current := cellar.Prefix(p.Prefix).DefaultKeg(old)
 		it.OnRequest = current.Receipt != nil && current.Receipt.InstalledOnRequest
 		linked := p.Linked(it.Formula.Name)
