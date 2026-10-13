@@ -34,6 +34,8 @@ type Bottle struct {
 	Changed       []string // the tab's changed_files
 	Linkage       []string // and linkage_files
 	Deps          []string // and the formulae in runtime_dependencies
+	// SBOMSupplement is the sh.brew.sbom.supplement annotation of the manifest.
+	SBOMSupplement string
 }
 
 // Registry serves manifests and blobs. A blob is redirected to a second server,
@@ -43,6 +45,7 @@ type Registry struct {
 	URL       string
 	blobs     map[string][]byte // by digest
 	tabs      map[string]string // by manifest path
+	supps     map[string]string // the SBOM supplements, by manifest path
 	digests   map[string]string
 	tampered  map[string]bool
 	manifests atomic.Int32
@@ -50,7 +53,7 @@ type Registry struct {
 
 func NewRegistry(t testing.TB) *Registry {
 	t.Helper()
-	r := &Registry{t: t, blobs: map[string][]byte{}, tabs: map[string]string{}, digests: map[string]string{}, tampered: map[string]bool{}}
+	r := &Registry{t: t, blobs: map[string][]byte{}, tabs: map[string]string{}, supps: map[string]string{}, digests: map[string]string{}, tampered: map[string]bool{}}
 	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		digest := strings.TrimPrefix(req.URL.Path, "/blob/")
 		body := r.blobs[digest]
@@ -64,9 +67,11 @@ func NewRegistry(t testing.TB) *Registry {
 		switch {
 		case strings.Contains(path, "/manifests/"):
 			r.manifests.Add(1)
-			_ = json.NewEncoder(w).Encode(map[string]any{"manifests": []map[string]any{
-				{"annotations": map[string]string{"sh.brew.bottle.digest": r.digests[path], "sh.brew.tab": r.tabs[path]}},
-			}})
+			annotations := map[string]string{"sh.brew.bottle.digest": r.digests[path], "sh.brew.tab": r.tabs[path]}
+			if supp := r.supps[path]; supp != "" {
+				annotations["sh.brew.sbom.supplement"] = supp
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"manifests": []map[string]any{{"annotations": annotations}}})
 		case strings.Contains(path, "/blobs/sha256:"):
 			_, digest, _ := strings.Cut(path, "sha256:")
 			http.Redirect(w, req, cdn.URL+"/blob/"+digest, http.StatusTemporaryRedirect)
@@ -134,6 +139,6 @@ func (r *Registry) Add(b Bottle, cellar string) api.BottleFile {
 		r.t.Fatal(err)
 	}
 	manifest := b.Name + "/manifests/" + b.Version
-	r.tabs[manifest], r.digests[manifest] = string(tab), digest
+	r.tabs[manifest], r.digests[manifest], r.supps[manifest] = string(tab), digest, b.SBOMSupplement
 	return api.BottleFile{Cellar: cellar, SHA256: digest, URL: r.URL + "/v2/homebrew/core/" + b.Name + "/blobs/sha256:" + digest}
 }
