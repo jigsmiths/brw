@@ -47,6 +47,9 @@ type Cleaner struct {
 	Now       func() time.Time
 	Out, Warn io.Writer
 	DryRun    bool
+	// LocksHeld says the caller already holds the formula locks, as an install
+	// does when it cleans up after itself.
+	LocksHeld bool
 
 	freed int64
 	seen  map[string]bool
@@ -157,7 +160,7 @@ func (c *Cleaner) cleanFormula(name string, kegs []cellar.Keg) (err error) {
 	if len(old) == 0 {
 		return nil
 	}
-	if !c.DryRun {
+	if !c.DryRun && !c.LocksHeld {
 		l, lerr := lock.Acquire(c.Root, name)
 		if lerr != nil {
 			return lerr

@@ -10,7 +10,7 @@ import (
 )
 
 // This test installs formulae with brew into two fresh copies of a brew
-// checkout, cleans up, links, unlinks and removes them with brew in one and brw in the other and
+// checkout, upgrades, cleans up, links, unlinks and removes them with brew in one and brw in the other and
 // compares the prefixes after each step. It needs the checkout described in
 // conformance_install_test.go and BRW_CONFORMANCE_UNINSTALL=1.
 
@@ -69,6 +69,54 @@ func TestConformanceUninstall(t *testing.T) {
 		}
 	}
 	noAutoremove := []string{"HOMEBREW_NO_AUTOREMOVE=1"}
+
+	// Upgrading: sbtenv is made out of date the same way in both prefixes, with
+	// brew's own commands, and then upgraded by brew in one and brw in the other.
+	for _, p := range []string{theirs, mine} {
+		rack := filepath.Join(p, "Cellar", "sbtenv")
+		versions, _ := os.ReadDir(rack)
+		if len(versions) != 1 {
+			t.Fatalf("sbtenv versions in %s: %v", p, versions)
+		}
+		sh(t, "", env, filepath.Join(p, "bin", "brew"), "unlink", "sbtenv")
+		if err := os.Rename(filepath.Join(rack, versions[0].Name()), filepath.Join(rack, "0.0.1")); err != nil {
+			t.Fatal(err)
+		}
+		sh(t, "", env, filepath.Join(p, "bin", "brew"), "link", "sbtenv")
+	}
+	compare(t, "after making sbtenv out of date", theirs, mine)
+	upDryBrew, _ := try(env, filepath.Join(theirs, "bin", "brew"), "upgrade", "-n", "sbtenv")
+	upDryBrw, upErr := try(brwEnv, bin, "upgrade", "-prefix", mine, "-n", "sbtenv")
+	if upErr != nil || !strings.Contains(upDryBrw, "sbtenv 0.0.1 -> ") || !strings.Contains(upDryBrew, "sbtenv 0.0.1 -> ") {
+		t.Errorf("the dry runs of upgrade\nbrew: %q\nbrw:  %q (%v)", upDryBrew, upDryBrw, upErr)
+	}
+	compare(t, "after the upgrade dry runs", theirs, mine)
+	upBrew, upBrw := step("upgrade", false, nil, "upgrade", "sbtenv")
+	for _, start := range []string{"==> Upgrading sbtenv", "  0.0.1 -> "} {
+		if !strings.Contains(upBrew, start) || !strings.Contains(upBrw, start) {
+			t.Errorf("the upgrade messages differ on %q\nbrew: %q\nbrw:  %q", start, upBrew, upBrw)
+		}
+	}
+	for _, p := range []string{theirs, mine} {
+		var sbt []string
+		for _, e := range cellarList(t, p) {
+			if strings.HasPrefix(e, "sbtenv/") {
+				sbt = append(sbt, e)
+			}
+		}
+		if len(sbt) != 1 || sbt[0] == "sbtenv/0.0.1" {
+			t.Errorf("%s: sbtenv kegs after the upgrade = %v, want only the current version", p, sbt)
+		}
+	}
+	for _, d := range kegDiff(t, theirs, mine, "sbtenv") {
+		t.Errorf("upgraded sbtenv keg: %s", d)
+	}
+	if ra, rb := receipt(t, theirs, "sbtenv"), receipt(t, mine, "sbtenv"); !slices.Equal(ra, rb) {
+		for _, d := range lineDiff(strings.Join(ra, "\n"), strings.Join(rb, "\n")) {
+			t.Errorf("upgraded sbtenv receipt: %.300s", d)
+		}
+	}
+	step("upgrade when current", false, nil, "upgrade", "sbtenv")
 
 	// Cleaning up: an old keg, a broken link, empty directories and .DS_Store
 	// files, made the same way in both prefixes.
@@ -148,6 +196,28 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 	if snapshot(t, mine) != beforeDry {
 		t.Error("a dry run of brw link or unlink changed the prefix")
+	}
+
+	// A keg-only formula that was linked with --force stays linked when upgraded.
+	for _, p := range []string{theirs, mine} {
+		rack := filepath.Join(p, "Cellar", "rustup")
+		versions, _ := os.ReadDir(rack)
+		if len(versions) != 1 {
+			t.Fatalf("rustup versions in %s: %v", p, versions)
+		}
+		sh(t, "", env, filepath.Join(p, "bin", "brew"), "link", "--force", "rustup")
+		sh(t, "", env, filepath.Join(p, "bin", "brew"), "unlink", "rustup")
+		if err := os.Rename(filepath.Join(rack, versions[0].Name()), filepath.Join(rack, "0.0.1")); err != nil {
+			t.Fatal(err)
+		}
+		sh(t, "", env, filepath.Join(p, "bin", "brew"), "link", "--force", "rustup")
+	}
+	compare(t, "after making a forced keg-only link out of date", theirs, mine)
+	step("upgrade of a keg-only formula that is linked", false, nil, "upgrade", "rustup")
+	for _, p := range []string{theirs, mine} {
+		if _, err := os.Lstat(filepath.Join(p, "bin/rustup")); err != nil {
+			t.Errorf("%s: the upgraded keg-only formula should still be linked: %v", p, err)
+		}
 	}
 
 	step("refusing to remove a dependency", true, nil, "uninstall", "oniguruma")

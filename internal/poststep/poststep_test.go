@@ -653,3 +653,10 @@ func TestInitDataDirFailures(t *testing.T) {
 		t.Error("mysql needs a user name")
 	}
 }
+
+// TestMain clears the variable that makes init_data_dir do nothing, which some CI
+// images set, so the tests see the same environment everywhere.
+func TestMain(m *testing.M) {
+	_ = os.Unsetenv("HOMEBREW_GITHUB_ACTIONS")
+	os.Exit(m.Run())
+}

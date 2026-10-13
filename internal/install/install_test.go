@@ -568,3 +568,215 @@ func TestInstallKeepsEditedConfigAndAddsDefault(t *testing.T) {
 		t.Errorf("etc = %q, default = %q", e.read("etc/cfg.yml"), e.read("etc/cfg.yml.default"))
 	}
 }
+
+var jqOld = installtest.Bottle{
+	Name: "jq", Version: "0.9",
+	Files: []installtest.File{
+		file("bin/jq", "#!/bin/sh\necho old jq", 0o755),
+		file("share/man/man1/jq.1", "old man page", 0),
+	},
+}
+
+// installOld installs the 0.9 jq, linked or not, and returns an item that upgrades it to 1.0.
+func (e *env) installOld(linked bool, onRequest bool) Item {
+	e.t.Helper()
+	if _, err := e.install(e.item(jqOld, onRequest, !linked, nil)); err != nil {
+		e.t.Fatal(err)
+	}
+	kegs, err := cellar.Prefix(e.prefix).Kegs()
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	it := e.item(jq, onRequest, false, nil)
+	it.Upgrade = kegs
+	it.Linked = &linked
+	return it
+}
+
+func TestUpgradeUnlinksTheOldKegPoursTheNewOneAndLinksIt(t *testing.T) {
+	e := newEnv(t)
+	it := e.installOld(true, true)
+	e.log.Reset()
+	results, err := e.install(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || !results[0].Upgraded || results[0].OldVersion != "0.9" || !results[0].Linked {
+		t.Fatalf("results = %+v", results)
+	}
+	if got := e.readlink("bin/jq"); got != "../Cellar/jq/1.0/bin/jq" {
+		t.Errorf("bin/jq -> %s", got)
+	}
+	if got := e.readlink("opt/jq"); got != "../Cellar/jq/1.0" {
+		t.Errorf("opt/jq -> %s", got)
+	}
+	if got := e.readlink("var/homebrew/linked/jq"); got != "../../../Cellar/jq/1.0" {
+		t.Errorf("linked record -> %s", got)
+	}
+	if !e.exists("Cellar/jq/0.9/bin/jq") {
+		t.Error("the old keg is left for cleanup to remove")
+	}
+	if want := "==> Upgrading jq\n  0.9 -> 1.0\n"; !strings.Contains(e.log.String(), want) {
+		t.Errorf("log = %q, want it to contain %q", e.log.String(), want)
+	}
+}
+
+func TestUpgradeKeepsWhatTheOldReceiptSaid(t *testing.T) {
+	e := newEnv(t)
+	it := e.installOld(true, false)
+	if _, err := e.install(it); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(e.read("Cellar/jq/1.0/INSTALL_RECEIPT.json"), `"installed_on_request": true`) {
+		t.Error("the upgrade of a dependency should not become on request")
+	}
+}
+
+func TestUpgradeOfAnUnlinkedKegLeavesTheNewOneUnlinked(t *testing.T) {
+	e := newEnv(t)
+	it := e.installOld(false, true)
+	results, err := e.install(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Linked || e.exists("bin/jq") || e.exists("var/homebrew/linked/jq") {
+		t.Error("it was not linked before, so it should not be now")
+	}
+	if got := e.readlink("opt/jq"); got != "../Cellar/jq/1.0" {
+		t.Errorf("opt/jq -> %s: the opt record follows the new keg", got)
+	}
+}
+
+func TestUpgradeThatFailsBeforeAnythingChangesLeavesTheOldKegLinked(t *testing.T) {
+	e := newEnv(t)
+	it := e.installOld(true, true)
+	e.reg.Tamper(it.Bottle) // the download fails its checksum
+	if _, err := e.install(it); err == nil {
+		t.Fatal("a tampered bottle should fail")
+	}
+	if got := e.readlink("bin/jq"); got != "../Cellar/jq/0.9/bin/jq" || e.exists("Cellar/jq/1.0") {
+		t.Errorf("bin/jq -> %s; the old keg should still be in use", got)
+	}
+}
+
+func TestUpgradeThatFailsAfterUnlinkingRelinksTheOldKeg(t *testing.T) {
+	e := newEnv(t)
+	it := e.installOld(true, true)
+	if err := os.MkdirAll(filepath.Join(e.prefix, "Cellar/jq/1.0"), 0o755); err != nil { // the new keg's place is taken
+		t.Fatal(err)
+	}
+	if _, err := e.install(it); err == nil {
+		t.Fatal("the rename into the Cellar should fail")
+	}
+	if got := e.readlink("bin/jq"); got != "../Cellar/jq/0.9/bin/jq" {
+		t.Errorf("bin/jq -> %s: the old keg should be linked again", got)
+	}
+	if got := e.readlink("opt/jq"); got != "../Cellar/jq/0.9" {
+		t.Errorf("opt/jq -> %s", got)
+	}
+	if got := e.readlink("var/homebrew/linked/jq"); got != "../../../Cellar/jq/0.9" {
+		t.Errorf("linked record -> %s", got)
+	}
+}
+
+func TestUpgradeThatFailsDoesNotRelinkAKegThatWasNotLinked(t *testing.T) {
+	e := newEnv(t)
+	it := e.installOld(false, true)
+	if err := os.MkdirAll(filepath.Join(e.prefix, "Cellar/jq/1.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.install(it); err == nil {
+		t.Fatal("expected a failure")
+	}
+	if e.exists("bin/jq") || e.exists("var/homebrew/linked/jq") {
+		t.Error("an unlinked keg must stay unlinked")
+	}
+}
+
+func TestUpgradeKeepsGoingAfterAFormulaFails(t *testing.T) {
+	e := newEnv(t)
+	first := e.installOld(true, true)
+	other := installtest.Bottle{Name: "tool", Version: "0.9", Files: []installtest.File{file("bin/tool", "old", 0o755)}}
+	if _, err := e.install(e.item(other, true, false, nil)); err != nil {
+		t.Fatal(err)
+	}
+	kegs, _ := cellar.Prefix(e.prefix).Kegs()
+	var toolKegs []cellar.Keg
+	for _, k := range kegs {
+		if k.Name == "tool" {
+			toolKegs = append(toolKegs, k)
+		}
+	}
+	linked := true
+	second := e.item(installtest.Bottle{Name: "tool", Version: "1.0", Files: []installtest.File{file("bin/tool", "new", 0o755)}}, true, false, nil)
+	second.Upgrade, second.Linked = toolKegs, &linked
+	if err := os.MkdirAll(filepath.Join(e.prefix, "Cellar/jq/1.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e.in.KeepGoing = true
+	results, err := e.install(first, second)
+	if err != nil {
+		t.Fatalf("with KeepGoing a failure is in the results: %v", err)
+	}
+	if len(results) != 2 || results[0].Err == nil || results[0].Name != "jq" || results[1].Err != nil || !results[1].Upgraded {
+		t.Fatalf("results = %+v", results)
+	}
+	if got := e.readlink("bin/tool"); got != "../Cellar/tool/1.0/bin/tool" {
+		t.Errorf("bin/tool -> %s: the second formula should have been upgraded", got)
+	}
+	if got := e.readlink("bin/jq"); got != "../Cellar/jq/0.9/bin/jq" {
+		t.Errorf("bin/jq -> %s: the first stays as it was", got)
+	}
+}
+
+func TestInstallStillStopsAtTheFirstFailureWithoutKeepGoing(t *testing.T) {
+	e := newEnv(t)
+	it := e.installOld(true, true)
+	if err := os.MkdirAll(filepath.Join(e.prefix, "Cellar/jq/1.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	results, err := e.install(it)
+	if err == nil || len(results) != 0 {
+		t.Errorf("results = %v, err = %v", results, err)
+	}
+}
+
+func TestInstallCallsAfterForEachInstalledFormula(t *testing.T) {
+	e := newEnv(t)
+	var seen []string
+	e.in.After = func(it Item, r Result) { seen = append(seen, it.Formula.Name+" "+r.Version) }
+	if _, err := e.install(e.item(jq, true, false, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 || seen[0] != "jq 1.0" {
+		t.Errorf("seen = %v", seen)
+	}
+	e.in.After = func(Item, Result) { t.Error("After ran for a failure") }
+	e.in.KeepGoing = true
+	if _, err := e.install(e.item(jq, true, false, nil)); err != nil { // exists already: fails the rename
+		t.Fatal(err)
+	}
+}
+
+func TestUpgradeNamesTheKegInUseAndLeavesEveryOldKegUnlinked(t *testing.T) {
+	e := newEnv(t)
+	older := installtest.Bottle{Name: "jq", Version: "0.8", Files: []installtest.File{file("bin/jq", "older", 0o755)}}
+	if _, err := e.install(e.item(older, true, true, nil)); err != nil { // keg-only, so not linked
+		t.Fatal(err)
+	}
+	it := e.installOld(true, true) // 0.9 takes over the opt record and the links
+	it.Upgrade = nil
+	kegs, _ := cellar.Prefix(e.prefix).Kegs()
+	it.Upgrade = kegs
+	e.log.Reset()
+	results, err := e.install(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].OldVersion != "0.9" || !strings.Contains(e.log.String(), "  0.9 -> 1.0\n") {
+		t.Errorf("old version = %q, log = %q", results[0].OldVersion, e.log.String())
+	}
+	if got := e.readlink("bin/jq"); got != "../Cellar/jq/1.0/bin/jq" {
+		t.Errorf("bin/jq -> %s", got)
+	}
+}

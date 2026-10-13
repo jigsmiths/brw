@@ -36,6 +36,12 @@ type Installer struct {
 	Log     io.Writer
 	OS      string // for the post_install guards; runtime.GOOS if empty
 	User    string // for {{user}} in post_install steps
+
+	// KeepGoing records a formula's failure in its Result and carries on with the
+	// next, as an upgrade of many formulae does.
+	KeepGoing bool
+	// After runs once a formula is installed, for the work that follows each one.
+	After func(Item, Result)
 }
 
 // standardDirs are the directories every prefix has, which linking relies on.
@@ -49,6 +55,12 @@ type Result struct {
 	LinkErr       error // why it is not linked, which does not fail the install
 	// PostInstallErr is why the post_install steps failed. The keg stays, as in brew.
 	PostInstallErr error
+
+	Upgraded   bool
+	OldVersion string // the version an upgrade replaced
+	// Err is why the formula was not installed, when the installer is told to
+	// keep going after a failure.
+	Err error
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -59,8 +71,9 @@ func (in *Installer) logf(format string, args ...any) {
 
 // Install pours each item in order. It locks every formula first and fetches
 // all the bottles in parallel. If a formula fails, those before it stay
-// installed and the ones after it are not touched. A formula that cannot be
-// linked stays poured and is reported in its Result.
+// installed and the ones after it are not touched, unless KeepGoing is set,
+// which records the failure in the Result and carries on. A formula that cannot
+// be linked stays poured and is reported in its Result.
 func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result, err error) {
 	if len(plan.Items) == 0 {
 		return nil, nil
@@ -95,9 +108,17 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 		}
 		r, err := in.pour(it, fetched[i])
 		if err != nil {
-			return results, fmt.Errorf("%s: %w", it.Formula.Name, err)
+			err = fmt.Errorf("%s: %w", it.Formula.Name, err)
+			if !in.KeepGoing {
+				return results, err
+			}
+			results = append(results, Result{Name: it.Formula.Name, Version: it.PkgVersion, Err: err})
+			continue
 		}
 		results = append(results, r)
+		if in.After != nil {
+			in.After(it, r)
+		}
 	}
 	return results, nil
 }
@@ -129,6 +150,18 @@ func (in *Installer) lockAll(items []Item) (unlock func() error, err error) {
 
 func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error) {
 	f := it.Formula
+	oldVersion := ""
+	if len(it.Upgrade) > 0 {
+		var restore func()
+		if oldVersion, restore, err = in.leaveOldKegs(it); err != nil {
+			return Result{}, err
+		}
+		defer func() {
+			if err != nil {
+				restore()
+			}
+		}()
+	}
 	in.logf("==> Pouring %s %s", f.Name, it.PkgVersion)
 
 	dest := path.Join(fsx.Staging, randomID())
@@ -172,13 +205,17 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 		return Result{}, err
 	}
 
-	result = Result{Name: f.Name, Version: it.PkgVersion}
+	result = Result{Name: f.Name, Version: it.PkgVersion, Upgraded: len(it.Upgrade) > 0, OldVersion: oldVersion}
 	if abs, err := in.Root.Abs(keg); err == nil {
 		result.Size, _ = cellar.Keg{Path: abs}.Abv()
 		in.logf("    %s: %s", abs, result.Size)
 	}
 	k := link.Keg{Name: f.Name, Version: it.PkgVersion, Aliases: receipt.Aliases}
-	if it.KegOnly {
+	link := !it.KegOnly
+	if it.Linked != nil { // an upgrade does what the old keg had
+		link = *it.Linked
+	}
+	if !link {
 		result.LinkErr = in.Linker.Optlink(k)
 	} else if result.LinkErr = in.Linker.Link(k); result.LinkErr == nil {
 		result.Linked = true
@@ -195,6 +232,39 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 		}, f.PostInstallSteps)
 	}
 	return result, nil
+}
+
+// leaveOldKegs says an upgrade is starting and unlinks the old kegs, so they
+// cannot get in the way of the new one. The function it returns links the old
+// keg again, for when the upgrade fails.
+func (in *Installer) leaveOldKegs(it Item) (old string, restore func(), err error) {
+	f := it.Formula
+	current := cellar.Prefix(in.Prefix).DefaultKeg(it.Upgrade)
+	in.logf("==> Upgrading %s", f.Name)
+	in.logf("  %s -> %s", current.Version, it.PkgVersion)
+	keg := func(k cellar.Keg) link.Keg {
+		lk := link.Keg{Name: k.Name, Version: k.Version}
+		if k.Receipt != nil {
+			lk.Aliases = k.Receipt.Aliases
+		}
+		return lk
+	}
+	wasLinked := it.Linked != nil && *it.Linked
+	restore = func() {
+		if !wasLinked {
+			return
+		}
+		if err := in.Linker.Link(keg(current)); err != nil {
+			in.logf("brw: could not link %s %s again: %v", f.Name, current.Version, err)
+		}
+	}
+	for _, k := range it.Upgrade {
+		if err := in.Linker.Unlink(keg(k)); err != nil {
+			restore()
+			return "", nil, fmt.Errorf("unlinking %s %s: %w", k.Name, k.Version, err)
+		}
+	}
+	return current.Version, restore, nil
 }
 
 func (in *Installer) now() time.Time {
