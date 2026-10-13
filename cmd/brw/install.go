@@ -79,22 +79,33 @@ func installCommand(e *env, args []string) error {
 	})
 }
 
-func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.Plan) error {
+// runInstall carries out a plan and reports what went wrong. opts adjust the
+// installer, as an upgrade does.
+func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.Plan, opts ...func(*install.Installer)) error {
 	hostTag, err := platform.Tag(e.host)
 	if err != nil {
 		return err
 	}
-	results, err := (&install.Installer{
+	in := &install.Installer{
 		Root: root, Prefix: prefix,
 		Fetcher: &bottle.Fetcher{Dir: downloads},
 		Linker:  &link.Linker{Root: root, Prefix: prefix},
 		APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+hostTag+".jws.json"),
 		Log:     e.out,
 		User:    os.Getenv("USER"),
-	}).Install(context.Background(), plan)
+	}
+	for _, opt := range opts {
+		opt(in)
+	}
+	results, err := in.Install(context.Background(), plan)
 
-	notLinked, postFailed := 0, 0
+	notLinked, postFailed, failed := 0, 0, 0
 	for _, r := range results {
+		if r.Err != nil {
+			failed++
+			_, _ = fmt.Fprintf(e.err, "brw: %v\n", r.Err)
+			continue
+		}
 		if r.LinkErr != nil {
 			notLinked++
 			_, _ = fmt.Fprintf(e.err, "brw: %s %s was poured but could not be linked: %v\n", r.Name, r.Version, r.LinkErr)
@@ -109,6 +120,9 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 		return err
 	}
 	var problems []error
+	if failed > 0 {
+		problems = append(problems, fmt.Errorf("%d of %d formulae could not be installed", failed, len(results)))
+	}
 	if notLinked > 0 {
 		problems = append(problems, fmt.Errorf("%d of %d formulae installed but not linked", notLinked, len(results)))
 	}
@@ -122,7 +136,7 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 func printCaveats(e *env, plan *install.Plan, results []install.Result, prefix string) {
 	installed := map[string]bool{}
 	for _, r := range results {
-		installed[r.Name] = true
+		installed[r.Name] = r.Err == nil
 	}
 	header := false
 	for _, it := range plan.Items {
@@ -130,7 +144,7 @@ func printCaveats(e *env, plan *install.Plan, results []install.Result, prefix s
 			continue
 		}
 		text := info.Caveats(it.Formula, prefix)
-		if it.KegOnly {
+		if it.KegOnly && (it.Linked == nil || !*it.Linked) {
 			if text != "" {
 				text += "\n"
 			}
