@@ -9,7 +9,7 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-const usage = "usage: brw list|search|info|install|uninstall|autoremove|link|unlink|deps|uses|outdated|tag|dev [flags]"
+const usage = "usage: brw list|search|info|install|uninstall|autoremove|link|unlink|cleanup|deps|uses|outdated|tag|dev [flags]"
 
 // env is everything a command needs from the outside world.
 type env struct {
@@ -58,6 +58,8 @@ func run(e *env, cmd string, args []string) error {
 		return linkCommand(e, args)
 	case "unlink":
 		return unlinkCommand(e, args)
+	case "cleanup":
+		return cleanupCommand(e, args)
 	case "tag":
 		tag, err := platform.Tag(e.host)
 		if err != nil {
