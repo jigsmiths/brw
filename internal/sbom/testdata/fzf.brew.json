@@ -1,0 +1,104 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "spdxVersion": "SPDX-2.3",
+  "name": "SBOM-SPDX-fzf-0.74.5",
+  "creationInfo": {
+    "created": "2026-10-11T19:26:07Z",
+    "creators": [
+      "Tool: https://github.com/Homebrew/brew@7.0.9-60-gea07035"
+    ]
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://formulae.brew.sh/spdx/fzf-0.74.5.json",
+  "documentDescribes": [
+    "SPDXRef-Archive-fzf-src",
+    "SPDXRef-Compiler",
+    "SPDXRef-Bottle-fzf"
+  ],
+  "files": [
+    {
+      "SPDXID": "SPDXRef-File-fzf",
+      "fileName": "v0.74.5.tar.gz",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "5529d08897b85ae773695787c811ff9c9eeee32419c8a297fa1dbe586ed0a27e"
+        }
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Archive-fzf-src",
+      "name": "fzf",
+      "versionInfo": "0.74.5",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "builtDate": "2026-10-11T02:29:16Z",
+      "licenseConcluded": "MIT",
+      "downloadLocation": "https://github.com/junegunn/fzf/archive/refs/tags/v0.74.5.tar.gz",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:brew/homebrew/core/fzf@0.74.5",
+          "referenceType": "purl"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "5529d08897b85ae773695787c811ff9c9eeee32419c8a297fa1dbe586ed0a27e"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Compiler",
+      "name": "clang",
+      "versionInfo": "27.0",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "checksums": [],
+      "externalRefs": []
+    },
+    {
+      "SPDXID": "SPDXRef-Bottle-fzf",
+      "name": "fzf",
+      "versionInfo": "0.74.5",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "builtDate": "2026-10-11T05:19:39Z",
+      "licenseConcluded": "MIT",
+      "downloadLocation": "https://ghcr.io/v2/homebrew/core/fzf/blobs/sha256:17d944658dd8fb782733090891d923cf28815a6e93f8aec35ba07fec1fedb542",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:brew/fzf@0.74.5",
+          "referenceType": "purl"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "17d944658dd8fb782733090891d923cf28815a6e93f8aec35ba07fec1fedb542"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-File-fzf",
+      "relationshipType": "PACKAGE_OF",
+      "relatedSpdxElement": "SPDXRef-Archive-fzf-src"
+    },
+    {
+      "spdxElementId": "SPDXRef-Compiler",
+      "relationshipType": "BUILD_TOOL_OF",
+      "relatedSpdxElement": "SPDXRef-Archive-fzf-src"
+    }
+  ]
+}
