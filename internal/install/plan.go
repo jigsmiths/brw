@@ -52,9 +52,11 @@ type Item struct {
 	Reinstall bool
 }
 
-// Plan lists what to install, dependencies first.
+// Plan lists what to install, dependencies first. Locks names every formula to
+// lock while installing: the items and their runtime dependencies.
 type Plan struct {
 	Items            []Item
+	Locks            []string
 	AlreadyInstalled []string
 }
 
@@ -165,7 +167,27 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 	if err := errors.Join(problems...); err != nil {
 		return nil, err
 	}
+	if plan.Locks, err = lockNames(r, plan.Items); err != nil {
+		return nil, err
+	}
 	return plan, nil
+}
+
+// lockNames lists the items and everything they need at run time, sorted. The
+// dependencies already installed are locked too, as they must not change while
+// the items go in on top of them.
+func lockNames(r *deps.Resolver, items []Item) ([]string, error) {
+	var names []string
+	for _, it := range items {
+		all, err := r.Recursive(it.Formula.Name)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, it.Formula.Name)
+		names = append(names, all...)
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
 }
 
 // PlanUpgrade plans bringing the named installed formulae up to date. Each keeps
@@ -215,7 +237,10 @@ func (p *Planner) planInstalled(names []string, reinstall bool) (*Plan, []error)
 				merged.Items = append(merged.Items, it)
 			}
 		}
+		merged.Locks = append(merged.Locks, one.Locks...)
 	}
+	slices.Sort(merged.Locks)
+	merged.Locks = slices.Compact(merged.Locks)
 	p.markUpgrades(merged, reinstall)
 	return merged, errs
 }
