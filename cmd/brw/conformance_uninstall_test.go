@@ -10,7 +10,7 @@ import (
 )
 
 // This test installs formulae with brew into two fresh copies of a brew
-// checkout, upgrades, cleans up, links, unlinks and removes them with brew in one and brw in the other and
+// checkout, upgrades, reinstalls, cleans up, links, unlinks and removes them with brew in one and brw in the other and
 // compares the prefixes after each step. It needs the checkout described in
 // conformance_install_test.go and BRW_CONFORMANCE_UNINSTALL=1.
 
@@ -118,6 +118,53 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 	step("upgrade when current", false, nil, "upgrade", "sbtenv")
 
+	// Reinstalling: a current formula, and an outdated one, which ends up current.
+	for _, p := range []string{theirs, mine} {
+		rack := filepath.Join(p, "Cellar", "jq")
+		versions, _ := os.ReadDir(rack)
+		if len(versions) != 1 {
+			t.Fatalf("jq versions in %s: %v", p, versions)
+		}
+		sh(t, "", env, filepath.Join(p, "bin", "brew"), "unlink", "jq")
+		if err := os.Rename(filepath.Join(rack, versions[0].Name()), filepath.Join(rack, "0.0.1")); err != nil {
+			t.Fatal(err)
+		}
+		sh(t, "", env, filepath.Join(p, "bin", "brew"), "link", "jq")
+	}
+	compare(t, "after making jq out of date", theirs, mine)
+	reinstalled := func(name string) {
+		t.Helper()
+		var kegs []string
+		for _, p := range []string{theirs, mine} {
+			kegs = kegs[:0]
+			for _, e := range cellarList(t, p) {
+				if strings.HasPrefix(e, name+"/") {
+					kegs = append(kegs, e)
+				}
+			}
+			if len(kegs) != 1 || strings.HasSuffix(kegs[0], ".reinstall") || kegs[0] == name+"/0.0.1" {
+				t.Errorf("%s: %s kegs after the reinstall = %v, want only the current one", p, name, kegs)
+			}
+		}
+		for _, d := range kegDiff(t, theirs, mine, name) {
+			t.Errorf("reinstalled %s keg: %s", name, d)
+		}
+		if ra, rb := receipt(t, theirs, name), receipt(t, mine, name); !slices.Equal(ra, rb) {
+			for _, d := range lineDiff(strings.Join(ra, "\n"), strings.Join(rb, "\n")) {
+				t.Errorf("reinstalled %s receipt: %.300s", name, d)
+			}
+		}
+	}
+	reBrew, reBrw := step("reinstall", false, nil, "reinstall", "minio")
+	for _, out := range []string{reBrew, reBrw} {
+		if !strings.Contains(out, "==> Reinstalling minio") {
+			t.Errorf("reinstall output lacks its heading: %q", out)
+		}
+	}
+	reinstalled("minio")
+	step("reinstall an outdated formula", false, nil, "reinstall", "jq")
+	reinstalled("jq")
+
 	// Cleaning up: an old keg, a broken link, empty directories and .DS_Store
 	// files, made the same way in both prefixes.
 	for _, p := range []string{theirs, mine} {
@@ -219,6 +266,14 @@ func TestConformanceUninstall(t *testing.T) {
 			t.Errorf("%s: the upgraded keg-only formula should still be linked: %v", p, err)
 		}
 	}
+
+	step("reinstall of a keg-only formula that is linked", false, nil, "reinstall", "rustup")
+	for _, p := range []string{theirs, mine} {
+		if _, err := os.Lstat(filepath.Join(p, "bin/rustup")); err != nil {
+			t.Errorf("%s: the reinstalled keg-only formula should still be linked: %v", p, err)
+		}
+	}
+	reinstalled("rustup")
 
 	step("refusing to remove a dependency", true, nil, "uninstall", "oniguruma")
 
