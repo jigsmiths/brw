@@ -84,7 +84,7 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 	if len(plan.Items) == 0 {
 		return nil, nil
 	}
-	unlock, err := in.lockAll(plan.Items)
+	unlock, err := in.lockAll(plan)
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +129,14 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 	return results, nil
 }
 
-// lockAll takes the lock of every formula in name order, or none of them.
-func (in *Installer) lockAll(items []Item) (unlock func() error, err error) {
-	names := make([]string, len(items))
-	for i, it := range items {
-		names[i] = it.Formula.Name
+// lockAll takes the lock of every formula the plan names, in name order, or none
+// of them. A plan without Locks locks its items.
+func (in *Installer) lockAll(plan *Plan) (unlock func() error, err error) {
+	names := slices.Clone(plan.Locks)
+	if len(names) == 0 {
+		for _, it := range plan.Items {
+			names = append(names, it.Formula.Name)
+		}
 	}
 	slices.Sort(names)
 	var held []*lock.Lock

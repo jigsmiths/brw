@@ -1034,3 +1034,32 @@ func TestReinstallLeavesOtherKegsAlone(t *testing.T) {
 		t.Error("only the keg in use is replaced; 0.8 is for cleanup to remove")
 	}
 }
+
+func TestInstallLocksTheDependenciesInThePlan(t *testing.T) {
+	e := newEnv(t)
+	held, err := lock.Acquire(e.root, "dep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := e.item(jq, true, false, nil)
+	plan := &Plan{Items: []Item{item}, Locks: []string{"dep", "jq"}}
+	if _, err := e.in.Install(context.Background(), plan); !errors.Is(err, lock.ErrInProgress) {
+		t.Fatalf("error = %v, want ErrInProgress", err)
+	}
+	if e.exists("Cellar/jq") {
+		t.Error("jq was installed although its dependency was locked")
+	}
+	if err := held.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.in.Install(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"dep", "jq"} {
+		l, err := lock.Acquire(e.root, name)
+		if err != nil {
+			t.Fatalf("%s was left locked: %v", name, err)
+		}
+		_ = l.Release()
+	}
+}
