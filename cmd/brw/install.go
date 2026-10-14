@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/bottle"
@@ -137,17 +136,7 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 
 // sbomCreator names brw in the SBOMs of what it installs.
 func sbomCreator() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return sbomCreatorFor("", "")
-	}
-	revision := ""
-	for _, setting := range info.Settings {
-		if setting.Key == "vcs.revision" {
-			revision = setting.Value
-		}
-	}
-	return sbomCreatorFor(info.Main.Version, revision)
+	return sbomCreatorFor(buildInfo())
 }
 
 // sbomCreatorFor adds the version brw was installed as, or else the start of the
