@@ -18,6 +18,7 @@ just run info jq                 # also: info --json jq
 just run deps git --tree         # also: --1, --installed
 just run uses --installed pcre2
 just run outdated                # also: --json, --quiet
+just run update                  # refresh the formula listing now (it otherwise refreshes after 10 minutes)
 just install                     # put brw on your PATH (GOBIN)
 ```
 
