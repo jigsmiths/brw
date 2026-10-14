@@ -4,7 +4,7 @@
 
 A Go, Homebrew-compatible package client. It reads Homebrew's metadata and bottles and shares a prefix with `brew`.
 
-**Status:** early. The read-only commands work; no install or upgrade yet.
+**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae.
 
 ## Usage
 
@@ -21,6 +21,18 @@ just run outdated                # also: --json, --quiet
 just install                     # put brw on your PATH (GOBIN)
 ```
 
+Commands that change the prefix take `--dry-run` (`-n`) to show what they would do.
+
+```sh
+just run install jq              # bottle and its dependencies
+just run upgrade                 # all outdated formulae, or name some
+just run reinstall jq
+just run uninstall jq            # also: --force, --ignore-dependencies
+just run autoremove              # drop dependencies nothing needs
+just run link jq                 # also: unlink; link --force, --overwrite
+just run cleanup                 # also: --prune=30, --scrub, --prune-prefix
+```
+
 Commands take `--prefix` and default to Homebrew's prefix for this machine. Formulae only, no casks.
 
 ## Development
@@ -31,11 +43,13 @@ just check          # gofmt, lint and tests, as CI and the pre-commit hook run t
 just test           # tests only
 just lint
 just fmt
-just conformance    # compare with the real brew on this machine (slow)
+just conformance    # compare the read-only commands with the real brew (slow)
+just conformance-install    # install with brew and brw, compare the prefixes
+just conformance-uninstall  # the same for upgrade, reinstall, cleanup, link and uninstall
 just clean
 ```
 
-Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only.
+Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only. The two install harnesses need a brew checkout at `~/.brw-oracle/hb`.
 
 ## License
 
