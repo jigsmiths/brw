@@ -1,7 +1,9 @@
 name: release
 
 on:
-  push:
+  workflow_run: # after ci passed on main
+    workflows: [ci]
+    types: [completed]
     branches: [main]
   workflow_dispatch: # publish the latest tag again, after a failed release
 
@@ -12,12 +14,15 @@ concurrency: release
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }} # the commit ci tested
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
