@@ -672,3 +672,98 @@ func TestBottles(t *testing.T) {
 		}
 	}
 }
+
+func TestRefreshAsksTheServerEvenWhenTheCacheIsFresh(t *testing.T) {
+	srv := &server{body: fixture(t)}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	if _, err := c.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	up, err := c.Refresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.hits.Load() != 2 || srv.conditional.Load() != 1 {
+		t.Errorf("hits = %d, conditional = %d; want 2 and 1", srv.hits.Load(), srv.conditional.Load())
+	}
+	if up.Changed || up.Total != fixtureSize {
+		t.Errorf("update = %+v, want unchanged with %d formulae", up, fixtureSize)
+	}
+}
+
+func TestRefreshFirstFetch(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	defer ts.Close()
+	up, err := (&Client{URL: ts.URL, CacheDir: t.TempDir()}).Refresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !up.Changed || up.Total != fixtureSize || len(up.Added) != 0 || len(up.Removed) != 0 {
+		t.Errorf("update = %+v: a first fetch is a change without a list of what is new", up)
+	}
+}
+
+func TestRefreshReportsWhatChanged(t *testing.T) {
+	var listing []map[string]any
+	if err := json.Unmarshal(fixture(t), &listing); err != nil {
+		t.Fatal(err)
+	}
+	removed := listing[0]["name"].(string)
+	newer := listing[1:]
+	for _, name := range []string{"new-b", "new-a"} { // out of order, as a listing may be
+		added := map[string]any{}
+		for k, v := range listing[1] {
+			added[k] = v
+		}
+		added["name"], added["full_name"], added["aliases"], added["oldnames"] = name, name, []string{}, []string{}
+		newer = append(newer, added)
+	}
+	newer2, err := json.Marshal(newer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var current atomic.Pointer[[]byte]
+	old := fixture(t)
+	current.Store(&old)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(*current.Load()) }))
+	defer ts.Close()
+	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	if _, err := c.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	current.Store(&newer2)
+	up, err := c.Refresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !up.Changed || up.Total != fixtureSize+1 || !slices.Equal(up.Added, []string{"new-a", "new-b"}) || !slices.Equal(up.Removed, []string{removed}) {
+		t.Errorf("update = %+v, want +new-a, +new-b and -%s", up, removed)
+	}
+	if got, err := c.Formulae(context.Background()); err != nil || !slices.ContainsFunc(got, func(f Formula) bool { return f.Name == "new-a" }) {
+		t.Errorf("the new listing was not cached: %v", err)
+	}
+}
+
+func TestRefreshFailsInsteadOfUsingTheCache(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	dir := t.TempDir()
+	if _, err := (&Client{URL: ts.URL, CacheDir: dir}).Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	failing := httptest.NewServer(&server{status: http.StatusInternalServerError})
+	defer failing.Close()
+	for name, url := range map[string]string{"unreachable": ts.URL, "server error": failing.URL} {
+		if name == "unreachable" {
+			ts.Close()
+		}
+		c := &Client{URL: url, CacheDir: dir, Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
+		if _, err := c.Refresh(context.Background()); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+	if got, err := (&Client{URL: "http://127.0.0.1:1", CacheDir: dir}).Formulae(context.Background()); err != nil || len(got) != fixtureSize {
+		t.Errorf("the cache was damaged: %d formulae, %v", len(got), err)
+	}
+}

@@ -235,7 +235,63 @@ func (c *Client) now() time.Time {
 	return time.Now()
 }
 
+// Update says what Refresh found.
+type Update struct {
+	Changed bool
+	Total   int
+	// Added and Removed name the formulae that came or went. They are empty
+	// when there was no listing before.
+	Added, Removed []string
+}
+
+// Refresh asks the server for the listing even when the cached one is fresh.
+// Unlike Formulae it fails when the server cannot be reached, rather than
+// settling for the cache.
+func (c *Client) Refresh(ctx context.Context) (Update, error) {
+	before, _ := os.ReadFile(filepath.Join(c.CacheDir, "formula.json"))
+	formulae, err := c.formulae(ctx, true)
+	if err != nil {
+		return Update{}, err
+	}
+	up := Update{Total: len(formulae)}
+	after, err := os.ReadFile(filepath.Join(c.CacheDir, "formula.json"))
+	if err != nil {
+		return Update{}, err
+	}
+	if bytes.Equal(before, after) {
+		return up, nil
+	}
+	up.Changed = true
+	if old, err := Parse(before); err == nil && len(before) > 0 {
+		up.Added, up.Removed = nameDiff(old, formulae)
+	}
+	return up, nil
+}
+
+// nameDiff lists the sorted names in next that are not in old, and the reverse.
+func nameDiff(old, next []Formula) (added, removed []string) {
+	was := map[string]bool{}
+	for _, f := range old {
+		was[f.Name] = true
+	}
+	for _, f := range next {
+		if !was[f.Name] {
+			added = append(added, f.Name)
+		}
+		delete(was, f.Name)
+	}
+	removed = slices.Sorted(maps.Keys(was))
+	slices.Sort(added)
+	return added, removed
+}
+
 func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
+	return c.formulae(ctx, false)
+}
+
+// formulae loads the listing. With force it skips the freshness shortcut and
+// reports a failed fetch instead of using the cache.
+func (c *Client) formulae(ctx context.Context, force bool) ([]Formula, error) {
 	body := filepath.Join(c.CacheDir, "formula.json")
 	etagFile := filepath.Join(c.CacheDir, "formula.etag")
 	etagBytes, etagErr := os.ReadFile(etagFile)
@@ -243,7 +299,7 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	_, bodyErr := os.Stat(body)
 	cached := bodyErr == nil && etagErr == nil
 
-	if cached && c.fresh(etagFile) {
+	if cached && !force && c.fresh(etagFile) {
 		if formulae, ok := c.loadIndex(etag); ok {
 			return formulae, nil
 		}
@@ -262,7 +318,7 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		return c.stale(etag, bodyErr == nil, err)
+		return c.stale(etag, bodyErr == nil && !force, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -279,7 +335,7 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 		return formulae, nil
 	case http.StatusOK:
 	default:
-		return c.stale(etag, bodyErr == nil, fmt.Errorf("GET %s: %s", c.URL, resp.Status))
+		return c.stale(etag, bodyErr == nil && !force, fmt.Errorf("GET %s: %s", c.URL, resp.Status))
 	}
 
 	data, err := io.ReadAll(resp.Body)
