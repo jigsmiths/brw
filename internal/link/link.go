@@ -370,7 +370,8 @@ func (l *Linker) Unlink(k Keg) error {
 
 // Forget tidies up after a keg is deleted, as brew does: the rack goes if it is
 // empty, and so does the opt record if it led to this keg, even with other
-// versions left.
+// versions left. The records of its versioned aliases go too once they lead
+// nowhere, which they only do after the keg is deleted.
 func (l *Linker) Forget(k Keg) error {
 	l.rmdirIfPossible(k.rack())
 	if l.isSymlink(k.opt()) && l.resolved(k.opt()) == k.path() {
@@ -379,6 +380,10 @@ func (l *Linker) Forget(k Keg) error {
 		}
 		l.rmdirIfPossible("opt")
 	}
+	if err := l.removeOldAliases(k); err != nil {
+		return err
+	}
+	l.rmdirIfPossible("opt")
 	return nil
 }
 
