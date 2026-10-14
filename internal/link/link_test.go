@@ -373,6 +373,26 @@ func TestForgetDropsTheOptRecordOfTheKegAndAnEmptyRack(t *testing.T) {
 	}
 }
 
+func TestForgetDropsTheVersionedAliasRecordsOfTheKeg(t *testing.T) {
+	l, dir := newLinker(t)
+	k := install(t, dir, "go", "1.27.2", files{"bin/go"})
+	k.Aliases = []string{"go@1.27"}
+	linkAll(t, l, dir, k)
+	if err := l.Unlink(k); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "Cellar/go/1.27.2")); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Forget(k); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "opt")); !os.IsNotExist(err) {
+		got, _ := os.ReadDir(filepath.Join(dir, "opt"))
+		t.Errorf("opt is still there with %d entries, such as the record of the alias: %v", len(got), err)
+	}
+}
+
 func TestForgetKeepsWhatBelongsToOtherVersions(t *testing.T) {
 	l, dir := newLinker(t)
 	old := install(t, dir, "jq", "1.0", files{"bin/jq"})
