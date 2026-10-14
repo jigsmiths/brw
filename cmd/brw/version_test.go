@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/jigsmiths/brw/internal/selfupdate"
 )
 
 func TestBuildVersion(t *testing.T) {
@@ -53,5 +57,20 @@ func TestSBOMCreatorUsesTheStampedVersion(t *testing.T) {
 	t.Cleanup(func() { stampedVersion = old })
 	if got := sbomCreator(); got != "Tool: https://github.com/jigsmiths/brw@2.0.0" {
 		t.Errorf("sbomCreator() = %q", got)
+	}
+}
+
+func TestTheRealEnvUpdatesBrw(t *testing.T) {
+	if newEnv(linux).selfUpdate == nil {
+		t.Error("brw would not update itself")
+	}
+}
+
+func TestSelfUpdateOfALocalBuild(t *testing.T) {
+	old := stampedVersion
+	stampedVersion = ""
+	t.Cleanup(func() { stampedVersion = old })
+	if _, err := selfUpdateBrw(context.Background()); !errors.Is(err, selfupdate.ErrNotRelease) {
+		t.Errorf("error = %v, want ErrNotRelease", err)
 	}
 }

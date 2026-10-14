@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"runtime/debug"
+
+	"github.com/jigsmiths/brw/internal/selfupdate"
 )
 
 // stampedVersion is set by releases: -ldflags "-X main.stampedVersion=1.2.3".
@@ -56,4 +62,17 @@ func versionCommand(e *env, args []string) error {
 	}
 	_, err = fmt.Fprint(e.out, versionLine(buildInfo()))
 	return err
+}
+
+// selfUpdateBrw replaces the running binary with the latest release.
+func selfUpdateBrw(ctx context.Context) (selfupdate.Result, error) {
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe) // replace the file, not a link to it
+	}
+	if err != nil {
+		return selfupdate.Result{}, err
+	}
+	u := &selfupdate.Updater{Exe: exe, Current: stampedVersion, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}
+	return u.Run(ctx)
 }
