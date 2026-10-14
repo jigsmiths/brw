@@ -82,7 +82,19 @@ func list(e *env, args []string) error {
 	fs := newFlagSet("list")
 	prefix := prefixFlag(e, fs)
 	versions := fs.Bool("versions", false, "show installed versions")
-	if _, err := parse(fs, args); err != nil {
+	pinned := fs.Bool("pinned", false, "list only pinned formulae")
+	rest, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if *pinned {
+		if len(rest) > 0 {
+			return errors.New("--pinned with formula names is not supported yet")
+		}
+		out, err := pinnedList(*prefix, *versions)
+		if err == nil {
+			_, err = io.WriteString(e.out, out)
+		}
 		return err
 	}
 	if *versions {
