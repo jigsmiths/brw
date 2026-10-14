@@ -177,6 +177,36 @@ func (r *Resolver) Recursive(name string) ([]string, error) {
 	return out, nil
 }
 
+// Expanded returns every dependency of name in the order brew records them in a
+// receipt: the dependencies of each one come before it, and a name is listed once.
+func (r *Resolver) Expanded(name string) ([]string, error) {
+	root, err := r.formula(name)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{root.Name: true}
+	var out []string
+	var walk func(n string) error
+	walk = func(n string) error {
+		direct, err := r.declared(n)
+		if err != nil {
+			return err
+		}
+		for _, d := range direct {
+			if seen[d] {
+				continue
+			}
+			seen[d] = true
+			if err := walk(d); err != nil {
+				return err
+			}
+			out = append(out, d)
+		}
+		return nil
+	}
+	return out, walk(root.Name)
+}
+
 // Tree draws name's dependencies. Shared subtrees are repeated in full.
 func (r *Resolver) Tree(name string) (string, error) {
 	root, err := r.formula(name)

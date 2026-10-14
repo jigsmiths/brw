@@ -115,6 +115,16 @@ func TestPourReceiptFields(t *testing.T) {
 	}
 }
 
+func TestPourReceiptTakesTheArchOfTheHost(t *testing.T) {
+	r, err := NewPourReceipt(read(t, "pour-jq.tab.json"), Pour{Time: time.Unix(42, 0), Tap: "homebrew/core", Arch: "x86_64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Arch != "x86_64" {
+		t.Errorf("arch = %q, want the host's, as an all bottle has none of its own", r.Arch)
+	}
+}
+
 func TestPourReceiptRejectsABadTab(t *testing.T) {
 	for _, tab := range []string{"", "not json", "[]"} {
 		if _, err := NewPourReceipt([]byte(tab), Pour{}); err == nil {
