@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # publish the latest tag again, after a failed release
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install github.com/caarlos0/svu/v3@v3.4.0
+      - name: Tag the next version, if the commits call for one
+        id: tag
+        run: |
+          current=$(svu current)
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if ! git rev-parse -q --verify "refs/tags/$current" > /dev/null; then
+              echo "No tag to release yet"
+              exit 1
+            fi
+            git checkout -q "$current"
+            echo "tag=$current" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          next=$(svu next --v0)
+          if [ "$next" = "$current" ]; then
+            echo "No release needed (current: $current)"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$next"
+          git push origin "$next"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+      - uses: goreleaser/goreleaser-action@v6
+        if: steps.tag.outputs.tag != ''
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
