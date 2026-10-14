@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/machoedit"
@@ -108,11 +112,15 @@ func Codesign(root *fsx.Root, keg string, files []string) error {
 
 func signStaged(root *fsx.Root, keg string, rels []string, arm bool, run runner) (err error) {
 	byAbs := map[string]string{}
+	links := map[string][]string{}
 	abs := make([]string, 0, len(rels))
 	for _, rel := range rels {
 		file := path.Join(keg, rel)
 		fi, err := root.Lstat(file)
 		if err != nil {
+			return err
+		}
+		if links[file], err = hardLinks(root, keg, file, fi); err != nil {
 			return err
 		}
 		if perm := fi.Mode().Perm(); perm&0o200 == 0 { // codesign has to write the file
@@ -128,7 +136,61 @@ func signStaged(root *fsx.Root, keg string, rels []string, arm bool, run runner)
 		byAbs[p] = file
 		abs = append(abs, p)
 	}
-	return codesign(abs, arm, run, func(p string) error { return newInode(root, byAbs[p]) })
+	if err := codesign(abs, arm, run, func(p string) error { return newInode(root, byAbs[p]) }); err != nil {
+		return err
+	}
+	return relink(root, links)
+}
+
+// hardLinks lists the other names of a file inside the keg. Apple's codesign
+// writes a new file in place of the one it signs, which would leave them with the
+// old contents and an invalid signature.
+func hardLinks(root *fsx.Root, keg, file string, fi fs.FileInfo) ([]string, error) {
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || uint64(st.Nlink) < 2 {
+		return nil, nil
+	}
+	dir, err := root.Abs(keg)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return err
+		}
+		other, err := d.Info()
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		if name := path.Join(keg, filepath.ToSlash(rel)); name != file && os.SameFile(fi, other) {
+			names = append(names, name)
+		}
+		return nil
+	})
+	return names, err
+}
+
+// relink makes the names that were links of a file links of it again.
+func relink(root *fsx.Root, links map[string][]string) error {
+	for file, names := range links {
+		fi, err := root.Lstat(file)
+		if err != nil {
+			return err
+		}
+		for _, name := range names {
+			if other, err := root.Lstat(name); err == nil && os.SameFile(fi, other) {
+				continue
+			}
+			if err := root.Remove(name); err != nil {
+				return err
+			}
+			if err := root.Link(file, name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // newInode copies a file to a new inode under the same name. A known bug in
