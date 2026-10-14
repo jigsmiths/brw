@@ -285,15 +285,28 @@ func TestConformanceUninstall(t *testing.T) {
 			t.Fatalf("jq versions in %s: %v", p, versions)
 		}
 		sh(t, "", nil, "cp", "-R", filepath.Join(jq, versions[0].Name()), filepath.Join(jq, "0.9"))
-		minio, _ := os.ReadDir(filepath.Join(p, "Cellar", "minio"))
-		if err := os.MkdirAll(filepath.Join(p, "var/homebrew/pinned"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink("../../../Cellar/minio/"+minio[0].Name(), filepath.Join(p, "var/homebrew/pinned/minio")); err != nil {
-			t.Fatal(err)
-		}
 	}
-	compare(t, "after adding a version and a pin", theirs, mine)
+	compare(t, "after adding a version", theirs, mine)
+
+	// Pinning: the newest of two versions, a repeat, a name that is not installed
+	// or unknown, what list shows, and unpinning.
+	step("pin of a formula with two versions", false, nil, "pin", "jq")
+	a, b = step("list --pinned --versions", false, nil, "list", "--pinned", "--versions")
+	if a != b || !strings.HasPrefix(a, "jq ") {
+		t.Errorf("list --pinned --versions\nbrew: %q\nbrw:  %q", a, b)
+	}
+	step("unpin", false, nil, "unpin", "jq")
+	step("pin", false, nil, "pin", "minio")
+	step("pin again", false, nil, "pin", "minio")
+	step("pin of a formula that is not installed", true, nil, "pin", "tree")
+	step("pin with an unknown name", true, nil, "pin", "jq", "nosuchformula")
+	a, b = step("list --pinned", false, nil, "list", "--pinned")
+	if a != b || a != "minio\n" {
+		t.Errorf("list --pinned\nbrew: %q\nbrw:  %q", a, b)
+	}
+	step("unpin of a formula that is not pinned", false, nil, "unpin", "cayley")
+	step("unpin of a formula that is not installed", false, nil, "unpin", "tree")
+	step("unpin with an unknown name", true, nil, "unpin", "nosuchformula")
 
 	step("the linked version of two", false, nil, "uninstall", "jq")
 	step("a pinned formula", false, nil, "uninstall", "minio")
@@ -316,11 +329,7 @@ func TestConformanceUninstall(t *testing.T) {
 
 	step("several names at once", false, nil, "uninstall", "cayley", "sbtenv")
 	step("a dependency of an installed formula", true, nil, "uninstall", "xz")
-	for _, p := range []string{theirs, mine} {
-		if err := os.Remove(filepath.Join(p, "var/homebrew/pinned/minio")); err != nil {
-			t.Fatal(err)
-		}
-	}
+	step("unpin", false, nil, "unpin", "minio")
 	step("the rest, and the dependency that goes with it", false, nil, "uninstall", "minio", "rustup")
 
 	// With everything removed, no link, opt record or linked record may be left
