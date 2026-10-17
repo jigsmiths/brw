@@ -146,7 +146,7 @@ func signStaged(root *fsx.Root, keg string, rels []string, arm bool, run runner)
 // writes a new file in place of the one it signs, which would leave them with the
 // old contents and an invalid signature.
 func hardLinks(root *fsx.Root, keg, file string, fi fs.FileInfo) ([]string, error) {
-	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || uint64(st.Nlink) < 2 {
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || uint64(st.Nlink) < 2 { //nolint:unconvert // uint16 on darwin
 		return nil, nil
 	}
 	dir, err := root.Abs(keg)
