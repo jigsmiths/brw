@@ -469,8 +469,8 @@ func (p *Planner) check(it *Item, problems *[]error) error {
 // checkCellar refuses bottles that need work we cannot do for this prefix.
 func (p *Planner) checkCellar(it *Item) error {
 	name, cellar := it.Formula.Name, it.Bottle.Cellar
-	if p.Host.OS == "linux" && cellar != ":any_skip_relocation" {
-		return fmt.Errorf("%s: %w: it needs its ELF files rewritten", name, ErrUnsupportedHost)
+	if p.Host.OS == "linux" {
+		return fmt.Errorf("%s: %w: its ELF files are not rewritten yet", name, ErrUnsupportedHost)
 	}
 	switch cellar {
 	case ":any", ":any_skip_relocation", p.Prefix + "/Cellar":
