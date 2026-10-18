@@ -316,6 +316,49 @@ func TestSignStagedMakesFilesWritableAndRestoresThem(t *testing.T) {
 	}
 }
 
+func TestSignStagedKeepsHardLinksWhenCodesignMakesANewInode(t *testing.T) {
+	exe := macho(typeExecute, dylib(cmdLoad, "/usr/lib/libSystem.B.dylib"))
+	r, dir := stage(t, map[string]string{"bin/fish": exe})
+	if err := r.Chmod(keg+"/bin/fish", 0o555); err != nil {
+		t.Fatal(err)
+	}
+	fish, alias := filepath.Join(dir, keg, "bin/fish"), filepath.Join(dir, keg, "bin/fish_indent")
+	if err := os.Link(fish, alias); err != nil {
+		t.Fatal(err)
+	}
+	// Apple's codesign writes a new file in place of the one it signs.
+	run := func(args ...string) ([]byte, error) {
+		for _, file := range args[len(signFlags):] {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return nil, err
+			}
+			fi, _ := os.Stat(file)
+			if err := os.Remove(file); err != nil {
+				return nil, err
+			}
+			if err := os.WriteFile(file, append(data, "signed"...), fi.Mode().Perm()); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	}
+	if err := signStaged(r, keg, []string{"bin/fish"}, true, run); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := os.Stat(fish)
+	b, _ := os.Stat(alias)
+	if !os.SameFile(a, b) {
+		t.Error("the link no longer shares a file with the one that was signed")
+	}
+	if got := read(t, dir, "bin/fish_indent"); got != exe+"signed" {
+		t.Errorf("the link has stale contents (%d bytes)", len(got))
+	}
+	if b.Mode().Perm() != 0o555 {
+		t.Errorf("link mode = %v, want 0555", b.Mode().Perm())
+	}
+}
+
 func TestCodesignNothingToDo(t *testing.T) {
 	f := &fakeCodesign{}
 	if err := codesign(nil, true, f.run, nil); err != nil || len(f.calls) != 0 {
