@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -106,6 +107,135 @@ func TestPlanOrdersDependenciesFirst(t *testing.T) {
 	}
 }
 
+func TestPlanRecordsTheTagOfTheHost(t *testing.T) {
+	plan, err := planner(t, mac, index(t, f("app"))).Plan([]string{"app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plan.Items[0].HostTag; got != "arm64_tahoe" {
+		t.Errorf("host tag = %q", got)
+	}
+}
+
+func TestPlanRecordsTheArchOfTheHost(t *testing.T) {
+	plan, err := planner(t, mac, index(t, f("app"))).Plan([]string{"app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plan.Items[0].Arch; got != "arm64" {
+		t.Errorf("arch = %q", got)
+	}
+	if got := hostArch(platform.Host{OS: "linux", Arch: "amd64"}); got != "x86_64" {
+		t.Errorf("amd64 = %q, want brew's name", got)
+	}
+}
+
+// Brew writes the runtime dependencies from the formula as it is now, not from the
+// bottle, which can be older.
+func TestPlanListsRuntimeDependenciesLikeBrew(t *testing.T) {
+	lib := with(with(f("lib", "base"), "versions", map[string]any{"stable": "2.1"}), "revision", 1)
+	lib["bottle"] = map[string]any{"stable": map[string]any{"rebuild": 3, "files": map[string]any{"arm64_tahoe": map[string]any{}}}}
+	idx := index(t, f("app", "lib"), lib, f("base"))
+	plan, err := planner(t, mac, idx).Plan([]string{"app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var app Item
+	for _, it := range plan.Items {
+		if it.Formula.Name == "app" {
+			app = it
+		}
+	}
+	want := []cellar.Dependency{
+		{FullName: "base", Version: "1.0", PkgVersion: "1.0"},
+		{FullName: "lib", Version: "2.1", Revision: 1, BottleRebuild: 3, PkgVersion: "2.1_1", DeclaredDirectly: true},
+	}
+	if !reflect.DeepEqual(app.RuntimeDeps, want) {
+		t.Errorf("runtime dependencies = %+v\nwant %+v", app.RuntimeDeps, want)
+	}
+	if base := plan.Items[0]; base.RuntimeDeps == nil || len(base.RuntimeDeps) != 0 {
+		t.Errorf("a formula with no dependencies has %#v, want an empty list", base.RuntimeDeps)
+	}
+}
+
+func versionedKegOnly(name string) formula {
+	return with(with(f(name), "keg_only", true), "keg_only_reason", map[string]any{"reason": ":versioned_formula"})
+}
+
+// Brew links a versioned keg-only formula that was asked for by name, as long as
+// nothing related to it is installed.
+func TestPlanLinksAVersionedKegOnlyFormulaAskedFor(t *testing.T) {
+	// The unversioned name is only an alias of the newest version, as for icu4c.
+	idx := index(t, versionedKegOnly("icu4c@77"), with(versionedKegOnly("icu4c@78"), "aliases", []string{"icu4c"}), with(f("icu4c@77-full"), "keg_only", false))
+	plan, err := planner(t, mac, idx).Plan([]string{"icu4c@77"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Items[0].KegOnly {
+		t.Error("icu4c@77 was asked for and has no relatives installed, so brew links it")
+	}
+}
+
+func TestPlanKeepsAVersionedFormulaKegOnlyWhenARelativeIsInstalled(t *testing.T) {
+	idx := index(t, versionedKegOnly("icu4c@77"), versionedKegOnly("icu4c@78"), f("icu4c"), versionedKegOnly("icu4c@77-full"))
+	for _, installed := range []string{"icu4c@78", "icu4c", "icu4c@77-full"} {
+		p := planner(t, mac, idx)
+		p.Kegs = []cellar.Keg{keg(installed, "1.0")}
+		plan, err := p.Plan([]string{"icu4c@77"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !plan.Items[0].KegOnly {
+			t.Errorf("%s is installed, so icu4c@77 stays keg-only", installed)
+		}
+	}
+}
+
+func TestPlanKeepsAFullVersionedFormulaKegOnlyWhenItsBaseIsInstalled(t *testing.T) {
+	idx := index(t, versionedKegOnly("foo@1-full"), f("foo-full"))
+	p := planner(t, mac, idx)
+	p.Kegs = []cellar.Keg{keg("foo-full", "1.0")}
+	plan, err := p.Plan([]string{"foo@1-full"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Items[0].KegOnly {
+		t.Error("foo-full is installed, so foo@1-full stays keg-only")
+	}
+}
+
+func TestPlanKeepsAnUpgradedVersionedFormulaKegOnly(t *testing.T) {
+	idx := index(t, versionedKegOnly("icu4c@77"))
+	p := planner(t, mac, idx)
+	p.Kegs = []cellar.Keg{keg("icu4c@77", "0.9")}
+	plan, errs := p.PlanReinstall([]string{"icu4c@77"})
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	if !plan.Items[0].KegOnly {
+		t.Error("a version of it is installed, so it is not linked afresh")
+	}
+}
+
+func TestPlanKeepsAVersionedFormulaKegOnlyWhenTheBaseIsKegOnlyOrItIsOnlyNeeded(t *testing.T) {
+	base := with(with(f("icu4c"), "keg_only", true), "keg_only_reason", map[string]any{"reason": ":provided_by_macos"})
+	plan, err := planner(t, mac, index(t, versionedKegOnly("icu4c@77"), base)).Plan([]string{"icu4c@77"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Items[0].KegOnly {
+		t.Error("a keg-only unversioned formula keeps icu4c@77 keg-only")
+	}
+	idx := index(t, f("app", "icu4c@77"), versionedKegOnly("icu4c@77"))
+	plan, err = planner(t, mac, idx).Plan([]string{"app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Items[0].KegOnly {
+		t.Error("a dependency is not asked for, so it stays keg-only")
+	}
+}
+
 func TestPlanSkipsWhatIsInstalled(t *testing.T) {
 	idx := index(t, f("app", "lib"), f("lib", "base"), f("base"))
 	p := planner(t, mac, idx)
@@ -129,7 +259,7 @@ func TestPlanSkipsWhatIsInstalled(t *testing.T) {
 
 func TestPlanNamedFormulaeAreOnRequestEvenWhenAnotherNeedsThem(t *testing.T) {
 	idx := index(t, f("app", "lib"), f("lib"))
-	plan, err := planner(t, mac, idx).Plan([]string{"app", "lib", "app"})
+	plan, err := planner(t, mac, idx).Plan([]string{"lib", "app", "lib"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,6 +269,21 @@ func TestPlanNamedFormulaeAreOnRequestEvenWhenAnotherNeedsThem(t *testing.T) {
 	for _, it := range plan.Items {
 		if !it.OnRequest {
 			t.Errorf("%s was named but is not on request", it.Formula.Name)
+		}
+	}
+}
+
+// Brew installs a formula that an earlier name needs as a dependency, so naming it
+// later does not make it a request: brew install app lib leaves lib off.
+func TestPlanDependencyNamedAfterItsDependentIsNotOnRequest(t *testing.T) {
+	idx := index(t, f("app", "lib"), f("lib"))
+	plan, err := planner(t, mac, idx).Plan([]string{"app", "lib"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range plan.Items {
+		if want := it.Formula.Name == "app"; it.OnRequest != want {
+			t.Errorf("%s on request = %v, want %v", it.Formula.Name, it.OnRequest, want)
 		}
 	}
 }

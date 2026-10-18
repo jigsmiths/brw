@@ -186,7 +186,7 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 
 	receipt, err := cellar.NewPourReceipt(res.Tab, cellar.Pour{
 		OnRequest: it.OnRequest, Time: in.now(), Aliases: f.Aliases, Stable: f.Versions.Stable,
-		Scheme: f.VersionScheme, Tap: f.Tap, Path: in.APIPath,
+		Scheme: f.VersionScheme, Tap: f.Tap, Path: in.APIPath, Arch: it.Arch,
 	})
 	if err != nil {
 		return Result{}, err
@@ -200,6 +200,17 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	}
 	if err := in.relocate(it, staged, receipt); err != nil {
 		return Result{}, err
+	}
+	if it.RuntimeDeps != nil {
+		// brew rewrites the receipt once the bottle is relocated, with the
+		// dependencies the formula has now.
+		receipt.RuntimeDependencies = it.RuntimeDeps
+		if data, err = receipt.Marshal(); err != nil {
+			return Result{}, err
+		}
+		if err := in.Root.Replace(path.Join(staged, "INSTALL_RECEIPT.json"), data); err != nil {
+			return Result{}, err
+		}
 	}
 	if err := in.updateSBOM(staged, it, res, time.Unix(receipt.Time, 0)); err != nil {
 		return Result{}, err
@@ -337,7 +348,7 @@ func (in *Installer) updateSBOM(staged string, it Item, res bottle.Result, when 
 	}
 	out, ok := sbom.Update(data, sbom.Params{
 		Created: when, Creator: cmp.Or(in.SBOMCreator, "Tool: https://github.com/jigsmiths/brw"),
-		Supplement: res.SBOMSupplement, Tag: it.Tag,
+		Supplement: res.SBOMSupplement, Tag: it.HostTag,
 	})
 	if !ok {
 		return nil

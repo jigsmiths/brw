@@ -15,6 +15,7 @@ type Pour struct {
 	Scheme    int
 	Tap       string
 	Path      string // where the API data brew would have read from lives
+	Arch      string // the CPU of this host, "arm64" or "x86_64"; empty keeps the bottle's
 }
 
 // NewPourReceipt builds a poured bottle's receipt like brew: the manifest tab
@@ -34,6 +35,9 @@ func NewPourReceipt(tab []byte, p Pour) (*Receipt, error) {
 	r.InstalledOnRequest = p.OnRequest
 	r.InstalledAsDependency = nil
 	r.Time = p.Time.Unix()
+	if p.Arch != "" {
+		r.Arch = p.Arch
+	}
 	r.Aliases = p.Aliases
 	if r.Aliases == nil {
 		r.Aliases = []string{}

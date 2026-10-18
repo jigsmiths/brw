@@ -91,7 +91,7 @@ func (e *env) item(spec installtest.Bottle, onRequest, kegOnly bool, extra map[s
 	e.t.Helper()
 	cellarKind := ":any"
 	return Item{
-		Formula: formulaJSON(e.t, spec.Name, extra), Tag: "arm64_tahoe", Bottle: e.reg.Add(spec, cellarKind),
+		Formula: formulaJSON(e.t, spec.Name, extra), Tag: "arm64_tahoe", HostTag: "arm64_tahoe", Bottle: e.reg.Add(spec, cellarKind),
 		PkgVersion: spec.Version, OnRequest: onRequest, KegOnly: kegOnly,
 	}
 }
@@ -839,6 +839,37 @@ func TestInstallTakesTheSupplementOfTheBottleTag(t *testing.T) {
 	got := e.read("Cellar/jq/1.0/sbom.spdx.json")
 	if !strings.Contains(got, "for-tahoe") || strings.Contains(got, "for-linux") {
 		t.Errorf("the SBOM:\n%s", got)
+	}
+}
+
+func TestInstallTakesTheSupplementOfTheHostTagForAnAllBottle(t *testing.T) {
+	e := newEnv(t)
+	supp := `{"tags":{"arm64_tahoe":{"packages":[{"name":"for-tahoe"}]},"x86_64_linux":{"packages":[{"name":"for-linux"}]}}}`
+	it := e.item(sbomBottle(supp), true, false, nil)
+	it.Tag, it.HostTag = "all", "arm64_tahoe"
+	if _, err := e.install(it); err != nil {
+		t.Fatal(err)
+	}
+	got := e.read("Cellar/jq/1.0/sbom.spdx.json")
+	if !strings.Contains(got, "for-tahoe") || strings.Contains(got, "for-linux") {
+		t.Errorf("the SBOM:\n%s", got)
+	}
+}
+
+func TestInstallWritesTheArchOfTheHostAndTheDependenciesOfTheFormula(t *testing.T) {
+	e := newEnv(t)
+	it := e.item(sbomBottle(""), true, false, nil)
+	it.Arch = "x86_64"
+	it.RuntimeDeps = []cellar.Dependency{{FullName: "base", Version: "2.0", PkgVersion: "2.0", DeclaredDirectly: true}}
+	if _, err := e.install(it); err != nil {
+		t.Fatal(err)
+	}
+	r := e.read("Cellar/jq/1.0/INSTALL_RECEIPT.json")
+	if !strings.Contains(r, `"arch": "x86_64"`) {
+		t.Errorf("the receipt does not have the host's arch:\n%s", r)
+	}
+	if !strings.Contains(r, `"full_name": "base"`) || !strings.Contains(r, `"version": "2.0"`) {
+		t.Errorf("the receipt does not list the formula's dependencies:\n%s", r)
 	}
 }
 
