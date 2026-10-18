@@ -159,14 +159,14 @@ func TestPlanUnknownFormula(t *testing.T) {
 
 func TestPlanPicksTheBottleForTheHost(t *testing.T) {
 	idx := index(t, f("a"))
-	plan, err := planner(t, linux, idx).Plan([]string{"a"})
+	plan, err := planner(t, mac, idx).Plan([]string{"a"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Items[0].Tag != "x86_64_linux" {
+	if plan.Items[0].Tag != "arm64_tahoe" {
 		t.Errorf("tag = %v", plan.Items[0].Tag)
 	}
-	if plan.Items[0].Bottle.SHA256 != "x86_64_linux" {
+	if plan.Items[0].Bottle.SHA256 != "arm64_tahoe" {
 		t.Errorf("bottle = %+v, want the file for that tag", plan.Items[0].Bottle)
 	}
 }
@@ -221,16 +221,14 @@ func TestPlanBottlesBuiltForAnotherPrefix(t *testing.T) {
 	}
 }
 
-func TestPlanLinuxNeedsNoRelocation(t *testing.T) {
+func TestPlanRefusesLinux(t *testing.T) {
 	idx := index(t, f("a"), f("b"))
 	p := planner(t, linux, idx)
-	p.Prefix = "/home/linuxbrew/.linuxbrew"
 	p.Bottles = fakeBottles{"a": ":any_skip_relocation", "b": ":any"}
-	if _, err := p.Plan([]string{"a"}); err != nil {
-		t.Errorf("a bottle that needs no relocation: %v", err)
-	}
-	if _, err := p.Plan([]string{"b"}); !errors.Is(err, ErrUnsupportedHost) {
-		t.Errorf("error = %v, want ErrUnsupportedHost: rewriting ELF files is not done", err)
+	for _, name := range []string{"a", "b"} {
+		if _, err := p.Plan([]string{name}); !errors.Is(err, ErrUnsupportedHost) {
+			t.Errorf("%s: error = %v, want ErrUnsupportedHost: the ELF files are not rewritten yet", name, err)
+		}
 	}
 }
 
@@ -277,13 +275,6 @@ func TestPlanKegOnlyFollowsThePlatformVariation(t *testing.T) {
 	}
 	if !plan.Items[0].KegOnly {
 		t.Error("not keg-only on the Mac, where the variation says it is")
-	}
-	plan, err = planner(t, linux, idx).Plan([]string{"tool"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Items[0].KegOnly {
-		t.Error("keg-only on Linux, where there is no such variation")
 	}
 }
 
