@@ -4,6 +4,7 @@ package install
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -34,13 +35,18 @@ type BottleSource interface {
 }
 
 type Item struct {
-	Formula    *api.Formula
-	Tag        string
-	Bottle     api.BottleFile
-	PkgVersion string // version and revision, which names the keg directory
-	OnRequest  bool   // asked for by name, not only needed by something else
-	KegOnly    bool
-	Warnings   []string
+	Formula *api.Formula
+	Tag     string
+	HostTag string // the tag of this host, which can differ from Tag, as for an "all" bottle
+	Arch    string // the CPU of this host as brew names it
+	// RuntimeDeps is what the receipt lists as the runtime dependencies, worked out
+	// from the formula as brew does. Nil leaves the bottle's list as it is.
+	RuntimeDeps []cellar.Dependency
+	Bottle      api.BottleFile
+	PkgVersion  string // version and revision, which names the keg directory
+	OnRequest   bool   // asked for by name, not only needed by something else
+	KegOnly     bool
+	Warnings    []string
 
 	// Upgrade holds the kegs of the older versions this one replaces, and Linked
 	// whether to link the new keg, which an upgrade takes from the old one. Both
@@ -93,8 +99,7 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 
 	var visit func(f *api.Formula, requested bool) error
 	visit = func(f *api.Formula, requested bool) error {
-		if i, ok := position[f.Name]; ok {
-			plan.Items[i].OnRequest = plan.Items[i].OnRequest || requested
+		if _, ok := position[f.Name]; ok {
 			return nil
 		}
 		if installed, err := p.installed(f); err != nil {
@@ -126,7 +131,11 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 		if err != nil {
 			return err
 		}
-		plan.Items = append(plan.Items, Item{Formula: f, OnRequest: requested, KegOnly: g.KegOnly, PkgVersion: pkgVersion(f)})
+		runtime, err := p.runtimeDeps(r, f)
+		if err != nil {
+			return err
+		}
+		plan.Items = append(plan.Items, Item{Formula: f, HostTag: hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)})
 		return nil
 	}
 
@@ -290,6 +299,112 @@ func (p *Planner) bottles(want map[string]string) (map[string]api.BottleFile, er
 		return nil, nil
 	}
 	return p.Bottles.Bottles(want)
+}
+
+// runtimeDeps lists the runtime dependencies of f for its receipt, as brew
+// writes them: in its order, with the versions of the formulae as they are now.
+func (p *Planner) runtimeDeps(r *deps.Resolver, f *api.Formula) ([]cellar.Dependency, error) {
+	order, err := r.Expanded(f.Name)
+	if err != nil {
+		return nil, err
+	}
+	direct, err := r.Direct(f.Name)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]cellar.Dependency, 0, len(order))
+	for _, name := range order {
+		d, ok := p.Index.Lookup(name)
+		if !ok {
+			return nil, fmt.Errorf("%s: dependency %s: %w", f.Name, name, deps.ErrNotFound)
+		}
+		out = append(out, cellar.Dependency{
+			FullName: d.FullName, Version: d.Versions.Stable, Revision: d.Revision,
+			BottleRebuild: d.Bottle.Stable.Rebuild, PkgVersion: pkgVersion(d),
+			DeclaredDirectly: slices.Contains(direct, d.Name),
+		})
+	}
+	return out, nil
+}
+
+const versionedReason = ":versioned_formula"
+
+var versionSuffix = regexp.MustCompile(`@[\d.]+(-full)?$`)
+
+// unversioned is the name of the formula without its @version.
+func unversioned(name string) string {
+	return versionSuffix.ReplaceAllString(name, "$1")
+}
+
+// autoLinks says whether brew links f although it is keg-only: a versioned formula
+// that was asked for by name is linked when no version of it and nothing related to
+// it is installed, and the unversioned formula is not keg-only itself.
+func (p *Planner) autoLinks(f *api.Formula, requested bool) bool {
+	if !requested || f.KegOnlyReason.Reason != versionedReason {
+		return false
+	}
+	if slices.ContainsFunc(p.Kegs, func(k cellar.Keg) bool { return k.Name == f.Name }) {
+		return false
+	}
+	base := unversioned(f.Name)
+	for _, other := range p.related(f) {
+		if slices.ContainsFunc(p.Kegs, func(k cellar.Keg) bool { return k.Name == other.Name }) {
+			return false
+		}
+		if other.Name == base && other.KegOnly {
+			return false
+		}
+	}
+	return true
+}
+
+// related lists the formulae that share links with f, as brew does: the other
+// versions, the -full counterpart and the unversioned formula, and theirs in turn.
+func (p *Planner) related(f *api.Formula) []*api.Formula {
+	versions := map[string][]string{} // unversioned name to its versioned formulae
+	for _, g := range p.Index.Formulae() {
+		if strings.Contains(g.Name, "@") {
+			base := unversioned(g.Name)
+			versions[base] = append(versions[base], g.Name)
+		}
+	}
+	siblings := func(name string) []string {
+		out := slices.Clone(versions[unversioned(name)])
+		if full, ok := strings.CutSuffix(name, "-full"); ok {
+			out = append(out, full)
+		} else {
+			out = append(out, name+"-full")
+		}
+		if u := unversioned(name); u != name {
+			out = append(out, u)
+		}
+		return out
+	}
+	seen := map[string]bool{f.Name: true}
+	var out []*api.Formula
+	queue := []string{f.Name}
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		for _, n := range siblings(name) {
+			g, ok := p.Index.Lookup(n) // an alias leads to the formula it names
+			if !ok || seen[g.Name] {
+				continue
+			}
+			seen[g.Name] = true
+			out = append(out, g)
+			queue = append(queue, g.Name)
+		}
+	}
+	return out
+}
+
+// hostArch is the name brew gives the CPU of the host.
+func hostArch(h platform.Host) string {
+	if h.Arch == "amd64" {
+		return "x86_64"
+	}
+	return h.Arch
 }
 
 func pkgVersion(f *api.Formula) string {

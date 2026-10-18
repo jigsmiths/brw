@@ -75,6 +75,30 @@ func TestRecursive(t *testing.T) {
 	}
 }
 
+// Brew records runtime dependencies with the dependencies of each one before it,
+// and every name once, where it first came up.
+func TestExpandedPutsDependenciesBeforeTheirDependents(t *testing.T) {
+	idx := index(t, f("app", "lib", "tool"), f("lib", "base"), f("tool", "base", "extra"), f("base"), f("extra"))
+	got, err := resolver(t, idx, macHost).Expanded("app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"base", "lib", "extra", "tool"}; !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestExpandedSurvivesACycleAndSkipsTheRoot(t *testing.T) {
+	idx := index(t, f("a", "b"), f("b", "a"))
+	got, err := resolver(t, idx, macHost).Expanded("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []string{"b"}) {
+		t.Errorf("got %v", got)
+	}
+}
+
 func TestRecursiveWithCycle(t *testing.T) {
 	idx := index(t, f("a", "b"), f("b", "c"), f("c", "b"))
 	got, err := resolver(t, idx, macHost).Recursive("a")
