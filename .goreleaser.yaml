@@ -35,6 +35,8 @@ homebrew_casks:
     description: "Homebrew-compatible package client written in Go"
     license: "MIT"
     custom_block: |
+      auto_updates true
+
       postflight_steps do
         run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{" }}staged_path{{ "}}" }}/brw"]
       end
