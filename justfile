@@ -49,6 +49,10 @@ conformance-install:
 conformance-uninstall:
     BRW_CONFORMANCE_UNINSTALL=1 go test ./cmd/brw -run TestConformanceUninstall -count=1 -v -timeout 20m
 
+# Age kegs in two prefixes, then compare brew and brw update and upgrade (needs ~/.brw-oracle/hb)
+conformance-upgrade:
+    BRW_CONFORMANCE_UPGRADE=1 go test ./cmd/brw -run TestConformanceUpgrade -count=1 -v -timeout 30m
+
 # Install everything brew has installed here into a scratch prefix and check it (needs ~/.brw-oracle/hb)
 conformance-full:
     BRW_CONFORMANCE_FULL=1 go test ./cmd/brw -run TestConformanceFull -count=1 -v -timeout 60m
