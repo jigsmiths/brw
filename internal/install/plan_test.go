@@ -492,11 +492,21 @@ func TestPlanUpgradeCarriesOverHowTheOldKegWasInstalled(t *testing.T) {
 	}
 }
 
-func TestPlanUpgradeKeepsAnUnlinkedKegUnlinked(t *testing.T) {
+// Brew links what it upgrades unless the formula is keg-only, whatever the old
+// keg was (formula_installer.rb: link_keg ||= !formula.keg_only?).
+func TestPlanUpgradeLinksAnUnlinkedKeg(t *testing.T) {
 	idx := index(t, f("app"))
 	plan, errs := upgradePlanner(t, idx, false, keg("app", "0.9")).PlanUpgrade([]string{"app"})
+	if len(errs) != 0 || plan.Items[0].Linked == nil || !*plan.Items[0].Linked {
+		t.Errorf("errs = %v, linked = %v: brew links it again", errs, plan.Items[0].Linked)
+	}
+}
+
+func TestPlanUpgradeKeepsAnUnlinkedKegOnlyKegUnlinked(t *testing.T) {
+	idx := index(t, with(f("app"), "keg_only", true))
+	plan, errs := upgradePlanner(t, idx, false, keg("app", "0.9")).PlanUpgrade([]string{"app"})
 	if len(errs) != 0 || plan.Items[0].Linked == nil || *plan.Items[0].Linked {
-		t.Errorf("errs = %v, linked = %v: it was not linked before", errs, plan.Items[0].Linked)
+		t.Errorf("errs = %v, linked = %v: keg-only formulae stay unlinked", errs, plan.Items[0].Linked)
 	}
 }
 
@@ -619,8 +629,8 @@ func TestPlanReinstallOfAnOutdatedFormulaIsAnUpgradeToo(t *testing.T) {
 	if len(errs) != 0 || plan.Items[0].PkgVersion != "1.0" || !plan.Items[0].Reinstall || plan.Items[0].Upgrade[0].Version != "0.9" {
 		t.Fatalf("errs = %v, item = %+v", errs, plan.Items[0])
 	}
-	if plan.Items[0].Linked == nil || *plan.Items[0].Linked {
-		t.Error("it was not linked, so it stays unlinked")
+	if plan.Items[0].Linked == nil || !*plan.Items[0].Linked {
+		t.Error("brew links what it reinstalls unless it is keg-only")
 	}
 }
 
