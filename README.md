@@ -6,6 +6,12 @@ A Go, Homebrew-compatible package client. It reads Homebrew's metadata and bottl
 
 **Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae.
 
+## Install
+
+```sh
+brew install --cask jigsmiths/tap/brw
+```
+
 ## Usage
 
 Needs [just](https://github.com/casey/just) and Go.

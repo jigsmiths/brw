@@ -26,6 +26,21 @@ archives:
     files:
       - LICENSE
 
+homebrew_casks:
+  - repository:
+      owner: jigsmiths
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/jigsmiths/brw"
+    description: "Homebrew-compatible package client written in Go"
+    license: "MIT"
+    custom_block: |
+      auto_updates true
+
+      postflight_steps do
+        run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{" }}staged_path{{ "}}" }}/brw"]
+      end
+
 checksum:
   name_template: checksums.txt
 
