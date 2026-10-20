@@ -289,7 +289,9 @@ func (p *Planner) markUpgrades(plan *Plan, reinstall bool) {
 		it.Reinstall = reinstall
 		current := cellar.Prefix(p.Prefix).DefaultKeg(old)
 		it.OnRequest = current.Receipt != nil && current.Receipt.InstalledOnRequest
-		linked := p.Linked(it.Formula.Name)
+		// Brew links what it installs unless the formula is keg-only, so an
+		// unlinked keg is linked again by the upgrade.
+		linked := p.Linked(it.Formula.Name) || !it.KegOnly
 		it.Linked = &linked
 	}
 }
