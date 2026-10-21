@@ -99,6 +99,7 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 	}
 	if e.tty {
 		display := progress.New(e.out, true)
+		display.Width = func() int { return terminalWidth(os.Stdout) }
 		defer display.Close()
 		in.Fetcher.Progress = display.Update
 	}
