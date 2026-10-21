@@ -2,12 +2,15 @@
 package search
 
 import (
+	"cmp"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/version"
 )
 
 // Match is a formula whose description matched.
@@ -70,8 +73,26 @@ func Names(idx *api.Index, query string) ([]string, error) {
 		}
 		out = append(out, n)
 	}
-	sort.Strings(out)
+	sortNames(out)
 	return out, nil
+}
+
+// sortNames orders names as brew does: by the name before any "@", then by the
+// version after it, with an unversioned name first.
+func sortNames(names []string) {
+	split := func(name string) (string, version.Version) {
+		base, v, _ := strings.Cut(name, "@")
+		if v == "" {
+			v = "0"
+		}
+		parsed, _ := version.Parse(v)
+		return base, parsed
+	}
+	slices.SortStableFunc(names, func(a, b string) int {
+		baseA, verA := split(a)
+		baseB, verB := split(b)
+		return cmp.Or(strings.Compare(baseA, baseB), verA.Compare(verB), strings.Compare(a, b))
+	})
 }
 
 // Descriptions returns the formulae whose description matches query, by name.

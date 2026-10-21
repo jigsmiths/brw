@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/sbom"
 )
 
 // object is a JSON object that keeps its keys in order.
@@ -221,6 +224,7 @@ func hostBottle(f *api.Formula, host platform.Host, raw json.RawMessage) (json.R
 
 // installedJSON is one entry of "installed": what brew keeps from a receipt.
 type installedJSON struct {
+	SBOM                *string             `json:"sbom"`
 	Version             string              `json:"version"`
 	UsedOptions         []string            `json:"used_options"`
 	BuiltAsBottle       bool                `json:"built_as_bottle"`
@@ -228,6 +232,11 @@ type installedJSON struct {
 	Time                int64               `json:"time"`
 	RuntimeDependencies []cellar.Dependency `json:"runtime_dependencies"`
 	InstalledOnRequest  bool                `json:"installed_on_request"`
+}
+
+func isFile(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.Mode().IsRegular()
 }
 
 func newInstalledJSON(k keg) installedJSON {
@@ -241,6 +250,9 @@ func newInstalledJSON(k keg) installedJSON {
 		}
 		out.BuiltAsBottle, out.PouredFromBottle = r.BuiltAsBottle, r.PouredFromBottle
 		out.Time, out.InstalledOnRequest = r.Time, r.InstalledOnRequest
+	}
+	if file := filepath.Join(k.Path, sbom.File); isFile(file) {
+		out.SBOM = &file
 	}
 	return out
 }

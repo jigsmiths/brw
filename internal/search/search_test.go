@@ -78,3 +78,12 @@ func TestDescriptions(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+func TestSortNames(t *testing.T) {
+	got := []string{"libgit2@1.8", "libgit2-glib", "libgit2@1.10", "libgit2", "libgit2@1.7", "python@3.9", "python@3.13"}
+	sortNames(got)
+	want := []string{"libgit2", "libgit2@1.7", "libgit2@1.8", "libgit2@1.10", "libgit2-glib", "python@3.9", "python@3.13"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("sortNames = %v, want %v", got, want)
+	}
+}
