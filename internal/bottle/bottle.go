@@ -46,6 +46,25 @@ type Fetcher struct {
 	HTTP    *http.Client
 	Dir     string
 	Workers int // simultaneous downloads in FetchAll; 4 if zero
+	// Progress, if set, is told, under the label "name (version)", how much of a bottle has been downloaded, and how
+	// much there is in all (-1 if unknown). It is called from several goroutines
+	// and not for a bottle that is already in the cache.
+	Progress func(name string, done, total int64)
+}
+
+// progressReader reports the bytes read through it.
+type progressReader struct {
+	r           io.Reader
+	name        string
+	done, total int64
+	report      func(name string, done, total int64)
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	p.done += int64(n)
+	p.report(p.name, p.done, p.total)
+	return n, err
 }
 
 // client follows redirects but keeps the token for the origin it was meant for:
@@ -100,7 +119,7 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 	if !haveBottle {
-		if err := f.download(ctx, req.File, path); err != nil {
+		if err := f.download(ctx, req.Name+" ("+req.PkgVersion+")", req.File, path); err != nil {
 			return Result{}, err
 		}
 	}
@@ -166,7 +185,7 @@ func (f *Fetcher) annotations(ctx context.Context, req Request) (annotations, er
 	return annotations{}, fmt.Errorf("%s: no manifest matches the bottle checksum %s", req.Name, req.File.SHA256)
 }
 
-func (f *Fetcher) download(ctx context.Context, file api.BottleFile, path string) error {
+func (f *Fetcher) download(ctx context.Context, name string, file api.BottleFile, path string) error {
 	resp, err := f.get(ctx, file.URL, "")
 	if err != nil {
 		return err
@@ -178,7 +197,11 @@ func (f *Fetcher) download(ctx context.Context, file api.BottleFile, path string
 	}
 	defer func() { _ = os.Remove(tmp.Name()) }() //fsx:allow download cache; gone after the rename
 	h := sha256.New()
-	_, err = io.Copy(io.MultiWriter(tmp, h), resp.Body)
+	var body io.Reader = resp.Body
+	if f.Progress != nil {
+		body = &progressReader{r: body, name: name, total: resp.ContentLength, report: f.Progress}
+	}
+	_, err = io.Copy(io.MultiWriter(tmp, h), body)
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/progress"
 )
 
 func installCommand(e *env, args []string) error {
@@ -95,6 +96,11 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 		User:    os.Getenv("USER"),
 
 		SBOMCreator: sbomCreator(),
+	}
+	if e.tty {
+		display := progress.New(e.out, true)
+		defer display.Close()
+		in.Fetcher.Progress = display.Update
 	}
 	for _, opt := range opts {
 		opt(in)
