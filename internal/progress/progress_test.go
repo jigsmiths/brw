@@ -141,3 +141,15 @@ func TestSpeedIsOverARecentWindow(t *testing.T) {
 		t.Errorf("speed should be the recent 1MB/s, not the 9MB/s average: %q", got)
 	}
 }
+
+func TestCloseDoesNotRepeatLinesAlreadyDrawn(t *testing.T) {
+	d, buf, c := newDisplay(true)
+	d.Update("a (1)", 10, 10)
+	buf.WriteString("==> Upgrading a\n")
+	n := buf.Len()
+	c.t = c.t.Add(time.Second)
+	d.Close()
+	if buf.Len() != n {
+		t.Errorf("Close redrew a finished display:\n%q", buf.String()[n:])
+	}
+}
