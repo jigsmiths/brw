@@ -12,6 +12,7 @@ import (
 	"path"
 	"runtime"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jigsmiths/brw/internal/bottle"
@@ -103,7 +104,7 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 	for i, it := range plan.Items {
 		reqs[i] = bottle.Request{Name: it.Formula.Name, PkgVersion: it.PkgVersion, Rebuild: it.Formula.Bottle.Stable.Rebuild, Tag: it.Tag, File: it.Bottle}
 	}
-	in.logf("==> Fetching %s", plural(len(reqs), "bottle"))
+	in.logf("==> Fetching downloads for: %s", sentence(reqs))
 	fetched, err := in.Fetcher.FetchAll(ctx, reqs)
 	if err != nil {
 		return nil, err
@@ -397,11 +398,16 @@ func (in *Installer) relocate(it Item, staged string, r *cellar.Receipt) error {
 	return sign(in.Root, staged, modified)
 }
 
-func plural(n int, noun string) string {
-	if n == 1 {
-		return "1 " + noun
+// sentence lists the names as brew does: "a", "a and b", "a, b and c".
+func sentence(reqs []bottle.Request) string {
+	names := make([]string, len(reqs))
+	for i, r := range reqs {
+		names[i] = r.Name
 	}
-	return fmt.Sprintf("%d %ss", n, noun)
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 func randomID() string {

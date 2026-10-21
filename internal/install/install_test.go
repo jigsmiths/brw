@@ -1094,3 +1094,25 @@ func TestInstallLocksTheDependenciesInThePlan(t *testing.T) {
 		_ = l.Release()
 	}
 }
+
+func TestSentence(t *testing.T) {
+	names := func(n ...string) []bottle.Request {
+		var reqs []bottle.Request
+		for _, name := range n {
+			reqs = append(reqs, bottle.Request{Name: name})
+		}
+		return reqs
+	}
+	for _, c := range []struct {
+		in   []bottle.Request
+		want string
+	}{
+		{names("jq"), "jq"},
+		{names("jq", "gh"), "jq and gh"},
+		{names("deno", "openssl@3", "openssl@4"), "deno, openssl@3 and openssl@4"},
+	} {
+		if got := sentence(c.in); got != c.want {
+			t.Errorf("sentence = %q, want %q", got, c.want)
+		}
+	}
+}
