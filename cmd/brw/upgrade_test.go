@@ -64,10 +64,10 @@ func TestUpgradeBringsOutdatedFormulaeUpToDate(t *testing.T) {
 	}
 }
 
-func TestUpgradeSaysNothingWhenEverythingIsCurrent(t *testing.T) {
+func TestUpgradeSaysSoWhenEverythingIsCurrent(t *testing.T) {
 	e, prefix := linkStore(t)
 	out, err := runCmd(t, e, "upgrade", "-prefix", prefix)
-	if err != nil || out != "" {
+	if err != nil || out != "Nothing to upgrade.\n" {
 		t.Errorf("out = %q, err = %v", out, err)
 	}
 }
@@ -124,8 +124,8 @@ func TestUpgradeSkipsPinnedFormulaeAndRefusesWhenNamed(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := runCmd(t, e, "upgrade", "-prefix", prefix)
-	if err != nil || out != "" || !exists(t, prefix, "Cellar/app/0.9") {
-		t.Fatalf("without names a pinned formula is skipped quietly: %q, %v", out, err)
+	if err != nil || out != "Nothing to upgrade.\n" || !exists(t, prefix, "Cellar/app/0.9") {
+		t.Fatalf("without names a pinned formula is skipped: %q, %v", out, err)
 	}
 	_, err = runCmd(t, e, "upgrade", "-prefix", prefix, "app")
 	if err == nil || !strings.Contains(err.Error(), "not upgrading 1 pinned package:\napp 0.9") {

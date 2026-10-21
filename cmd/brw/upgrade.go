@@ -95,6 +95,9 @@ func upgradeCommand(e *env, args []string) error {
 		failures = append(failures, errors.New(msg))
 	}
 	if len(upgrade) == 0 {
+		if len(names) == 0 {
+			_, _ = fmt.Fprintln(e.out, "Nothing to upgrade.")
+		}
 		return errors.Join(failures...)
 	}
 

@@ -14,15 +14,29 @@ import (
 
 const (
 	barWidth = 30
-	redraw   = 100 * time.Millisecond
+	minBar   = 10
+	minLabel = 12
+	// noBar and compact are barW values: the line without its bar, and the icon
+	// and label alone, for a terminal too narrow for anything more.
+	noBar, compact = 0, -1
+	minShortLabel  = 4
+	redraw         = 100 * time.Millisecond
+	// speedWindow is how far back the download speed looks, so that it follows
+	// the connection rather than the average of the whole download.
+	speedWindow = 3 * time.Second
 )
 
 var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+type sample struct {
+	at   time.Time
+	done int64
+}
+
 type item struct {
 	label       string
 	done, total int64
-	start       time.Time
+	samples     []sample
 	finished    bool
 }
 
@@ -32,6 +46,9 @@ type item struct {
 type Display struct {
 	// Now is time.Now unless a test sets it.
 	Now func() time.Time
+	// Width says how many columns the terminal has, so lines can be cut to fit.
+	// Nil means no limit.
+	Width func() int
 
 	w   io.Writer
 	tty bool
@@ -54,7 +71,7 @@ func (d *Display) Update(label string, done, total int64) {
 	now := d.Now()
 	it := d.find(label)
 	if it == nil {
-		it = &item{label: label, start: now}
+		it = &item{label: label}
 		d.items = append(d.items, it)
 	}
 	it.done, it.total = done, total
@@ -94,41 +111,132 @@ func (d *Display) find(label string) *item {
 func (d *Display) draw(now time.Time) {
 	d.last = now
 	d.frames++
+	for _, it := range d.items {
+		if !it.finished {
+			it.sample(now)
+		}
+	}
 	var b strings.Builder
 	if d.drawn > 0 {
 		fmt.Fprintf(&b, "\x1b[%dA", d.drawn)
 	}
-	width := 0
-	for _, it := range d.items {
-		width = max(width, len(it.label))
-	}
-	for _, it := range d.items {
+	for _, line := range d.lines(now) {
 		b.WriteString("\r\x1b[2K")
-		b.WriteString(d.line(it, width, now))
+		b.WriteString(line)
 		b.WriteByte('\n')
 	}
 	d.drawn = len(d.items)
 	_, _ = io.WriteString(d.w, b.String())
 }
 
-func (d *Display) line(it *item, width int, now time.Time) string {
+// sample notes how far the download is, and forgets what is older than the
+// window the speed is measured over.
+func (it *item) sample(now time.Time) {
+	it.samples = append(it.samples, sample{now, it.done})
+	for len(it.samples) > 1 && now.Sub(it.samples[0].at) > speedWindow {
+		it.samples = it.samples[1:]
+	}
+}
+
+// speed is bytes a second over the window, or false before there is one.
+func (it *item) speed(now time.Time) (int64, bool) {
+	if len(it.samples) == 0 {
+		return 0, false
+	}
+	first := it.samples[0]
+	secs := now.Sub(first.at).Seconds()
+	if secs <= 0 {
+		return 0, false
+	}
+	return int64(float64(it.done-first.done) / secs), true
+}
+
+// lines renders every item with the same column widths. They shrink to fit the
+// terminal, as a line that wraps would break redrawing in place: first the bar,
+// then the label, then the speed goes.
+func (d *Display) lines(now time.Time) []string {
+	labelW := 0
+	for _, it := range d.items {
+		labelW = max(labelW, len([]rune(it.label)))
+	}
+	render := func(labelW, barW int, speed bool) (lines []string, widest int) {
+		for _, it := range d.items {
+			l := d.line(it, labelW, barW, speed, now)
+			lines = append(lines, l)
+			widest = max(widest, len([]rune(l)))
+		}
+		return lines, widest
+	}
+	avail := 0
+	if d.Width != nil {
+		avail = d.Width() - 1 // the last column would wrap
+	}
+	if avail <= 0 {
+		lines, _ := render(labelW, barWidth, true)
+		return lines
+	}
+	try := func(labelW, barW int, speed bool) []string {
+		if lines, widest := render(labelW, barW, speed); widest <= avail {
+			return lines
+		}
+		return nil
+	}
+	for _, speed := range []bool{true, false} {
+		for bar := barWidth; bar >= minBar; bar-- {
+			if lines := try(labelW, bar, speed); lines != nil {
+				return lines
+			}
+		}
+		for w := labelW - 1; w >= min(labelW, minLabel); w-- {
+			if lines := try(w, minBar, speed); lines != nil {
+				return lines
+			}
+		}
+	}
+	for w := min(labelW, minLabel); w >= minShortLabel; w-- {
+		if lines := try(w, noBar, false); lines != nil {
+			return lines
+		}
+	}
+	lines, _ := render(max(avail-2, 1), compact, false)
+	return lines
+}
+
+func (d *Display) line(it *item, labelW, barW int, withSpeed bool, now time.Time) string {
 	icon, state := spinner[d.frames%len(spinner)], "Downloading"
 	if it.finished {
 		icon, state = "✔", "Downloaded"
 	}
-	bar := strings.Repeat(" ", barWidth)
+	if barW == compact {
+		return icon + " " + fit(it.label, labelW)
+	}
+	bar := strings.Repeat(" ", barW)
 	size := fmt.Sprintf("%6s", cellar.ReadableSize(it.done))
 	if it.total >= 0 {
-		filled := barWidth
+		filled := barW
 		if it.total > 0 {
-			filled = int(int64(barWidth) * min(it.done, it.total) / it.total)
+			filled = int(int64(barW) * min(it.done, it.total) / it.total)
 		}
-		bar = strings.Repeat("#", filled) + strings.Repeat(" ", barWidth-filled)
+		bar = strings.Repeat("#", filled) + strings.Repeat(" ", barW-filled)
 		size += fmt.Sprintf("/%6s", cellar.ReadableSize(it.total))
 	}
 	speed := ""
-	if secs := now.Sub(it.start).Seconds(); !it.finished && secs > 0 {
-		speed = "  " + cellar.ReadableSize(int64(float64(it.done)/secs)) + "/s"
+	if withSpeed && !it.finished {
+		if v, ok := it.speed(now); ok {
+			speed = "  " + cellar.ReadableSize(v) + "/s"
+		}
 	}
-	return fmt.Sprintf("%s Bottle %-*s  %s  %-11s %s%s", icon, width, it.label, bar, state, size, speed)
+	if barW != noBar {
+		bar += "  "
+	}
+	return fmt.Sprintf("%s Bottle %s  %s%-11s %s%s", icon, fit(it.label, labelW), bar, state, size, speed)
+}
+
+// fit pads or cuts the label to w columns, ending a cut one in "…".
+func fit(label string, w int) string {
+	r := []rune(label)
+	if len(r) > w {
+		return string(r[:max(w-1, 0)]) + "…"
+	}
+	return label + strings.Repeat(" ", w-len(r))
 }
