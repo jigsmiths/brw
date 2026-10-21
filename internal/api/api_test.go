@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -16,9 +17,13 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jigsmiths/brw/internal/api/apitest"
 )
 
 const fixtureSize = 19
+
+func testKey() *rsa.PublicKey { return &apitest.Shared().PublicKey }
 
 func fixture(t *testing.T) []byte {
 	t.Helper()
@@ -104,7 +109,8 @@ type server struct {
 	hits        atomic.Int32
 	conditional atomic.Int32
 	status      int
-	body        []byte
+	body        []byte // signed when served, unless raw
+	raw         bool
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +125,11 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("ETag", `"v1"`)
-	_, _ = w.Write(s.body)
+	if s.raw {
+		_, _ = w.Write(s.body)
+		return
+	}
+	_, _ = w.Write(apitest.Listing(apitest.Shared(), s.body))
 }
 
 // afterFresh is a clock far enough ahead that a cached listing needs revalidating.
@@ -129,7 +139,7 @@ func TestFormulaeCachesWithETag(t *testing.T) {
 	srv := &server{body: fixture(t)}
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir()}
 
 	first, err := c.Formulae(context.Background())
 	if err != nil || len(first) != fixtureSize {
@@ -150,7 +160,7 @@ func TestFormulaeIgnoresETagWithoutBody(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 	dir := t.TempDir()
-	c := &Client{URL: ts.URL, CacheDir: dir}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: dir}
 	if _, err := c.Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +179,7 @@ func TestFormulaeIgnoresETagWithoutBody(t *testing.T) {
 func TestFormulaeServerError(t *testing.T) {
 	ts := httptest.NewServer(&server{status: http.StatusInternalServerError})
 	defer ts.Close()
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir()}
 	if _, err := c.Formulae(context.Background()); err == nil {
 		t.Error("expected error")
 	}
@@ -179,7 +189,7 @@ func TestFormulaeStaleCacheWhenFetchFails(t *testing.T) {
 	srv := &server{body: fixture(t)}
 	ts := httptest.NewServer(srv)
 	dir := t.TempDir()
-	if _, err := (&Client{URL: ts.URL, CacheDir: dir}).Formulae(context.Background()); err != nil {
+	if _, err := (&Client{Key: testKey(), URL: ts.URL, CacheDir: dir}).Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	down := ts.URL
@@ -190,7 +200,7 @@ func TestFormulaeStaleCacheWhenFetchFails(t *testing.T) {
 	for name, url := range map[string]string{"unreachable": down, "server error": failing.URL} {
 		t.Run(name, func(t *testing.T) {
 			var warnings []string
-			c := &Client{URL: url, CacheDir: dir, Now: afterFresh, Warn: func(msg string) { warnings = append(warnings, msg) }}
+			c := &Client{Key: testKey(), URL: url, CacheDir: dir, Now: afterFresh, Warn: func(msg string) { warnings = append(warnings, msg) }}
 			fs, err := c.Formulae(context.Background())
 			if err != nil || len(fs) != fixtureSize {
 				t.Fatalf("got %d formulae, %v; want the stale cache", len(fs), err)
@@ -205,7 +215,7 @@ func TestFormulaeStaleCacheWhenFetchFails(t *testing.T) {
 func TestFormulaeNoWarningWhenFresh(t *testing.T) {
 	ts := httptest.NewServer(&server{body: fixture(t)})
 	defer ts.Close()
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir(), Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir(), Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
 	for range 2 {
 		if _, err := c.Formulae(context.Background()); err != nil {
 			t.Fatal(err)
@@ -217,7 +227,7 @@ func TestFormulaeUnreachableWithoutCache(t *testing.T) {
 	ts := httptest.NewServer(&server{})
 	url := ts.URL
 	ts.Close()
-	c := &Client{URL: url, CacheDir: t.TempDir(), Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
+	c := &Client{Key: testKey(), URL: url, CacheDir: t.TempDir(), Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
 	if _, err := c.Formulae(context.Background()); err == nil {
 		t.Error("expected error")
 	}
@@ -228,7 +238,7 @@ func TestFormulaeBadBodyNotCached(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 	dir := t.TempDir()
-	c := &Client{URL: ts.URL, CacheDir: dir}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: dir}
 	if _, err := c.Formulae(context.Background()); err == nil {
 		t.Fatal("expected parse error")
 	}
@@ -394,7 +404,7 @@ func TestInfoFields(t *testing.T) {
 func TestRaw(t *testing.T) {
 	ts := httptest.NewServer(&server{body: fixture(t)})
 	defer ts.Close()
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir()}
 	if _, err := c.Raw("jq"); err == nil {
 		t.Error("expected an error before anything is cached")
 	}
@@ -437,7 +447,7 @@ func TestFormulaeSkipsTheServerWhileFresh(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 	clk := &clock{}
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir(), Now: clk.now}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir(), Now: clk.now}
 	get := func(want int32) {
 		t.Helper()
 		fs, err := c.Formulae(context.Background())
@@ -468,7 +478,7 @@ func TestFormulaeLoadsTheIndexNotTheBody(t *testing.T) {
 	defer ts.Close()
 	dir := t.TempDir()
 	clk := &clock{}
-	c := &Client{URL: ts.URL, CacheDir: dir, Now: clk.now}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: dir, Now: clk.now}
 	if _, err := c.Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -522,7 +532,7 @@ func TestFormulaeRebuildsAnUnusableIndex(t *testing.T) {
 			defer ts.Close()
 			dir := t.TempDir()
 			clk := &clock{}
-			c := &Client{URL: ts.URL, CacheDir: dir, Now: clk.now}
+			c := &Client{Key: testKey(), URL: ts.URL, CacheDir: dir, Now: clk.now}
 			if _, err := c.Formulae(context.Background()); err != nil {
 				t.Fatal(err)
 			}
@@ -547,7 +557,7 @@ func TestFormulaeOfflineUsesTheIndex(t *testing.T) {
 	ts := httptest.NewServer(&server{body: fixture(t)})
 	dir := t.TempDir()
 	clk := &clock{}
-	if _, err := (&Client{URL: ts.URL, CacheDir: dir, Now: clk.now}).Formulae(context.Background()); err != nil {
+	if _, err := (&Client{Key: testKey(), URL: ts.URL, CacheDir: dir, Now: clk.now}).Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	down := ts.URL
@@ -557,7 +567,7 @@ func TestFormulaeOfflineUsesTheIndex(t *testing.T) {
 	}
 	clk.offset = time.Hour
 	var warnings []string
-	c := &Client{URL: down, CacheDir: dir, Now: clk.now, Warn: func(m string) { warnings = append(warnings, m) }}
+	c := &Client{Key: testKey(), URL: down, CacheDir: dir, Now: clk.now, Warn: func(m string) { warnings = append(warnings, m) }}
 	fs, err := c.Formulae(context.Background())
 	if err != nil || len(fs) != fixtureSize || len(warnings) != 1 {
 		t.Errorf("got %d formulae, %v, warnings %q", len(fs), err, warnings)
@@ -570,7 +580,7 @@ func TestFormulaeNeedsTheBodyToStaySkippable(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 	dir := t.TempDir()
-	c := &Client{URL: ts.URL, CacheDir: dir}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: dir}
 	if _, err := c.Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +625,7 @@ func TestIndexMatchesAFreshParse(t *testing.T) {
 	ts := httptest.NewServer(&server{body: fixture(t)})
 	defer ts.Close()
 	clk := &clock{}
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir(), Now: clk.now}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir(), Now: clk.now}
 	parsed, err := c.Formulae(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -644,7 +654,7 @@ func TestIndexMatchesAFreshParse(t *testing.T) {
 func TestBottles(t *testing.T) {
 	ts := httptest.NewServer(&server{body: fixture(t)})
 	defer ts.Close()
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir()}
 	if _, err := c.Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -677,7 +687,7 @@ func TestRefreshAsksTheServerEvenWhenTheCacheIsFresh(t *testing.T) {
 	srv := &server{body: fixture(t)}
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir()}
 	if _, err := c.Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -696,7 +706,7 @@ func TestRefreshAsksTheServerEvenWhenTheCacheIsFresh(t *testing.T) {
 func TestRefreshFirstFetch(t *testing.T) {
 	ts := httptest.NewServer(&server{body: fixture(t)})
 	defer ts.Close()
-	up, err := (&Client{URL: ts.URL, CacheDir: t.TempDir()}).Refresh(context.Background())
+	up, err := (&Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir()}).Refresh(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -727,9 +737,11 @@ func TestRefreshReportsWhatChanged(t *testing.T) {
 	var current atomic.Pointer[[]byte]
 	old := fixture(t)
 	current.Store(&old)
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(*current.Load()) }))
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(apitest.Listing(apitest.Shared(), *current.Load()))
+	}))
 	defer ts.Close()
-	c := &Client{URL: ts.URL, CacheDir: t.TempDir()}
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: t.TempDir()}
 	if _, err := c.Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -749,7 +761,7 @@ func TestRefreshReportsWhatChanged(t *testing.T) {
 func TestRefreshFailsInsteadOfUsingTheCache(t *testing.T) {
 	ts := httptest.NewServer(&server{body: fixture(t)})
 	dir := t.TempDir()
-	if _, err := (&Client{URL: ts.URL, CacheDir: dir}).Formulae(context.Background()); err != nil {
+	if _, err := (&Client{Key: testKey(), URL: ts.URL, CacheDir: dir}).Formulae(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	failing := httptest.NewServer(&server{status: http.StatusInternalServerError})
@@ -758,12 +770,12 @@ func TestRefreshFailsInsteadOfUsingTheCache(t *testing.T) {
 		if name == "unreachable" {
 			ts.Close()
 		}
-		c := &Client{URL: url, CacheDir: dir, Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
+		c := &Client{Key: testKey(), URL: url, CacheDir: dir, Warn: func(msg string) { t.Errorf("unexpected warning %q", msg) }}
 		if _, err := c.Refresh(context.Background()); err == nil {
 			t.Errorf("%s: expected an error", name)
 		}
 	}
-	if got, err := (&Client{URL: "http://127.0.0.1:1", CacheDir: dir}).Formulae(context.Background()); err != nil || len(got) != fixtureSize {
+	if got, err := (&Client{Key: testKey(), URL: "http://127.0.0.1:1", CacheDir: dir}).Formulae(context.Background()); err != nil || len(got) != fixtureSize {
 		t.Errorf("the cache was damaged: %d formulae, %v", len(got), err)
 	}
 }

@@ -103,6 +103,18 @@ func TestConformanceUses(t *testing.T) {
 	}
 }
 
+func TestConformanceLeaves(t *testing.T) {
+	e := conformanceEnv(t)
+	for _, flags := range [][]string{nil, {"--installed-on-request"}, {"--installed-as-dependency"}} {
+		got, err := runCmd(t, e, "leaves", flags...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, _ := brew(t, append([]string{"leaves"}, flags...)...)
+		same(t, "leaves "+strings.Join(flags, " "), got, want)
+	}
+}
+
 func TestConformanceOutdated(t *testing.T) {
 	e := conformanceEnv(t)
 	got, err := runCmd(t, e, "outdated")

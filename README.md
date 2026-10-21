@@ -23,6 +23,7 @@ just run search jq               # also: search --desc "json processor", search 
 just run info jq                 # also: info --json jq
 just run deps git --tree         # also: --1, --installed
 just run uses --installed pcre2
+just run leaves                  # not needed by anything else; -r on request, -p as dependency
 just run outdated                # also: --json, --quiet
 just run update                  # refresh the formula listing and update brw (--no-self to skip that)
 just install                     # put brw on your PATH (GOBIN)

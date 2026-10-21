@@ -418,7 +418,7 @@ func (r *Remover) dependentsOf(kegs []cellar.Keg) (required []cellar.Keg, depend
 			dependents = append(dependents, name)
 		}
 	}
-	casks, err := caskDependencies(r.Prefix)
+	casks, err := CaskDependencies(r.Prefix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot tell whether a cask needs these formulae: %w", err)
 	}
