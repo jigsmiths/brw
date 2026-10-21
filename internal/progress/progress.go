@@ -58,6 +58,7 @@ type Display struct {
 	drawn  int // lines on screen
 	last   time.Time
 	frames int
+	stale  bool // updates not yet on screen
 }
 
 func New(w io.Writer, tty bool) *Display {
@@ -75,6 +76,7 @@ func (d *Display) Update(label string, done, total int64) {
 		d.items = append(d.items, it)
 	}
 	it.done, it.total = done, total
+	d.stale = true
 	justFinished := total >= 0 && done >= total && !it.finished
 	if justFinished {
 		it.finished = true
@@ -90,11 +92,12 @@ func (d *Display) Update(label string, done, total int64) {
 	}
 }
 
-// Close draws the final state.
+// Close draws the final state, unless it is already on screen: by now other
+// output may have followed it, and drawing again would repeat the lines.
 func (d *Display) Close() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.tty && len(d.items) > 0 {
+	if d.tty && d.stale {
 		d.draw(d.Now())
 	}
 }
@@ -110,6 +113,7 @@ func (d *Display) find(label string) *item {
 
 func (d *Display) draw(now time.Time) {
 	d.last = now
+	d.stale = false
 	d.frames++
 	for _, it := range d.items {
 		if !it.finished {
