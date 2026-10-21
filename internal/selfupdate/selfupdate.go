@@ -138,7 +138,7 @@ func (u *Updater) install(ctx context.Context, version string, assets map[string
 	if err != nil {
 		return err
 	}
-	if err := u.verifySigned(sums, bundle); err != nil {
+	if err := u.verifySigned(sums, bundle, SignerIdentity, SignerIssuer); err != nil {
 		return err
 	}
 	want, ok := checksum(string(sums), name)
@@ -178,8 +178,8 @@ func (u *Updater) install(ctx context.Context, version string, assets map[string
 	return os.Rename(tmp.Name(), u.Exe) //fsx:allow brw's own binary
 }
 
-// verifySigned checks that the release workflow signed sums.
-func (u *Updater) verifySigned(sums, bundleJSON []byte) error {
+// verifySigned checks that signer, vouched for by issuer, signed sums.
+func (u *Updater) verifySigned(sums, bundleJSON []byte, signer, issuer string) error {
 	var b bundle.Bundle
 	if err := b.UnmarshalJSON(bundleJSON); err != nil {
 		return fmt.Errorf("%s: %w", bundleName, err)
@@ -195,7 +195,7 @@ func (u *Updater) verifySigned(sums, bundleJSON []byte) error {
 	if err != nil {
 		return err
 	}
-	identity, err := verify.NewShortCertificateIdentity(SignerIssuer, "", SignerIdentity, "")
+	identity, err := verify.NewShortCertificateIdentity(issuer, "", signer, "")
 	if err != nil {
 		return err
 	}
