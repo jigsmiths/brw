@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/api/apitest"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/install/installtest"
 	"github.com/jigsmiths/brw/internal/platform"
@@ -49,9 +50,11 @@ func (s *store) env() (*env, string) {
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(apitest.Listing(apitest.Shared(), body))
+	}))
 	s.t.Cleanup(ts.Close)
-	return &env{host: mac, client: &api.Client{URL: ts.URL, CacheDir: s.t.TempDir()}, err: &bytes.Buffer{}}, s.t.TempDir()
+	return &env{host: mac, client: &api.Client{Key: &apitest.Shared().PublicKey, URL: ts.URL, CacheDir: s.t.TempDir()}, err: &bytes.Buffer{}}, s.t.TempDir()
 }
 
 func newStore(t *testing.T) *store { return &store{t: t, reg: installtest.NewRegistry(t)} }

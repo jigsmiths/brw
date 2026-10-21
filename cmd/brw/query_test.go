@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/api/apitest"
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
@@ -41,10 +42,10 @@ func apiServer(t *testing.T) *api.Client {
 	t.Helper()
 	body := readFile(t, "../../internal/api/testdata/formulae.json")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(body))
+		_, _ = w.Write(apitest.Listing(apitest.Shared(), []byte(body)))
 	}))
 	t.Cleanup(ts.Close)
-	return &api.Client{URL: ts.URL, CacheDir: t.TempDir()}
+	return &api.Client{Key: &apitest.Shared().PublicKey, URL: ts.URL, CacheDir: t.TempDir()}
 }
 
 // prefixWith installs keg receipts from the cellar fixtures into a new prefix.

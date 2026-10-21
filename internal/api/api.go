@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/gob"
 	"encoding/hex"
@@ -23,7 +24,8 @@ import (
 	"time"
 )
 
-const DefaultURL = "https://formulae.brew.sh/api/formula.json"
+// DefaultURL is the listing as Homebrew signs it, which brw checks before use.
+const DefaultURL = "https://formulae.brew.sh/api/formula.jws.json"
 
 type Formula struct {
 	Name                 string   `json:"name"`
@@ -223,9 +225,11 @@ const indexVersion = "1"
 type Client struct {
 	URL      string
 	CacheDir string
-	HTTP     *http.Client
-	Warn     func(msg string)
-	Now      func() time.Time // defaults to time.Now
+	// Key checks the signature of the listing. Homebrew's own key when nil.
+	Key  *rsa.PublicKey
+	HTTP *http.Client
+	Warn func(msg string)
+	Now  func() time.Time // defaults to time.Now
 }
 
 func (c *Client) now() time.Time {
@@ -338,9 +342,19 @@ func (c *Client) formulae(ctx context.Context, force bool) ([]Formula, error) {
 		return c.stale(etag, bodyErr == nil && !force, fmt.Errorf("GET %s: %s", c.URL, resp.Status))
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	signed, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	key := c.Key
+	if key == nil {
+		if key, err = homebrewKey(); err != nil {
+			return nil, err
+		}
+	}
+	data, err := verify(signed, key)
+	if err != nil {
+		return nil, fmt.Errorf("the formula listing from %s: %w", c.URL, err)
 	}
 	formulae, err := Parse(data)
 	if err != nil {
