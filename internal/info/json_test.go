@@ -90,6 +90,10 @@ func TestJSONInstalledState(t *testing.T) {
 	prefix := t.TempDir()
 	install(t, prefix, "jq", "0.9", true, "oniguruma")
 	install(t, prefix, "jq", "1.0", false)
+	sbomFile := filepath.Join(prefix, "Cellar/jq/1.0/sbom.spdx.json")
+	if err := os.WriteFile(sbomFile, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	link(t, prefix, "jq", "0.9")
 	if err := os.MkdirAll(filepath.Join(prefix, "var/homebrew/pinned"), 0o755); err != nil {
 		t.Fatal(err)
@@ -117,9 +121,12 @@ func TestJSONInstalledState(t *testing.T) {
 		t.Errorf("kegs should run oldest first: %v", installed)
 	}
 	first, _ := parseObject(o.vals["installed"][1:]) // the object after the opening bracket
-	wantFirst := []string{"version", "used_options", "built_as_bottle", "poured_from_bottle", "time", "runtime_dependencies", "installed_on_request"}
+	wantFirst := []string{"sbom", "version", "used_options", "built_as_bottle", "poured_from_bottle", "time", "runtime_dependencies", "installed_on_request"}
 	if first == nil || !reflect.DeepEqual(first.keys, wantFirst) {
 		t.Errorf("installed keys = %v, want %v", first, wantFirst)
+	}
+	if installed[0]["sbom"] != nil || installed[1]["sbom"] != sbomFile {
+		t.Errorf("sbom = %v, %v, want null and %s", installed[0]["sbom"], installed[1]["sbom"], sbomFile)
 	}
 	if installed[0]["installed_on_request"] != true || installed[1]["installed_on_request"] != false {
 		t.Errorf("installed_on_request = %v, %v", installed[0]["installed_on_request"], installed[1]["installed_on_request"])
