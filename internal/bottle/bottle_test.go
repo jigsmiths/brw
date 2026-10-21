@@ -343,3 +343,38 @@ func TestFetchFillsInAMissingTabWithoutDownloadingTheBottleAgain(t *testing.T) {
 		t.Errorf("res = %+v, err = %v, blobs = %d", res, err, r.blobs.Load())
 	}
 }
+
+func TestFetchReportsDownloadProgress(t *testing.T) {
+	r := newRegistry(t, "bottle bytes")
+	var mu sync.Mutex
+	var calls [][3]int64
+	var names []string
+	f := fetcher(t)
+	f.Progress = func(name string, done, total int64) {
+		mu.Lock()
+		defer mu.Unlock()
+		names = append(names, name)
+		calls = append(calls, [3]int64{done, total})
+	}
+	if _, err := f.Fetch(context.Background(), r.request("jq")); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) == 0 {
+		t.Fatal("no progress reported")
+	}
+	last := calls[len(calls)-1]
+	if want := int64(len("bottle bytes")); last[0] != want || last[1] != want {
+		t.Errorf("last report = done %d of %d, want %d of %d", last[0], last[1], want, want)
+	}
+	if names[0] != "jq (1.8.2)" {
+		t.Errorf("label = %q, want jq (1.8.2)", names[0])
+	}
+
+	calls = nil
+	if _, err := f.Fetch(context.Background(), r.request("jq")); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 0 {
+		t.Errorf("a cached bottle reported progress: %v", calls)
+	}
+}
