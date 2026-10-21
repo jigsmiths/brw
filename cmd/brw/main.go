@@ -11,7 +11,7 @@ import (
 	"github.com/jigsmiths/brw/internal/selfupdate"
 )
 
-const usage = "usage: brw list|search|info|install|reinstall|upgrade|uninstall|autoremove|link|unlink|cleanup|pin|unpin|version|update|deps|uses|outdated|tag|dev [flags]"
+const usage = "usage: brw list|search|info|install|reinstall|upgrade|uninstall|autoremove|leaves|link|unlink|cleanup|pin|unpin|version|update|deps|uses|outdated|tag|dev [flags]"
 
 // env is everything a command needs from the outside world.
 type env struct {
@@ -64,6 +64,8 @@ func run(e *env, cmd string, args []string) error {
 		return reinstallCommand(e, args)
 	case "upgrade":
 		return upgradeCommand(e, args)
+	case "leaves":
+		return leavesCommand(e, args)
 	case "uninstall":
 		return uninstallCommand(e, args)
 	case "autoremove":

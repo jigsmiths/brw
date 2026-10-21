@@ -11,10 +11,10 @@ import (
 	"strings"
 )
 
-// caskDependencies maps each formula an installed cask needs to the casks that
+// CaskDependencies maps each formula an installed cask needs to the casks that
 // need it, going by the runtime dependencies in the cask receipts. A cask whose
 // receipt cannot be read is an error, so nothing is removed on a guess.
-func caskDependencies(prefix string) (map[string][]string, error) {
+func CaskDependencies(prefix string) (map[string][]string, error) {
 	entries, err := os.ReadDir(filepath.Join(prefix, "Caskroom"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil

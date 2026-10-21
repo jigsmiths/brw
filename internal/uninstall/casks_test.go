@@ -46,18 +46,18 @@ func TestCaskDependencies(t *testing.T) {
 	if err := os.Symlink("nowhere", filepath.Join(f.dir, "Caskroom", "dangling")); err != nil {
 		t.Fatal(err)
 	}
-	got, err := caskDependencies(f.dir)
+	got, err := CaskDependencies(f.dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string][]string{"python@3.14": {"alpha", "zeta"}, "xz": {"zeta"}}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("caskDependencies = %v, want %v", got, want)
+		t.Errorf("CaskDependencies = %v, want %v", got, want)
 	}
 }
 
 func TestCaskDependenciesWithoutACaskroom(t *testing.T) {
-	got, err := caskDependencies(t.TempDir())
+	got, err := CaskDependencies(t.TempDir())
 	if err != nil || len(got) != 0 {
 		t.Errorf("got %v, %v", got, err)
 	}
@@ -66,14 +66,14 @@ func TestCaskDependenciesWithoutACaskroom(t *testing.T) {
 func TestCaskDependenciesRefuseToGuess(t *testing.T) {
 	f := newFixture(t)
 	f.cask("broken", `{not json`)
-	if _, err := caskDependencies(f.dir); err == nil {
+	if _, err := CaskDependencies(f.dir); err == nil {
 		t.Error("an unreadable receipt should be an error")
 	}
 	g := newFixture(t)
 	if err := os.MkdirAll(filepath.Join(g.dir, "Caskroom", "nofile", ".metadata"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := caskDependencies(g.dir); err == nil {
+	if _, err := CaskDependencies(g.dir); err == nil {
 		t.Error("a cask with metadata but no receipt should be an error")
 	}
 }

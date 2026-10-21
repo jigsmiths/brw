@@ -36,7 +36,7 @@ func (r *Remover) unneeded() ([]cellar.Keg, error) {
 	if len(out) == 0 {
 		return nil, nil
 	}
-	casks, err := caskDependencies(r.Prefix)
+	casks, err := CaskDependencies(r.Prefix)
 	if err != nil {
 		return nil, fmt.Errorf("cannot tell whether a cask needs these formulae: %w", err)
 	}
