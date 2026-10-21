@@ -81,7 +81,7 @@ func TestInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"==> Fetching 1 bottle\n", "==> Pouring jq 1.0\n"} {
+	for _, want := range []string{"==> Fetching downloads for: jq\n", "==> Pouring jq 1.0\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output is missing %q:\n%s", want, out)
 		}
