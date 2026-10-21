@@ -41,6 +41,14 @@ just run link jq                 # also: unlink; link --force, --overwrite
 just run cleanup                 # also: --prune=30, --scrub, --prune-prefix
 ```
 
+`brw update` replaces brw itself only if `checksums.txt` of the release carries a Sigstore signature from this repository's release workflow. To check a release by hand:
+
+```sh
+cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
+  --certificate-identity https://github.com/jigsmiths/brw/.github/workflows/release.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 Commands take `--prefix` and default to Homebrew's prefix for this machine. Formulae only, no casks.
 
 ## Development

@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,6 +67,13 @@ type release struct {
 	apiStatus int
 	apiBody   string
 	dlStatus  int
+
+	noBundle  bool      // the signature is not among the assets
+	signer    string    // who signed checksums.txt, default the release workflow
+	issuer    string    // who vouches for the signer, default GitHub Actions
+	signedBy  *sigstore // the Sigstore that signed, default the one the Updater trusts
+	signedSum string    // what was signed instead of checksums.txt, when set
+	badBundle []byte    // replaces the signature when set
 }
 
 type fake struct {
@@ -89,6 +95,32 @@ func serve(t *testing.T, r release) *fake {
 		data = archive(t, r.entries)
 	}
 	name := "brw_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
+	digest := sum(data)
+	if r.checksum != "" {
+		digest = r.checksum
+	}
+	other := strings.Repeat("0", 64) + "  brw_other_other.tar.gz\n"
+	sums := []byte(other + digest + "  " + name + "\n")
+	if r.noSumLine {
+		sums = []byte(digest + "  brw_other_other.tar.gz\n")
+	}
+	signed := sums
+	if r.signedSum != "" {
+		signed = []byte(r.signedSum)
+	}
+	if r.signer == "" {
+		r.signer = SignerIdentity
+	}
+	if r.issuer == "" {
+		r.issuer = SignerIssuer
+	}
+	if r.signedBy == nil {
+		r.signedBy = trusted()
+	}
+	bundle := r.badBundle
+	if bundle == nil {
+		bundle = sign(t, r.signedBy, r.signer, r.issuer, signed)
+	}
 	f := &fake{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/latest", func(w http.ResponseWriter, _ *http.Request) {
@@ -105,6 +137,9 @@ func serve(t *testing.T, r release) *fake {
 		if !r.noSums {
 			assets = append(assets, map[string]string{"name": "checksums.txt", "browser_download_url": f.srv.URL + "/dl/checksums.txt"})
 		}
+		if !r.noBundle {
+			assets = append(assets, map[string]string{"name": bundleName, "browser_download_url": f.srv.URL + "/dl/" + bundleName})
+		}
 		if !r.noAsset {
 			assets = append(assets, map[string]string{"name": name, "browser_download_url": f.srv.URL + "/dl/" + name})
 		}
@@ -118,15 +153,9 @@ func serve(t *testing.T, r release) *fake {
 		}
 		switch strings.TrimPrefix(req.URL.Path, "/dl/") {
 		case "checksums.txt":
-			digest := sum(data)
-			if r.checksum != "" {
-				digest = r.checksum
-			}
-			if r.noSumLine {
-				_, _ = fmt.Fprintf(w, "%s  brw_other_other.tar.gz\n", digest)
-				return
-			}
-			_, _ = fmt.Fprintf(w, "%s  brw_other_other.tar.gz\n%s  %s\n", strings.Repeat("0", 64), digest, name)
+			_, _ = w.Write(sums)
+		case bundleName:
+			_, _ = w.Write(bundle)
 		case name:
 			_, _ = w.Write(data)
 		default:
@@ -149,7 +178,7 @@ func install(t *testing.T) string {
 }
 
 func updater(f *fake, exe, current string) *Updater {
-	return &Updater{APIURL: f.srv.URL + "/latest", Exe: exe, Current: current, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}
+	return &Updater{APIURL: f.srv.URL + "/latest", Exe: exe, Current: current, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Trust: trusted()}
 }
 
 func content(t *testing.T, path string) string {
@@ -246,6 +275,14 @@ func TestLeavesTheBinaryAloneWhenSomethingIsWrong(t *testing.T) {
 		"bad tag":               {release{apiBody: `{"tag_name": "nightly", "assets": []}`}, "not X.Y.Z"},
 		"huge description":      {release{apiBody: huge}, "more than"},
 		"download error":        {release{dlStatus: http.StatusInternalServerError}, "500"},
+
+		"no signature":               {release{noBundle: true}, "has no checksums.txt.sigstore.json"},
+		"signature is not a bundle":  {release{badBundle: []byte("{")}, "checksums.txt.sigstore.json"},
+		"signed by another workflow": {release{signer: "https://github.com/evil/brw/.github/workflows/release.yml@refs/heads/main"}, "not signed by"},
+		"signed from another branch": {release{signer: SignerIdentity + "x"}, "not signed by"},
+		"signed for another issuer":  {release{issuer: "https://accounts.google.com"}, "not signed by"},
+		"signed other checksums":     {release{signedSum: "something else\n"}, "not signed by"},
+		"signed by an unknown CA":    {release{signedBy: newSigstore()}, "not signed by"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := serve(t, tt.r)

@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write # keyless signing of checksums.txt
 
 concurrency: release
 
@@ -26,6 +27,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.4
       - run: go install github.com/caarlos0/svu/v3@v3.4.0
       - name: Tag the next version, if the commits call for one
         id: tag
@@ -58,3 +62,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      - name: Check the published signature the way brw does
+        if: steps.tag.outputs.tag != ''
+        run: |
+          gh release download "${{ steps.tag.outputs.tag }}" --pattern 'checksums.txt*' --dir signed
+          cosign verify-blob signed/checksums.txt \
+            --bundle signed/checksums.txt.sigstore.json \
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
