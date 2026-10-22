@@ -227,7 +227,7 @@ func (d *Display) line(it *item, labelW, barW int, withSpeed bool, now time.Time
 	speed := ""
 	if withSpeed && !it.finished {
 		if v, ok := it.speed(now); ok {
-			speed = "  " + cellar.ReadableSize(v) + "/s"
+			speed = fmt.Sprintf("  %6s/s", cellar.ReadableSize(v))
 		}
 	}
 	if barW != noBar {
