@@ -44,6 +44,13 @@ homebrew_casks:
 checksum:
   name_template: checksums.txt
 
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args: ["sign-blob", "--yes", "--bundle=${signature}", "${artifact}"]
+    output: true
+
 release:
   replace_existing_artifacts: true
 
