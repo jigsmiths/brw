@@ -45,15 +45,19 @@ func installCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := (&install.Planner{
+	plan, planErrs := (&install.Planner{
 		Index: idx, Host: e.host, Prefix: prefix, Bottles: client, Kegs: kegs,
 		Linked: func(name string) bool {
 			fi, err := os.Stat(filepath.Join(prefix, "var/homebrew/linked", name))
 			return err == nil && fi.IsDir()
 		},
-	}).Plan(names)
-	if err != nil {
-		return err
+	}).PlanEach(names)
+	for _, err := range planErrs {
+		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
+	}
+	var failures []error
+	if len(planErrs) > 0 {
+		failures = append(failures, fmt.Errorf("%d formulae cannot be installed", len(planErrs)))
 	}
 	for _, name := range plan.AlreadyInstalled {
 		_, _ = fmt.Fprintf(e.err, "brw: warning: %s is already installed\n", name)
@@ -64,7 +68,7 @@ func installCommand(e *env, args []string) error {
 		}
 	}
 	if len(plan.Items) == 0 {
-		return nil
+		return errors.Join(failures...)
 	}
 	if dryRun {
 		var b strings.Builder
@@ -73,11 +77,12 @@ func installCommand(e *env, args []string) error {
 			fmt.Fprintf(&b, "%s %s\n", it.Formula.Name, it.PkgVersion)
 		}
 		_, err := fmt.Fprint(e.out, b.String())
-		return err
+		return errors.Join(append(failures, err)...)
 	}
-	return withRoot(prefix, *journal, func(root *fsx.Root) error {
+	err = withRoot(prefix, *journal, func(root *fsx.Root) error {
 		return runInstall(e, root, prefix, filepath.Join(client.CacheDir, "downloads"), plan)
 	})
+	return errors.Join(append(failures, err)...)
 }
 
 // runInstall carries out a plan and reports what went wrong. opts adjust the
