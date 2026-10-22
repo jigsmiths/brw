@@ -20,10 +20,22 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sigstore/sigstore-go/pkg/bundle"
+	"github.com/sigstore/sigstore-go/pkg/root"
+	"github.com/sigstore/sigstore-go/pkg/verify"
 )
 
 // DefaultAPIURL is where the latest release of brw is described.
 const DefaultAPIURL = "https://api.github.com/repos/jigsmiths/brw/releases/latest"
+
+// The release workflow signs checksums.txt as this identity, vouched for by this issuer.
+const (
+	SignerIdentity = "https://github.com/jigsmiths/brw/.github/workflows/release.yml@refs/heads/main"
+	SignerIssuer   = "https://token.actions.githubusercontent.com"
+)
+
+const bundleName = "checksums.txt.sigstore.json"
 
 // ErrNotRelease means this brw was not installed from a release, so there is
 // nothing to compare with.
@@ -44,6 +56,7 @@ type Updater struct {
 	Exe          string // the binary to replace
 	Current      string // its release version, such as 0.1.0
 	GOOS, GOARCH string
+	Trust        root.TrustedMaterial // what to trust signatures from; Sigstore's public root when nil
 }
 
 // Result says what Run did.
@@ -113,8 +126,19 @@ func (u *Updater) install(ctx context.Context, version string, assets map[string
 	if !ok {
 		return fmt.Errorf("release %s has no checksums.txt", version)
 	}
+	bundleURL, ok := assets[bundleName]
+	if !ok {
+		return fmt.Errorf("release %s has no %s", version, bundleName)
+	}
 	sums, err := u.get(ctx, sumsURL, maxMetadata)
 	if err != nil {
+		return err
+	}
+	bundle, err := u.get(ctx, bundleURL, maxMetadata)
+	if err != nil {
+		return err
+	}
+	if err := u.verifySigned(sums, bundle, SignerIdentity, SignerIssuer); err != nil {
 		return err
 	}
 	want, ok := checksum(string(sums), name)
@@ -152,6 +176,34 @@ func (u *Updater) install(ctx context.Context, version string, assets map[string
 		return fmt.Errorf("the new brw reports %q, want %q", got, "brw "+version)
 	}
 	return os.Rename(tmp.Name(), u.Exe) //fsx:allow brw's own binary
+}
+
+// verifySigned checks that signer, vouched for by issuer, signed sums.
+func (u *Updater) verifySigned(sums, bundleJSON []byte, signer, issuer string) error {
+	var b bundle.Bundle
+	if err := b.UnmarshalJSON(bundleJSON); err != nil {
+		return fmt.Errorf("%s: %w", bundleName, err)
+	}
+	trust := u.Trust
+	if trust == nil {
+		var err error
+		if trust, err = root.FetchTrustedRoot(); err != nil {
+			return fmt.Errorf("the Sigstore trusted root: %w", err)
+		}
+	}
+	verifier, err := verify.NewVerifier(trust, verify.WithTransparencyLog(1), verify.WithObserverTimestamps(1))
+	if err != nil {
+		return err
+	}
+	identity, err := verify.NewShortCertificateIdentity(issuer, "", signer, "")
+	if err != nil {
+		return err
+	}
+	policy := verify.NewPolicy(verify.WithArtifact(bytes.NewReader(sums)), verify.WithCertificateIdentity(identity))
+	if _, err := verifier.Verify(&b, policy); err != nil {
+		return fmt.Errorf("checksums.txt is not signed by the brw release workflow: %w", err)
+	}
+	return nil
 }
 
 // get fetches url, refusing more than limit bytes.
