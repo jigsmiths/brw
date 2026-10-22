@@ -718,3 +718,43 @@ func TestPlanUpgradeLocksWhatIsLeftWhenOneFormulaFails(t *testing.T) {
 		t.Errorf("locks = %v, errs = %v", plan.Locks, errs)
 	}
 }
+
+func TestPlanEachInstallsWhatItCanAndReportsTheRest(t *testing.T) {
+	idx := index(t, f("good"), with(f("pi"), "post_install_steps", []any{map[string]any{"type": "configure_clang_system"}}), f("fine"))
+	plan, errs := planner(t, mac, idx).PlanEach([]string{"good", "pi", "fine"})
+	if got := names(plan); !slices.Equal(got, []string{"good", "fine"}) {
+		t.Errorf("plan = %v", got)
+	}
+	if len(errs) != 1 || !errors.Is(errs[0], ErrPostInstall) {
+		t.Errorf("errors = %v", errs)
+	}
+}
+
+func TestPlanEachFailsOnlyTheFormulaWhoseDependencyFails(t *testing.T) {
+	idx := index(t, f("app", "bad"), with(f("bad"), "disabled", true), f("fine"))
+	plan, errs := planner(t, mac, idx).PlanEach([]string{"app", "fine"})
+	if got := names(plan); !slices.Equal(got, []string{"fine"}) {
+		t.Errorf("plan = %v", got)
+	}
+	if len(errs) != 1 || !errors.Is(errs[0], ErrDisabled) {
+		t.Errorf("errors = %v", errs)
+	}
+}
+
+func TestPlanEachKeepsWhatIsAlreadyInstalled(t *testing.T) {
+	p := upgradePlanner(t, index(t, f("have"), f("new")), true, keg("have", "1.0"))
+	plan, errs := p.PlanEach([]string{"have", "new"})
+	if len(errs) != 0 || !slices.Equal(names(plan), []string{"new"}) || !slices.Equal(plan.AlreadyInstalled, []string{"have"}) {
+		t.Errorf("plan = %v %v, errors = %v", names(plan), plan.AlreadyInstalled, errs)
+	}
+}
+
+func TestPlanEachKeepsANamedDependencyOnRequest(t *testing.T) {
+	idx := index(t, f("app", "lib"), f("lib"), with(f("bad"), "disabled", true))
+	plan, _ := planner(t, mac, idx).PlanEach([]string{"app", "lib", "bad"})
+	for _, it := range plan.Items {
+		if !it.OnRequest {
+			t.Errorf("%s is not on request although it was named", it.Formula.Name)
+		}
+	}
+}

@@ -153,23 +153,24 @@ func TestInstallDryRunChangesNothing(t *testing.T) {
 	}
 }
 
-func TestInstallExplainsWhatItRefuses(t *testing.T) {
+func TestInstallInstallsWhatItCanAndExplainsWhatItRefuses(t *testing.T) {
 	s := newStore(t)
 	s.formula(jqBottle(), nil, nil)
 	s.formula(installtest.Bottle{Name: "pi", Version: "1.0"}, nil, map[string]any{"post_install_steps": []any{map[string]any{"type": "gtk_update_icon_cache"}}})
 	s.formula(installtest.Bottle{Name: "old", Version: "1.0"}, nil, map[string]any{"disabled": true})
 	e, prefix := s.env()
 	_, err := runCmd(t, e, "install", "-prefix", prefix, "jq", "pi", "old")
-	if err == nil {
-		t.Fatal("expected an error")
+	if err == nil || !strings.Contains(err.Error(), "2 formulae cannot be installed") {
+		t.Fatalf("error = %v, want one that counts the refused formulae", err)
 	}
+	stderr := e.err.(*bytes.Buffer).String()
 	for _, want := range []string{"pi:", "gtk_update_icon_cache", "old:", "disabled"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error does not mention %q: %v", want, err)
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr does not mention %q: %s", want, stderr)
 		}
 	}
-	if exists(t, prefix, "Cellar") {
-		t.Error("something was installed although the plan was refused")
+	if !exists(t, prefix, "Cellar/jq/1.0") {
+		t.Error("jq should be installed although the others were refused")
 	}
 	if _, err := runCmd(t, e, "install", "-prefix", prefix, "nosuchformula"); err == nil {
 		t.Error("an unknown formula should fail")

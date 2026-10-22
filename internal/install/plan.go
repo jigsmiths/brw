@@ -233,24 +233,36 @@ func (p *Planner) planInstalled(names []string, reinstall bool) (*Plan, []error)
 		p.markUpgrades(plan, reinstall)
 		return plan, nil
 	}
+	merged, errs := p.PlanEach(ordered)
+	p.markUpgrades(merged, reinstall)
+	return merged, errs
+}
+
+// PlanEach plans each name on its own and merges what worked. A name that cannot
+// be installed is reported and does not stop the others.
+func (p *Planner) PlanEach(names []string) (*Plan, []error) {
 	merged := &Plan{}
 	var errs []error
-	for _, n := range ordered {
+	for _, n := range names {
 		one, err := p.Plan([]string{n})
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
 		for _, it := range one.Items {
-			if !slices.ContainsFunc(merged.Items, func(x Item) bool { return x.Formula.Name == it.Formula.Name }) {
+			i := slices.IndexFunc(merged.Items, func(x Item) bool { return x.Formula.Name == it.Formula.Name })
+			if i < 0 {
 				merged.Items = append(merged.Items, it)
+			} else if it.OnRequest {
+				merged.Items[i].OnRequest = true
 			}
 		}
 		merged.Locks = append(merged.Locks, one.Locks...)
+		merged.AlreadyInstalled = append(merged.AlreadyInstalled, one.AlreadyInstalled...)
 	}
 	slices.Sort(merged.Locks)
 	merged.Locks = slices.Compact(merged.Locks)
-	p.markUpgrades(merged, reinstall)
+	merged.AlreadyInstalled = slices.Compact(merged.AlreadyInstalled)
 	return merged, errs
 }
 
