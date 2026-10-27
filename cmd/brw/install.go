@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/bottle"
-	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/info"
 	"github.com/jigsmiths/brw/internal/install"
@@ -41,7 +40,7 @@ func installCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	kegs, err := cellar.Prefix(prefix).Kegs()
+	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
 	}
