@@ -484,3 +484,19 @@ func TestLinkCountLeavesOutLinksThatWereAlreadyRight(t *testing.T) {
 		t.Errorf("one link was missing: n = %d, err = %v", n, err)
 	}
 }
+
+func TestUnlinkRemovesFrameworkLinksSoTheNextVersionLinks(t *testing.T) {
+	l, dir := newLinker(t)
+	frameworks := files{"Frameworks/X.framework/Versions/A/Headers/x.h", "Frameworks/X.framework/Versions/Current -> A", "Frameworks/X.framework/Headers -> Versions/Current/Headers"}
+	old := install(t, dir, "x", "1.0", frameworks)
+	if err := l.Link(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Unlink(old); err != nil {
+		t.Fatal(err)
+	}
+	next := install(t, dir, "x", "2.0", frameworks)
+	if err := l.Link(next); err != nil {
+		t.Errorf("linking the next version after unlinking the old one: %v", err)
+	}
+}
