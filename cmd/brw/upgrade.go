@@ -39,7 +39,7 @@ func upgradeCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	kegs, err := cellar.Prefix(prefix).Kegs()
+	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func cleanAfterUpgrade(e *env, root *fsx.Root, prefix string, it install.Item) {
 	if len(it.Upgrade) == 0 || os.Getenv("HOMEBREW_NO_INSTALL_CLEANUP") != "" || skipCleanup()(it.Formula.Name) {
 		return
 	}
-	kegs, err := cellar.Prefix(prefix).Kegs()
+	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return
 	}

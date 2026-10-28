@@ -180,11 +180,19 @@ func TestKegsNoCellar(t *testing.T) {
 	}
 }
 
-func TestKegsBadReceipt(t *testing.T) {
+func TestKegsKeepsAKegWhoseReceiptCannotBeRead(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "Cellar/bad/1.0/INSTALL_RECEIPT.json"), "{oops")
-	if _, err := Prefix(root).Kegs(); err == nil {
-		t.Error("expected error for unparseable receipt")
+	writeFile(t, filepath.Join(root, "Cellar/good/1.0/bin/good"), "")
+	kegs, err := Prefix(root).Kegs()
+	if err != nil || len(kegs) != 2 {
+		t.Fatalf("kegs = %+v, %v", kegs, err)
+	}
+	if bad := kegs[0]; bad.Name != "bad" || bad.Receipt != nil || bad.ReceiptErr == nil {
+		t.Errorf("bad keg = %+v, want no receipt and the reason", bad)
+	}
+	if kegs[1].ReceiptErr != nil {
+		t.Errorf("good keg has ReceiptErr %v", kegs[1].ReceiptErr)
 	}
 }
 

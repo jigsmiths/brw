@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestLeaves(t *testing.T) {
 	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq", "age@1.0": "age", "bash@5.3": "bash", "brotli@1.2": "brotli"})
@@ -27,6 +33,22 @@ func TestLeavesRefusesBadArguments(t *testing.T) {
 	for _, args := range [][]string{{"-r", "-p"}, {"jq"}} {
 		if _, err := runCmd(t, &env{host: mac}, "leaves", append([]string{"-prefix", prefix}, args...)...); err == nil {
 			t.Errorf("leaves %v should fail", args)
+		}
+	}
+}
+
+func TestCommandsWarnAboutAnUnreadableReceiptAndCarryOn(t *testing.T) {
+	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq", "age@1.0": "age"})
+	if err := os.WriteFile(filepath.Join(prefix, "Cellar/age/1.0/INSTALL_RECEIPT.json"), []byte("{oops"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range []string{"leaves", "outdated"} {
+		e := &env{host: mac}
+		if _, err := runCmd(t, e, cmd, "-prefix", prefix); err != nil && strings.Contains(err.Error(), "age 1.0") {
+			t.Errorf("%s failed on the bad receipt: %v", cmd, err)
+		}
+		if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, "brw: warning: age 1.0:") {
+			t.Errorf("%s stderr = %q, want a warning about age 1.0", cmd, w)
 		}
 	}
 }

@@ -36,7 +36,7 @@ func uninstallCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	kegs, err := cellar.Prefix(prefix).Kegs()
+	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func autoremoveCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	kegs, err := cellar.Prefix(prefix).Kegs()
+	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
 	}
