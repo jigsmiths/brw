@@ -153,3 +153,16 @@ func TestCloseDoesNotRepeatLinesAlreadyDrawn(t *testing.T) {
 		t.Errorf("Close redrew a finished display:\n%q", buf.String()[n:])
 	}
 }
+
+func TestCloseDoesNotRepeatLinesAfterAFinishedBottleReportsAgain(t *testing.T) {
+	d, buf, c := newDisplay(true)
+	d.Update("a (1)", 10, 10)
+	buf.WriteString("==> Upgrading a\n")
+	n := buf.Len()
+	d.Update("a (1)", 10, 10)
+	c.t = c.t.Add(time.Second)
+	d.Close()
+	if buf.Len() != n {
+		t.Errorf("Close redrew a finished display:\n%q", buf.String()[n:])
+	}
+}

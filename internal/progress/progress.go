@@ -75,6 +75,9 @@ func (d *Display) Update(label string, done, total int64) {
 		it = &item{label: label}
 		d.items = append(d.items, it)
 	}
+	if it.finished && done == it.done && total == it.total {
+		return
+	}
 	it.done, it.total = done, total
 	d.stale = true
 	justFinished := total >= 0 && done >= total && !it.finished
