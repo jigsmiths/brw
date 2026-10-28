@@ -57,7 +57,7 @@ func (l *Linker) UnlinkCount(k Keg) (int, error) {
 var mustExist = []string{"bin", "etc", "include", "lib", "sbin", "share", "opt", "var/homebrew/linked"}
 
 // unlinkDirs are the directories of a keg that Unlink looks through.
-var unlinkDirs = []string{"bin", "etc", "include", "lib", "sbin", "share", "var"}
+var unlinkDirs = []string{"bin", "etc", "include", "lib", "sbin", "share", "var", "Frameworks"}
 
 // relPath is the path of target as seen from dir, both relative to the prefix.
 func relPath(dir, target string) string {
