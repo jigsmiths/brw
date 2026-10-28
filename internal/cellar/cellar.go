@@ -3,7 +3,6 @@ package cellar
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,10 +14,13 @@ type Keg struct {
 	Name    string
 	Version string
 	Path    string
-	Receipt *Receipt // nil if the keg has no receipt
+	Receipt *Receipt // nil if the keg has no receipt or it could not be read
+
+	ReceiptErr error // why the receipt could not be read
 }
 
-// Kegs lists installed kegs. Formula directories with no version are skipped.
+// Kegs lists installed kegs. Formula directories with no version are skipped. A
+// keg whose receipt cannot be read is listed with no receipt and the reason.
 func (p Prefix) Kegs() ([]Keg, error) {
 	cellar := p.cellarDir()
 	names, err := os.ReadDir(cellar)
@@ -42,10 +44,7 @@ func (p Prefix) Kegs() ([]Keg, error) {
 				continue
 			}
 			k := Keg{Name: n.Name(), Version: v.Name(), Path: filepath.Join(cellar, n.Name(), v.Name())}
-			k.Receipt, err = readReceipt(k.Path)
-			if err != nil {
-				return nil, fmt.Errorf("%s %s: %w", k.Name, k.Version, err)
-			}
+			k.Receipt, k.ReceiptErr = readReceipt(k.Path)
 			kegs = append(kegs, k)
 		}
 	}

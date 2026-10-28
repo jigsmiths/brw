@@ -98,7 +98,7 @@ func list(e *env, args []string) error {
 		return err
 	}
 	if *versions {
-		kegs, err := cellar.Prefix(*prefix).Kegs()
+		kegs, err := e.kegs(*prefix)
 		if err != nil {
 			return err
 		}
@@ -183,7 +183,7 @@ func depsCommand(e *env, args []string) error {
 		return errors.New("usage: brw deps [--installed] [--tree] [--1] FORMULA")
 	}
 	name := pos[0]
-	kegs, err := cellar.Prefix(*prefix).Kegs()
+	kegs, err := e.kegs(*prefix)
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func usesCommand(e *env, args []string) error {
 	}
 	var names []string
 	if *installed {
-		kegs, err := cellar.Prefix(*prefix).Kegs()
+		kegs, err := e.kegs(*prefix)
 		if err != nil {
 			return err
 		}
@@ -286,7 +286,7 @@ func outdatedCommand(e *env, args []string) error {
 	} else if len(pos) != 0 {
 		return errors.New("usage: brw outdated [--json] [--quiet] [--verbose]")
 	}
-	kegs, err := cellar.Prefix(*prefix).Kegs()
+	kegs, err := e.kegs(*prefix)
 	if err != nil {
 		return err
 	}
@@ -366,7 +366,7 @@ func infoCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	kegs, err := cellar.Prefix(*prefix).Kegs()
+	kegs, err := e.kegs(*prefix)
 	if err != nil {
 		return err
 	}

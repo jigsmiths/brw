@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/selfupdate"
 )
@@ -24,6 +25,17 @@ type env struct {
 	selfUpdate func(context.Context) (selfupdate.Result, error)
 
 	defaultPrefix string // overrides the host's default prefix, for tests
+}
+
+// kegs lists the kegs of a prefix and warns about each receipt it could not read.
+func (e *env) kegs(prefix string) ([]cellar.Keg, error) {
+	kegs, err := cellar.Prefix(prefix).Kegs()
+	for _, k := range kegs {
+		if k.ReceiptErr != nil {
+			_, _ = fmt.Fprintf(e.err, "brw: warning: %s %s: %v\n", k.Name, k.Version, k.ReceiptErr)
+		}
+	}
+	return kegs, err
 }
 
 func main() {
