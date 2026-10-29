@@ -33,6 +33,7 @@ type Root struct {
 	root    *os.Root
 	journal io.Writer
 	dry     bool
+	removed map[string]bool // dry run only: paths a real run would have removed
 }
 
 // Open confines operations to dir. journal may be nil.
@@ -54,6 +55,7 @@ func OpenDryRun(dir string, journal io.Writer) (*Root, error) {
 	r, err := Open(dir, journal)
 	if r != nil {
 		r.dry = true
+		r.removed = map[string]bool{}
 	}
 	return r, err
 }
@@ -470,6 +472,7 @@ func (r *Root) Remove(name string) error {
 		if _, err := r.root.Lstat(rel); err != nil {
 			return err
 		}
+		r.removed[rel] = true
 		return r.log("remove %s", rel)
 	}
 	if err := r.root.Remove(rel); err != nil {
@@ -628,6 +631,9 @@ func (r *Root) hasParent(rel string) error {
 
 // mustNotExist is the check a real run gets from the system when it creates rel.
 func (r *Root) mustNotExist(rel string) error {
+	if r.removed[rel] {
+		return nil
+	}
 	_, err := r.root.Lstat(rel)
 	switch {
 	case err == nil:
