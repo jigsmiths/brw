@@ -1018,3 +1018,21 @@ func TestRemoveStagingRefusesAnythingElse(t *testing.T) {
 		t.Errorf("the target of a link was damaged: %v", err)
 	}
 }
+
+func TestDryRunAllowsWhatARealRunCouldDoAfterARemove(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Symlink("nowhere", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	r, err := OpenDryRun(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	if err := r.Remove("link"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Symlink("x", "link"); err != nil {
+		t.Errorf("symlink where a removed link was: %v", err)
+	}
+}
