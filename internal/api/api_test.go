@@ -494,7 +494,7 @@ func TestFormulaeLoadsTheIndexNotTheBody(t *testing.T) {
 	}
 }
 
-func writeIndex(t *testing.T, dir string, idx listingIndex) {
+func writeIndex(t *testing.T, dir string, idx listingIndex[Formula]) {
 	t.Helper()
 	var b bytes.Buffer
 	if err := gob.NewEncoder(&b).Encode(idx); err != nil {
@@ -520,10 +520,10 @@ func TestFormulaeRebuildsAnUnusableIndex(t *testing.T) {
 		// An index that is well formed but not for this listing must not be used. It
 		// holds no formulae, so using it would be noticed.
 		"for another listing": func(t *testing.T, dir string) {
-			writeIndex(t, dir, listingIndex{Fingerprint: indexFingerprint, ETag: `"v0"`})
+			writeIndex(t, dir, listingIndex[Formula]{Fingerprint: indexFingerprint, ETag: `"v0"`})
 		},
 		"from another version of the formula type": func(t *testing.T, dir string) {
-			writeIndex(t, dir, listingIndex{Fingerprint: "old", ETag: `"v1"`})
+			writeIndex(t, dir, listingIndex[Formula]{Fingerprint: "old", ETag: `"v1"`})
 		},
 	}
 	for name, damage := range tests {

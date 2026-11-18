@@ -1,0 +1,1980 @@
+[
+ {
+  "token": "slack",
+  "full_token": "slack",
+  "old_tokens": [],
+  "tap": "homebrew/cask",
+  "name": [
+   "Slack"
+  ],
+  "desc": "Team communication and collaboration software",
+  "homepage": "https://slack.com/",
+  "url": "https://downloads.slack-edge.com/desktop-releases/mac/arm64/4.53.292/Slack-4.53.292-macOS.dmg",
+  "url_specs": {},
+  "version": "4.53.292",
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
+  "pinned": false,
+  "pinned_version": null,
+  "outdated": false,
+  "sha256": "b358a20e933a889e76faa46c581e3d9c59f036dd3be1692eb593db900646006a",
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "quit": "com.tinyspeck.slackmacgap"
+     }
+    ]
+   },
+   {
+    "app": [
+     "Slack.app"
+    ],
+    "target": "/Applications/Slack.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "/Library/Logs/DiagnosticReports/Slack_*",
+       "~/Library/Application Scripts/com.tinyspeck.slackmacgap",
+       "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.tinyspeck.slackmacgap.sfl*",
+       "~/Library/Application Support/Slack",
+       "~/Library/Caches/com.tinyspeck.slackmacgap*",
+       "~/Library/Containers/com.tinyspeck.slackmacgap*",
+       "~/Library/Cookies/com.tinyspeck.slackmacgap.binarycookies",
+       "~/Library/Group Containers/*.com.tinyspeck.slackmacgap",
+       "~/Library/Group Containers/*.slack",
+       "~/Library/HTTPStorages/com.tinyspeck.slackmacgap*",
+       "~/Library/Logs/Slack",
+       "~/Library/Preferences/ByHost/com.tinyspeck.slackmacgap.ShipIt.*.plist",
+       "~/Library/Preferences/com.tinyspeck.slackmacgap*",
+       "~/Library/Saved Application State/com.tinyspeck.slackmacgap.savedState",
+       "~/Library/WebKit/com.tinyspeck.slackmacgap"
+      ]
+     }
+    ]
+   }
+  ],
+  "caveats": null,
+  "caveats_rosetta": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "conflicts_with": {
+   "cask": [
+    "slack@beta"
+   ]
+  },
+  "container": null,
+  "rename": [],
+  "auto_updates": true,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "tap_git_head": "5123c0d166cd705f71b7cb6ae95a8377657165c7",
+  "languages": [],
+  "ruby_source_path": "Casks/s/slack.rb",
+  "ruby_source_checksum": {
+   "sha256": "cfb6e87bd8977549b54f525cbcaef5ed041c82c614fff0177802f227b27e5127"
+  },
+  "variations": {
+   "golden_gate": {
+    "url": "https://downloads.slack-edge.com/desktop-releases/mac/x64/4.53.292/Slack-4.53.292-macOS.dmg",
+    "sha256": "2b792eaa69d55fd466248a2f59bde219b0bc9f7569ec02eee6307d0097e0ae51"
+   },
+   "tahoe": {
+    "url": "https://downloads.slack-edge.com/desktop-releases/mac/x64/4.53.292/Slack-4.53.292-macOS.dmg",
+    "sha256": "2b792eaa69d55fd466248a2f59bde219b0bc9f7569ec02eee6307d0097e0ae51"
+   },
+   "sequoia": {
+    "url": "https://downloads.slack-edge.com/desktop-releases/mac/x64/4.53.292/Slack-4.53.292-macOS.dmg",
+    "sha256": "2b792eaa69d55fd466248a2f59bde219b0bc9f7569ec02eee6307d0097e0ae51"
+   },
+   "sonoma": {
+    "url": "https://downloads.slack-edge.com/desktop-releases/mac/x64/4.53.292/Slack-4.53.292-macOS.dmg",
+    "sha256": "2b792eaa69d55fd466248a2f59bde219b0bc9f7569ec02eee6307d0097e0ae51"
+   },
+   "ventura": {
+    "url": "https://downloads.slack-edge.com/desktop-releases/mac/x64/4.53.292/Slack-4.53.292-macOS.dmg",
+    "sha256": "2b792eaa69d55fd466248a2f59bde219b0bc9f7569ec02eee6307d0097e0ae51"
+   },
+   "monterey": {
+    "url": "https://downloads.slack-edge.com/desktop-releases/mac/x64/4.51.191/Slack-4.51.191-macOS.dmg",
+    "version": "4.51.191",
+    "skip_livecheck": true,
+    "sha256": "1780f8d8dcb0057875f566ecf49623bab8d190e0327e89e0bb3b094a485a73a9"
+   },
+   "arm64_monterey": {
+    "url": "https://downloads.slack-edge.com/desktop-releases/mac/arm64/4.51.191/Slack-4.51.191-macOS.dmg",
+    "version": "4.51.191",
+    "skip_livecheck": true,
+    "sha256": "b22953c06eee150f0324ae71702b2b5a8450efdefbf84439217ef7bfd6a8ab24"
+   },
+   "big_sur": {
+    "url": "https://downloads.slack-edge.com/releases/macos/4.45.69/prod/x64/Slack-4.45.69-macOS.dmg",
+    "version": "4.45.69",
+    "skip_livecheck": true,
+    "sha256": "88ee611b36189ab1e84f39f0fbe0048468d32a24e783303dfe1a3ea0519755e2"
+   },
+   "arm64_big_sur": {
+    "url": "https://downloads.slack-edge.com/releases/macos/4.45.69/prod/arm64/Slack-4.45.69-macOS.dmg",
+    "version": "4.45.69",
+    "skip_livecheck": true,
+    "sha256": "31a3f08f49e27a1c0d6224a5f0677329217599eccab481620266730566f0abd0"
+   },
+   "x86_64_linux": {
+    "url": null,
+    "url_specs": null,
+    "version": null,
+    "sha256": null
+   },
+   "arm64_linux": {
+    "url": null,
+    "url_specs": null,
+    "version": null,
+    "sha256": null
+   }
+  },
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ]
+ },
+ {
+  "token": "1password-cli",
+  "full_token": "1password-cli",
+  "old_tokens": [],
+  "tap": "homebrew/cask",
+  "name": [
+   "1Password CLI"
+  ],
+  "desc": "Command-line interface for 1Password",
+  "homepage": "https://developer.1password.com/docs/cli",
+  "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_darwin_arm64_v2.42.0.zip",
+  "url_specs": {},
+  "version": "2.42.0",
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
+  "pinned": false,
+  "pinned_version": null,
+  "outdated": false,
+  "sha256": "216e86c6db491c752ccb7819b3b1851cc8456ea015a1f7c8a58dd103ef0a474e",
+  "artifacts": [
+   {
+    "binary": [
+     "op"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/op"
+   },
+   {
+    "generate_completions_from_executable": [
+     "op",
+     "completion",
+     {
+      "base_name": null,
+      "shell_parameter_format": null,
+      "shells": [
+       "bash",
+       "zsh",
+       "fish"
+      ]
+     }
+    ]
+   },
+   {
+    "zap": [
+     {
+      "trash": "~/.config/op"
+     }
+    ]
+   }
+  ],
+  "caveats": null,
+  "caveats_rosetta": null,
+  "depends_on": {},
+  "conflicts_with": {
+   "cask": [
+    "1password-cli@1",
+    "1password-cli@beta"
+   ]
+  },
+  "container": null,
+  "rename": [],
+  "auto_updates": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "tap_git_head": "5123c0d166cd705f71b7cb6ae95a8377657165c7",
+  "languages": [],
+  "ruby_source_path": "Casks/1/1password-cli.rb",
+  "ruby_source_checksum": {
+   "sha256": "172999a047b6e3077d3904932b98d84e9d1dcb4c7edf60b4152c78f813e30022"
+  },
+  "variations": {
+   "golden_gate": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_darwin_amd64_v2.42.0.zip",
+    "sha256": "917b0d2b41de3d943bb6562331275c43c4b525af6b003eade06248905ddd62b0"
+   },
+   "tahoe": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_darwin_amd64_v2.42.0.zip",
+    "sha256": "917b0d2b41de3d943bb6562331275c43c4b525af6b003eade06248905ddd62b0"
+   },
+   "sequoia": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_darwin_amd64_v2.42.0.zip",
+    "sha256": "917b0d2b41de3d943bb6562331275c43c4b525af6b003eade06248905ddd62b0"
+   },
+   "sonoma": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_darwin_amd64_v2.42.0.zip",
+    "sha256": "917b0d2b41de3d943bb6562331275c43c4b525af6b003eade06248905ddd62b0"
+   },
+   "ventura": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_darwin_amd64_v2.42.0.zip",
+    "sha256": "917b0d2b41de3d943bb6562331275c43c4b525af6b003eade06248905ddd62b0"
+   },
+   "monterey": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_darwin_amd64_v2.42.0.zip",
+    "sha256": "917b0d2b41de3d943bb6562331275c43c4b525af6b003eade06248905ddd62b0"
+   },
+   "big_sur": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_darwin_amd64_v2.42.0.zip",
+    "sha256": "917b0d2b41de3d943bb6562331275c43c4b525af6b003eade06248905ddd62b0"
+   },
+   "x86_64_linux": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_linux_amd64_v2.42.0.zip",
+    "sha256": "261fe3844a43e7e83a3d85e8a9f36411729436a1d3add1dc7dd46cbbceebe9e5"
+   },
+   "arm64_linux": {
+    "url": "https://cache.agilebits.com/dist/1P/op2/pkg/v2.42.0/op_linux_arm64_v2.42.0.zip",
+    "sha256": "e56c379fabafb393ce699258e484694abe464870fb41f35ce1b5c3f17868ba61"
+   }
+  },
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur",
+   "x86_64_linux",
+   "arm64_linux"
+  ]
+ },
+ {
+  "token": "gcloud-cli",
+  "full_token": "gcloud-cli",
+  "old_tokens": [
+   "google-cloud-sdk"
+  ],
+  "tap": "homebrew/cask",
+  "name": [
+   "Google Cloud CLI"
+  ],
+  "desc": "Set of tools to manage resources and applications hosted on Google Cloud",
+  "homepage": "https://cloud.google.com/cli/",
+  "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-darwin-arm.tar.gz",
+  "url_specs": {},
+  "version": "594.0.0",
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
+  "pinned": false,
+  "pinned_version": null,
+  "outdated": false,
+  "sha256": "45fbcc5a2caf9ec43847383d2f9fe4720eb8a650349be8d9bd271bdfb6912b55",
+  "artifacts": [
+   {
+    "preflight_steps": [
+     {
+      "steps": [
+       {
+        "source": {
+         "base": "staged_path",
+         "path": "google-cloud-sdk/."
+        },
+        "target": {
+         "base": "homebrew_prefix",
+         "path": "share/google-cloud-sdk"
+        },
+        "recursive": true,
+        "type": "copy"
+       },
+       {
+        "paths": [
+         {
+          "base": "staged_path",
+          "path": "google-cloud-sdk"
+         }
+        ],
+        "recursive": true,
+        "type": "remove"
+       },
+       {
+        "source": {
+         "path": "{{HOMEBREW_PREFIX}}/share/google-cloud-sdk"
+        },
+        "target": {
+         "base": "staged_path",
+         "path": "google-cloud-sdk"
+        },
+        "type": "symlink"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "uninstall": [
+     {
+      "trash": "$HOMEBREW_PREFIX/Caskroom/gcloud-cli/latest"
+     }
+    ]
+   },
+   {
+    "installer": [
+     {
+      "script": {
+       "executable": "google-cloud-sdk/install.sh",
+       "args": [
+        "--quiet",
+        "--usage-reporting",
+        "false",
+        "--bash-completion",
+        "false",
+        "--path-update",
+        "false",
+        "--rc-path",
+        "false",
+        "--update-installed-components",
+        "--install-python",
+        "false"
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "binary": [
+     "google-cloud-sdk/bin/git-credential-gcloud.sh",
+     {
+      "target": "git-credential-gcloud"
+     }
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/git-credential-gcloud"
+   },
+   {
+    "binary": [
+     "google-cloud-sdk/bin/gsutil"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/gsutil"
+   },
+   {
+    "binary": [
+     "google-cloud-sdk/bin/bq"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/bq"
+   },
+   {
+    "binary": [
+     "google-cloud-sdk/bin/docker-credential-gcloud"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/docker-credential-gcloud"
+   },
+   {
+    "binary": [
+     "google-cloud-sdk/bin/gcloud"
+    ],
+    "target": "$HOMEBREW_PREFIX/bin/gcloud"
+   },
+   {
+    "bash_completion": [
+     "google-cloud-sdk/completion.bash.inc",
+     {
+      "target": "google-cloud-sdk"
+     }
+    ],
+    "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/google-cloud-sdk"
+   },
+   {
+    "zsh_completion": [
+     "google-cloud-sdk/completion.zsh.inc",
+     {
+      "target": "_google_cloud_sdk"
+     }
+    ],
+    "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_google_cloud_sdk"
+   },
+   {
+    "postflight_steps": [
+     {
+      "steps": [
+       {
+        "source": {
+         "path": "{{staged_path}}"
+        },
+        "target": {
+         "path": "{{caskroom_path}}/latest"
+        },
+        "force": true,
+        "guards": [
+         {
+          "path": "{{caskroom_path}}/latest",
+          "condition": "unless_exists",
+          "id": "1"
+         }
+        ],
+        "type": "symlink"
+       },
+       {
+        "command": {
+         "base": "homebrew_prefix",
+         "path": "share/google-cloud-sdk/bin/gcloud"
+        },
+        "guards": [
+         {
+          "condition": "on",
+          "value": "macos",
+          "id": "2"
+         },
+         {
+          "path": "~/.config/gcloud/virtenv",
+          "condition": "if_exists",
+          "id": "3"
+         }
+        ],
+        "type": "run",
+        "args": [
+         "config",
+         "virtualenv",
+         "delete",
+         "-q"
+        ],
+        "env": {
+         "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+        }
+       },
+       {
+        "command": {
+         "base": "homebrew_prefix",
+         "path": "share/google-cloud-sdk/bin/gcloud"
+        },
+        "network_access": true,
+        "guards": [
+         {
+          "condition": "on",
+          "value": "macos",
+          "id": "2"
+         }
+        ],
+        "type": "run",
+        "args": [
+         "config",
+         "virtualenv",
+         "create",
+         "--python-to-use",
+         "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+        ],
+        "env": {
+         "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+        }
+       },
+       {
+        "command": {
+         "base": "homebrew_prefix",
+         "path": "share/google-cloud-sdk/bin/gcloud"
+        },
+        "guards": [
+         {
+          "condition": "on",
+          "value": "macos",
+          "id": "2"
+         }
+        ],
+        "type": "run",
+        "args": [
+         "config",
+         "virtualenv",
+         "enable"
+        ],
+        "env": {
+         "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+        }
+       },
+       {
+        "command": {
+         "base": "homebrew_prefix",
+         "path": "share/google-cloud-sdk/bin/gcloud"
+        },
+        "guards": [
+         {
+          "condition": "on",
+          "value": "macos",
+          "id": "2"
+         }
+        ],
+        "type": "run",
+        "args": [
+         "version"
+        ],
+        "env": {
+         "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "$HOMEBREW_PREFIX/share/google-cloud-sdk.staging",
+       "$HOMEBREW_PREFIX/share/google-cloud-sdk"
+      ]
+     }
+    ]
+   }
+  ],
+  "caveats": "To use additional binary components installed via gcloud, add the \"$HOMEBREW_PREFIX/share/google-cloud-sdk/bin\"\ndirectory to your PATH environment variable, e.g., (for Bash shell):\n   export PATH=$HOMEBREW_PREFIX/share/google-cloud-sdk/bin:\"$PATH\"\n",
+  "caveats_rosetta": null,
+  "depends_on": {
+   "formula": [
+    "python@3.14"
+   ]
+  },
+  "conflicts_with": null,
+  "container": null,
+  "rename": [],
+  "auto_updates": true,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "tap_git_head": "5123c0d166cd705f71b7cb6ae95a8377657165c7",
+  "languages": [],
+  "ruby_source_path": "Casks/g/gcloud-cli.rb",
+  "ruby_source_checksum": {
+   "sha256": "29a077cfcfda97edb1393e4387986f37280e4d3bee164880242c01237a401fe9"
+  },
+  "variations": {
+   "golden_gate": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-darwin-x86_64.tar.gz",
+    "sha256": "f8c788cb2ce0af3bd03f236d67c825afe810908f4cd1ade435eb7b5bfb4173c7"
+   },
+   "tahoe": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-darwin-x86_64.tar.gz",
+    "sha256": "f8c788cb2ce0af3bd03f236d67c825afe810908f4cd1ade435eb7b5bfb4173c7"
+   },
+   "sequoia": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-darwin-x86_64.tar.gz",
+    "sha256": "f8c788cb2ce0af3bd03f236d67c825afe810908f4cd1ade435eb7b5bfb4173c7"
+   },
+   "sonoma": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-darwin-x86_64.tar.gz",
+    "sha256": "f8c788cb2ce0af3bd03f236d67c825afe810908f4cd1ade435eb7b5bfb4173c7"
+   },
+   "ventura": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-darwin-x86_64.tar.gz",
+    "sha256": "f8c788cb2ce0af3bd03f236d67c825afe810908f4cd1ade435eb7b5bfb4173c7"
+   },
+   "monterey": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-darwin-x86_64.tar.gz",
+    "sha256": "f8c788cb2ce0af3bd03f236d67c825afe810908f4cd1ade435eb7b5bfb4173c7"
+   },
+   "big_sur": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-darwin-x86_64.tar.gz",
+    "sha256": "f8c788cb2ce0af3bd03f236d67c825afe810908f4cd1ade435eb7b5bfb4173c7"
+   },
+   "x86_64_linux": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-linux-x86_64.tar.gz",
+    "sha256": "1f7233537c26bba94a3ea3f9085a60396745eaf44b21b8454fc6fdd15bb6fcde",
+    "artifacts": [
+     {
+      "preflight_steps": [
+       {
+        "steps": [
+         {
+          "source": {
+           "base": "staged_path",
+           "path": "google-cloud-sdk/."
+          },
+          "target": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk"
+          },
+          "recursive": true,
+          "type": "copy"
+         },
+         {
+          "paths": [
+           {
+            "base": "staged_path",
+            "path": "google-cloud-sdk"
+           }
+          ],
+          "recursive": true,
+          "type": "remove"
+         },
+         {
+          "source": {
+           "path": "{{HOMEBREW_PREFIX}}/share/google-cloud-sdk"
+          },
+          "target": {
+           "base": "staged_path",
+           "path": "google-cloud-sdk"
+          },
+          "type": "symlink"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "uninstall": [
+       {
+        "trash": "$HOMEBREW_PREFIX/Caskroom/gcloud-cli/latest"
+       }
+      ]
+     },
+     {
+      "installer": [
+       {
+        "script": {
+         "executable": "google-cloud-sdk/install.sh",
+         "args": [
+          "--quiet",
+          "--usage-reporting",
+          "false",
+          "--bash-completion",
+          "false",
+          "--path-update",
+          "false",
+          "--rc-path",
+          "false",
+          "--update-installed-components"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/git-credential-gcloud.sh",
+       {
+        "target": "git-credential-gcloud"
+       }
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/git-credential-gcloud"
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/gsutil"
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/gsutil"
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/bq"
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/bq"
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/docker-credential-gcloud"
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/docker-credential-gcloud"
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/gcloud"
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/gcloud"
+     },
+     {
+      "bash_completion": [
+       "google-cloud-sdk/completion.bash.inc",
+       {
+        "target": "google-cloud-sdk"
+       }
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/google-cloud-sdk"
+     },
+     {
+      "zsh_completion": [
+       "google-cloud-sdk/completion.zsh.inc",
+       {
+        "target": "_google_cloud_sdk"
+       }
+      ],
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_google_cloud_sdk"
+     },
+     {
+      "postflight_steps": [
+       {
+        "steps": [
+         {
+          "source": {
+           "path": "{{staged_path}}"
+          },
+          "target": {
+           "path": "{{caskroom_path}}/latest"
+          },
+          "force": true,
+          "guards": [
+           {
+            "path": "{{caskroom_path}}/latest",
+            "condition": "unless_exists",
+            "id": "1"
+           }
+          ],
+          "type": "symlink"
+         },
+         {
+          "command": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk/bin/gcloud"
+          },
+          "guards": [
+           {
+            "condition": "on",
+            "value": "macos",
+            "id": "2"
+           },
+           {
+            "path": "~/.config/gcloud/virtenv",
+            "condition": "if_exists",
+            "id": "3"
+           }
+          ],
+          "type": "run",
+          "args": [
+           "config",
+           "virtualenv",
+           "delete",
+           "-q"
+          ],
+          "env": {
+           "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          }
+         },
+         {
+          "command": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk/bin/gcloud"
+          },
+          "network_access": true,
+          "guards": [
+           {
+            "condition": "on",
+            "value": "macos",
+            "id": "2"
+           }
+          ],
+          "type": "run",
+          "args": [
+           "config",
+           "virtualenv",
+           "create",
+           "--python-to-use",
+           "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          ],
+          "env": {
+           "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          }
+         },
+         {
+          "command": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk/bin/gcloud"
+          },
+          "guards": [
+           {
+            "condition": "on",
+            "value": "macos",
+            "id": "2"
+           }
+          ],
+          "type": "run",
+          "args": [
+           "config",
+           "virtualenv",
+           "enable"
+          ],
+          "env": {
+           "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          }
+         },
+         {
+          "command": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk/bin/gcloud"
+          },
+          "guards": [
+           {
+            "condition": "on",
+            "value": "macos",
+            "id": "2"
+           }
+          ],
+          "type": "run",
+          "args": [
+           "version"
+          ],
+          "env": {
+           "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": [
+         "$HOMEBREW_PREFIX/share/google-cloud-sdk.staging",
+         "$HOMEBREW_PREFIX/share/google-cloud-sdk"
+        ]
+       }
+      ]
+     }
+    ],
+    "depends_on": {}
+   },
+   "arm64_linux": {
+    "url": "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-594.0.0-linux-arm.tar.gz",
+    "sha256": "e58fb86fff3dfd7101e1ff138f06bd4e338c7bf12a7508a7871985e7ea886275",
+    "artifacts": [
+     {
+      "preflight_steps": [
+       {
+        "steps": [
+         {
+          "source": {
+           "base": "staged_path",
+           "path": "google-cloud-sdk/."
+          },
+          "target": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk"
+          },
+          "recursive": true,
+          "type": "copy"
+         },
+         {
+          "paths": [
+           {
+            "base": "staged_path",
+            "path": "google-cloud-sdk"
+           }
+          ],
+          "recursive": true,
+          "type": "remove"
+         },
+         {
+          "source": {
+           "path": "{{HOMEBREW_PREFIX}}/share/google-cloud-sdk"
+          },
+          "target": {
+           "base": "staged_path",
+           "path": "google-cloud-sdk"
+          },
+          "type": "symlink"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "uninstall": [
+       {
+        "trash": "$HOMEBREW_PREFIX/Caskroom/gcloud-cli/latest"
+       }
+      ]
+     },
+     {
+      "installer": [
+       {
+        "script": {
+         "executable": "google-cloud-sdk/install.sh",
+         "args": [
+          "--quiet",
+          "--usage-reporting",
+          "false",
+          "--bash-completion",
+          "false",
+          "--path-update",
+          "false",
+          "--rc-path",
+          "false",
+          "--update-installed-components"
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/git-credential-gcloud.sh",
+       {
+        "target": "git-credential-gcloud"
+       }
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/git-credential-gcloud"
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/gsutil"
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/gsutil"
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/bq"
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/bq"
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/docker-credential-gcloud"
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/docker-credential-gcloud"
+     },
+     {
+      "binary": [
+       "google-cloud-sdk/bin/gcloud"
+      ],
+      "target": "$HOMEBREW_PREFIX/bin/gcloud"
+     },
+     {
+      "bash_completion": [
+       "google-cloud-sdk/completion.bash.inc",
+       {
+        "target": "google-cloud-sdk"
+       }
+      ],
+      "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/google-cloud-sdk"
+     },
+     {
+      "zsh_completion": [
+       "google-cloud-sdk/completion.zsh.inc",
+       {
+        "target": "_google_cloud_sdk"
+       }
+      ],
+      "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_google_cloud_sdk"
+     },
+     {
+      "postflight_steps": [
+       {
+        "steps": [
+         {
+          "source": {
+           "path": "{{staged_path}}"
+          },
+          "target": {
+           "path": "{{caskroom_path}}/latest"
+          },
+          "force": true,
+          "guards": [
+           {
+            "path": "{{caskroom_path}}/latest",
+            "condition": "unless_exists",
+            "id": "1"
+           }
+          ],
+          "type": "symlink"
+         },
+         {
+          "command": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk/bin/gcloud"
+          },
+          "guards": [
+           {
+            "condition": "on",
+            "value": "macos",
+            "id": "2"
+           },
+           {
+            "path": "~/.config/gcloud/virtenv",
+            "condition": "if_exists",
+            "id": "3"
+           }
+          ],
+          "type": "run",
+          "args": [
+           "config",
+           "virtualenv",
+           "delete",
+           "-q"
+          ],
+          "env": {
+           "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          }
+         },
+         {
+          "command": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk/bin/gcloud"
+          },
+          "network_access": true,
+          "guards": [
+           {
+            "condition": "on",
+            "value": "macos",
+            "id": "2"
+           }
+          ],
+          "type": "run",
+          "args": [
+           "config",
+           "virtualenv",
+           "create",
+           "--python-to-use",
+           "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          ],
+          "env": {
+           "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          }
+         },
+         {
+          "command": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk/bin/gcloud"
+          },
+          "guards": [
+           {
+            "condition": "on",
+            "value": "macos",
+            "id": "2"
+           }
+          ],
+          "type": "run",
+          "args": [
+           "config",
+           "virtualenv",
+           "enable"
+          ],
+          "env": {
+           "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          }
+         },
+         {
+          "command": {
+           "base": "homebrew_prefix",
+           "path": "share/google-cloud-sdk/bin/gcloud"
+          },
+          "guards": [
+           {
+            "condition": "on",
+            "value": "macos",
+            "id": "2"
+           }
+          ],
+          "type": "run",
+          "args": [
+           "version"
+          ],
+          "env": {
+           "CLOUDSDK_PYTHON": "{{HOMEBREW_PREFIX}}/opt/python@3.14/libexec/bin/python"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": [
+         "$HOMEBREW_PREFIX/share/google-cloud-sdk.staging",
+         "$HOMEBREW_PREFIX/share/google-cloud-sdk"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur",
+   "x86_64_linux",
+   "arm64_linux"
+  ]
+ },
+ {
+  "token": "1password@nightly",
+  "full_token": "1password@nightly",
+  "old_tokens": [],
+  "tap": "homebrew/cask",
+  "name": [
+   "1Password Nightly"
+  ],
+  "desc": "Password manager",
+  "homepage": "https://1password.com/",
+  "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-aarch64.zip",
+  "url_specs": {},
+  "version": "latest",
+  "autobump": false,
+  "no_autobump_message": "latest_version",
+  "skip_livecheck": false,
+  "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
+  "pinned": false,
+  "pinned_version": null,
+  "outdated": false,
+  "sha256": "no_check",
+  "artifacts": [
+   {
+    "app": [
+     "1Password.app"
+    ],
+    "target": "/Applications/1Password.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Scripts/2BUA8C4S2C.com.1password",
+       "~/Library/Application Scripts/2BUA8C4S2C.com.1password.browser-helper",
+       "~/Library/Application Scripts/com.1password.1password-launcher",
+       "~/Library/Application Scripts/com.1password.browser-support",
+       "~/Library/Application Support/1Password",
+       "~/Library/Application Support/CrashReporter/1Password*.plist",
+       "~/Library/Containers/2BUA8C4S2C.com.1password.browser-helper",
+       "~/Library/Containers/com.1password.1password-launcher",
+       "~/Library/Containers/com.1password.browser-support",
+       "~/Library/Group Containers/*.com.1password",
+       "~/Library/Group Containers/*.com.agilebits",
+       "~/Library/Logs/DiagnosticReports/1Password*",
+       "~/Library/Preferences/*1password.plist",
+       "~/Library/Saved Application State/com.1password.1password.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "caveats": null,
+  "caveats_rosetta": null,
+  "depends_on": {
+   "macos": {
+    ">=": [
+     "12"
+    ]
+   }
+  },
+  "conflicts_with": {
+   "cask": [
+    "1password",
+    "1password@beta"
+   ]
+  },
+  "container": null,
+  "rename": [],
+  "auto_updates": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "tap_git_head": "5123c0d166cd705f71b7cb6ae95a8377657165c7",
+  "languages": [],
+  "ruby_source_path": "Casks/1/1password@nightly.rb",
+  "ruby_source_checksum": {
+   "sha256": "10c5cd5b8ab1b72eb0dfa638e15fcd492bf715fb14b050132dd8c32e26de25f5"
+  },
+  "variations": {
+   "golden_gate": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "tahoe": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "sequoia": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "sonoma": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "ventura": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "monterey": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   },
+   "x86_64_linux": {
+    "url": "https://c.1password.com/dist/1P/mac8/1Password-latest.NIGHTLY-x86_64.zip"
+   }
+  },
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey"
+  ]
+ },
+ {
+  "token": "4k-video-downloader+",
+  "full_token": "4k-video-downloader+",
+  "old_tokens": [
+   "4k-video-downloaderplus"
+  ],
+  "tap": "homebrew/cask",
+  "name": [
+   "4K Video Downloader Plus"
+  ],
+  "desc": "Free video downloader",
+  "homepage": "https://www.4kdownload.com/products/videodownloader",
+  "url": "https://dl.4kdownload.com/app/4kvideodownloaderplus_26.4.0_arm64.dmg",
+  "url_specs": {},
+  "version": "26.4.0",
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
+  "pinned": false,
+  "pinned_version": null,
+  "outdated": false,
+  "sha256": "0e658d930fddc71af46456a51de6290601d03f59716f61e79ee8c2a7da7bf35c",
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "quit": "com.openmedia.4kvideodownloaderplus"
+     }
+    ]
+   },
+   {
+    "app": [
+     "4K Video Downloader+.app"
+    ],
+    "target": "/Applications/4K Video Downloader+.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/4kdownload.com/4K Video Downloader+",
+       "~/Library/Preferences/com.4kdownload.4K Video Downloader+.plist",
+       "~/Library/Preferences/com.4kdownload.ApplicationDirectories.plist",
+       "~/Library/Preferences/com.openmedia.4kvideodownloaderplus.plist",
+       "~/Library/Saved Application State/com.openmedia.4kvideodownloaderplus.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "caveats": null,
+  "caveats_rosetta": null,
+  "depends_on": {
+   "macos": {
+    ">=": [
+     "12"
+    ]
+   }
+  },
+  "conflicts_with": null,
+  "container": null,
+  "rename": [],
+  "auto_updates": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "tap_git_head": "5123c0d166cd705f71b7cb6ae95a8377657165c7",
+  "languages": [],
+  "ruby_source_path": "Casks/4/4k-video-downloader+.rb",
+  "ruby_source_checksum": {
+   "sha256": "88e2d999b8b303530c13b84d4a9a1f626b1081ee6e2399780dc46dae74ba7579"
+  },
+  "variations": {
+   "golden_gate": {
+    "url": "https://dl.4kdownload.com/app/4kvideodownloaderplus_26.4.0_x64.dmg",
+    "sha256": "0c8daf015cf6ed5c31db2f7f0e0c1e3d913dfe8d52dc6331bdc89f12451a69b2"
+   },
+   "tahoe": {
+    "url": "https://dl.4kdownload.com/app/4kvideodownloaderplus_26.4.0_x64.dmg",
+    "sha256": "0c8daf015cf6ed5c31db2f7f0e0c1e3d913dfe8d52dc6331bdc89f12451a69b2"
+   },
+   "sequoia": {
+    "url": "https://dl.4kdownload.com/app/4kvideodownloaderplus_26.4.0_x64.dmg",
+    "sha256": "0c8daf015cf6ed5c31db2f7f0e0c1e3d913dfe8d52dc6331bdc89f12451a69b2"
+   },
+   "sonoma": {
+    "url": "https://dl.4kdownload.com/app/4kvideodownloaderplus_26.4.0_x64.dmg",
+    "sha256": "0c8daf015cf6ed5c31db2f7f0e0c1e3d913dfe8d52dc6331bdc89f12451a69b2"
+   },
+   "ventura": {
+    "url": "https://dl.4kdownload.com/app/4kvideodownloaderplus_26.4.0_x64.dmg",
+    "sha256": "0c8daf015cf6ed5c31db2f7f0e0c1e3d913dfe8d52dc6331bdc89f12451a69b2"
+   },
+   "monterey": {
+    "url": "https://dl.4kdownload.com/app/4kvideodownloaderplus_26.4.0_x64.dmg",
+    "sha256": "0c8daf015cf6ed5c31db2f7f0e0c1e3d913dfe8d52dc6331bdc89f12451a69b2"
+   },
+   "x86_64_linux": {
+    "url": "https://dl.4kdownload.com/app/4kvideodownloaderplus_26.4.0_x64.dmg",
+    "sha256": null
+   },
+   "arm64_linux": {
+    "sha256": null
+   }
+  },
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey"
+  ]
+ },
+ {
+  "token": "aptible",
+  "full_token": "aptible",
+  "old_tokens": [],
+  "tap": "homebrew/cask",
+  "name": [
+   "Aptible Toolbelt"
+  ],
+  "desc": "Command-line tool for Aptible Deploy, an audit-ready App Deployment Platform",
+  "homepage": "https://www.aptible.com/docs/reference/aptible-cli/overview",
+  "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_arm64.pkg",
+  "url_specs": {},
+  "version": "1.0.7",
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
+  "pinned": false,
+  "pinned_version": null,
+  "outdated": false,
+  "sha256": "db3e6e7f0c7ebf23dffbea4d4d83a2a09acb6e27edada483abc8e7571c9cdc68",
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "pkgutil": "com.aptible.toolbelt"
+     }
+    ]
+   },
+   {
+    "pkg": [
+     "aptible-cli-go_1.0.7_darwin_arm64.pkg"
+    ]
+   },
+   {
+    "zap": [
+     {
+      "trash": "/usr/local/bin/aptible"
+     }
+    ]
+   }
+  ],
+  "caveats": null,
+  "caveats_rosetta": null,
+  "depends_on": {
+   "formula": [
+    "libfido2"
+   ],
+   "macos": {}
+  },
+  "conflicts_with": null,
+  "container": null,
+  "rename": [],
+  "auto_updates": null,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "tap_git_head": "5123c0d166cd705f71b7cb6ae95a8377657165c7",
+  "languages": [],
+  "ruby_source_path": "Casks/a/aptible.rb",
+  "ruby_source_checksum": {
+   "sha256": "1d0d93bccfe8cc0a55c7d73e6e54465ab57f2db7016e2f5507cce923f1707ff2"
+  },
+  "variations": {
+   "golden_gate": {
+    "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_amd64.pkg",
+    "sha256": "d301c4b6d6270da338d6515464047da407edcac184e17621d677c36e9c00a120",
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "pkgutil": "com.aptible.toolbelt"
+       }
+      ]
+     },
+     {
+      "pkg": [
+       "aptible-cli-go_1.0.7_darwin_amd64.pkg"
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": "/usr/local/bin/aptible"
+       }
+      ]
+     }
+    ]
+   },
+   "tahoe": {
+    "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_amd64.pkg",
+    "sha256": "d301c4b6d6270da338d6515464047da407edcac184e17621d677c36e9c00a120",
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "pkgutil": "com.aptible.toolbelt"
+       }
+      ]
+     },
+     {
+      "pkg": [
+       "aptible-cli-go_1.0.7_darwin_amd64.pkg"
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": "/usr/local/bin/aptible"
+       }
+      ]
+     }
+    ]
+   },
+   "sequoia": {
+    "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_amd64.pkg",
+    "sha256": "d301c4b6d6270da338d6515464047da407edcac184e17621d677c36e9c00a120",
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "pkgutil": "com.aptible.toolbelt"
+       }
+      ]
+     },
+     {
+      "pkg": [
+       "aptible-cli-go_1.0.7_darwin_amd64.pkg"
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": "/usr/local/bin/aptible"
+       }
+      ]
+     }
+    ]
+   },
+   "sonoma": {
+    "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_amd64.pkg",
+    "sha256": "d301c4b6d6270da338d6515464047da407edcac184e17621d677c36e9c00a120",
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "pkgutil": "com.aptible.toolbelt"
+       }
+      ]
+     },
+     {
+      "pkg": [
+       "aptible-cli-go_1.0.7_darwin_amd64.pkg"
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": "/usr/local/bin/aptible"
+       }
+      ]
+     }
+    ]
+   },
+   "ventura": {
+    "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_amd64.pkg",
+    "sha256": "d301c4b6d6270da338d6515464047da407edcac184e17621d677c36e9c00a120",
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "pkgutil": "com.aptible.toolbelt"
+       }
+      ]
+     },
+     {
+      "pkg": [
+       "aptible-cli-go_1.0.7_darwin_amd64.pkg"
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": "/usr/local/bin/aptible"
+       }
+      ]
+     }
+    ]
+   },
+   "monterey": {
+    "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_amd64.pkg",
+    "sha256": "d301c4b6d6270da338d6515464047da407edcac184e17621d677c36e9c00a120",
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "pkgutil": "com.aptible.toolbelt"
+       }
+      ]
+     },
+     {
+      "pkg": [
+       "aptible-cli-go_1.0.7_darwin_amd64.pkg"
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": "/usr/local/bin/aptible"
+       }
+      ]
+     }
+    ]
+   },
+   "big_sur": {
+    "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_amd64.pkg",
+    "sha256": "d301c4b6d6270da338d6515464047da407edcac184e17621d677c36e9c00a120",
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "pkgutil": "com.aptible.toolbelt"
+       }
+      ]
+     },
+     {
+      "pkg": [
+       "aptible-cli-go_1.0.7_darwin_amd64.pkg"
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": "/usr/local/bin/aptible"
+       }
+      ]
+     }
+    ]
+   },
+   "x86_64_linux": {
+    "url": "https://omnibus-aptible-toolbelt.s3.amazonaws.com/release/aptible-cli-go/aptible-cli-go_1.0.7_darwin_amd64.pkg",
+    "sha256": null,
+    "artifacts": [
+     {
+      "uninstall": [
+       {
+        "pkgutil": "com.aptible.toolbelt"
+       }
+      ]
+     },
+     {
+      "pkg": [
+       "aptible-cli-go_1.0.7_darwin_amd64.pkg"
+      ]
+     },
+     {
+      "zap": [
+       {
+        "trash": "/usr/local/bin/aptible"
+       }
+      ]
+     }
+    ]
+   },
+   "arm64_linux": {
+    "sha256": null
+   }
+  },
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ]
+ },
+ {
+  "token": "bridge",
+  "full_token": "bridge",
+  "old_tokens": [],
+  "tap": "homebrew/cask",
+  "name": [
+   "Quixel Bridge"
+  ],
+  "desc": "3D asset manager",
+  "homepage": "https://quixel.com/",
+  "url": "https://d2shgxa8i058x8.cloudfront.net/bridge/mac/Bridge-2025.0.0.dmg",
+  "url_specs": {},
+  "version": "2025.0.0",
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
+  "pinned": false,
+  "pinned_version": null,
+  "outdated": false,
+  "sha256": "3e74ba32f28d29a9f951f1f7cc98b2207049ce618c269ee15cfcd1652bfa1249",
+  "artifacts": [
+   {
+    "app": [
+     "Bridge.app"
+    ],
+    "target": "/Applications/Bridge.app"
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/Library/Application Support/Bridge",
+       "~/Library/Preferences/se.quixel.bridge.plist",
+       "~/Library/Saved Application State/se.quixel.bridge.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "caveats": null,
+  "caveats_rosetta": true,
+  "depends_on": {
+   "macos": {}
+  },
+  "conflicts_with": null,
+  "container": null,
+  "rename": [],
+  "auto_updates": true,
+  "deprecated": true,
+  "deprecation_date": "2025-12-18",
+  "deprecation_reason": "discontinued",
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": "epic-games",
+  "deprecate_args": {
+   "date": "2025-12-18",
+   "because": "discontinued",
+   "replacement_formula": null,
+   "replacement_cask": "epic-games"
+  },
+  "disabled": false,
+  "disable_date": "2026-12-18",
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": {
+   "date": "2026-12-18",
+   "because": "discontinued",
+   "replacement_formula": null,
+   "replacement_cask": "epic-games"
+  },
+  "tap_git_head": "5123c0d166cd705f71b7cb6ae95a8377657165c7",
+  "languages": [],
+  "ruby_source_path": "Casks/b/bridge.rb",
+  "ruby_source_checksum": {
+   "sha256": "6a24eb367380500d298193015f083cdab60f8f8db5ea8ca8f569ac9611391444"
+  },
+  "variations": {},
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ]
+ },
+ {
+  "token": "adobe-connect",
+  "full_token": "adobe-connect",
+  "old_tokens": [],
+  "tap": "homebrew/cask",
+  "name": [
+   "Adobe Connect"
+  ],
+  "desc": "Virtual meeting client",
+  "homepage": "https://www.adobe.com/products/adobeconnect.html",
+  "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_66.dmg",
+  "url_specs": {},
+  "version": "2026.10.66,11",
+  "autobump": true,
+  "no_autobump_message": null,
+  "skip_livecheck": false,
+  "installed": null,
+  "installed_time": null,
+  "bundle_version": null,
+  "bundle_short_version": null,
+  "pinned": false,
+  "pinned_version": null,
+  "outdated": false,
+  "sha256": "f3f70e8451806394e5385d77ee653c54ec4ad79ab00e228de9e9d4addacbbc68",
+  "artifacts": [
+   {
+    "uninstall": [
+     {
+      "delete": "/Applications/Adobe Connect"
+     }
+    ]
+   },
+   {
+    "installer": [
+     {
+      "manual": "AdobeConnectInstaller.app"
+     }
+    ]
+   },
+   {
+    "zap": [
+     {
+      "trash": [
+       "~/adobeconnectapp.log",
+       "~/AdobeConnectAppCache",
+       "~/Library/Caches/com.adobe.adobeconnect.app",
+       "~/Library/Caches/com.adobe.cefconnect.app",
+       "~/Library/HTTPStorages/com.adobe.adobeconnect.app",
+       "~/Library/HTTPStorages/com.adobe.cefconnect.app",
+       "~/Library/LaunchAgents/com.adobe.connectDetector.plist",
+       "~/Library/Preferences/com.adobe.adobeconnect.app.plist",
+       "~/Library/Preferences/com.adobe.cefconnect.helper.renderer.plist",
+       "~/Library/Saved Application State/com.adobe.adobeconnect.app.savedState",
+       "~/Library/Saved Application State/com.adobe.cefconnect.app.savedState"
+      ]
+     }
+    ]
+   }
+  ],
+  "caveats": null,
+  "caveats_rosetta": null,
+  "depends_on": {
+   "macos": {}
+  },
+  "conflicts_with": null,
+  "container": null,
+  "rename": [],
+  "auto_updates": true,
+  "deprecated": false,
+  "deprecation_date": null,
+  "deprecation_reason": null,
+  "deprecation_replacement_formula": null,
+  "deprecation_replacement_cask": null,
+  "deprecate_args": null,
+  "disabled": false,
+  "disable_date": null,
+  "disable_reason": null,
+  "disable_replacement_formula": null,
+  "disable_replacement_cask": null,
+  "disable_args": null,
+  "tap_git_head": "5123c0d166cd705f71b7cb6ae95a8377657165c7",
+  "languages": [],
+  "ruby_source_path": "Casks/a/adobe-connect.rb",
+  "ruby_source_checksum": {
+   "sha256": "967057d03d7cabf7b3d475d39ffc66e8b14c248f271b130f12faa5aba3d6ab62"
+  },
+  "variations": {
+   "golden_gate": {
+    "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_170.dmg",
+    "version": "2026.10.170,11",
+    "sha256": "adca95c96f6e5b3f6ad00feb43e9d1b449ee29e7f91890dcfab18146508ce6c2"
+   },
+   "tahoe": {
+    "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_170.dmg",
+    "version": "2026.10.170,11",
+    "sha256": "adca95c96f6e5b3f6ad00feb43e9d1b449ee29e7f91890dcfab18146508ce6c2"
+   },
+   "sequoia": {
+    "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_170.dmg",
+    "version": "2026.10.170,11",
+    "sha256": "adca95c96f6e5b3f6ad00feb43e9d1b449ee29e7f91890dcfab18146508ce6c2"
+   },
+   "sonoma": {
+    "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_170.dmg",
+    "version": "2026.10.170,11",
+    "sha256": "adca95c96f6e5b3f6ad00feb43e9d1b449ee29e7f91890dcfab18146508ce6c2"
+   },
+   "ventura": {
+    "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_170.dmg",
+    "version": "2026.10.170,11",
+    "sha256": "adca95c96f6e5b3f6ad00feb43e9d1b449ee29e7f91890dcfab18146508ce6c2"
+   },
+   "monterey": {
+    "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_170.dmg",
+    "version": "2026.10.170,11",
+    "sha256": "adca95c96f6e5b3f6ad00feb43e9d1b449ee29e7f91890dcfab18146508ce6c2"
+   },
+   "big_sur": {
+    "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_170.dmg",
+    "version": "2026.10.170,11",
+    "sha256": "adca95c96f6e5b3f6ad00feb43e9d1b449ee29e7f91890dcfab18146508ce6c2"
+   },
+   "x86_64_linux": {
+    "url": "https://download.adobe.com/pub/connect/updaters/meeting/11/AdobeConnect_2026_10_170.dmg",
+    "version": "2026.10.170,11",
+    "sha256": "adca95c96f6e5b3f6ad00feb43e9d1b449ee29e7f91890dcfab18146508ce6c2"
+   }
+  },
+  "supported_platforms": [
+   "golden_gate",
+   "arm64_golden_gate",
+   "tahoe",
+   "arm64_tahoe",
+   "sequoia",
+   "arm64_sequoia",
+   "sonoma",
+   "arm64_sonoma",
+   "ventura",
+   "arm64_ventura",
+   "monterey",
+   "arm64_monterey",
+   "big_sur",
+   "arm64_big_sur"
+  ]
+ }
+]
