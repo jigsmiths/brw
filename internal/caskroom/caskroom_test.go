@@ -84,6 +84,86 @@ func TestInstalled(t *testing.T) {
 	}
 }
 
+func write(t *testing.T, path, content string) {
+	t.Helper()
+	mkdir(t, filepath.Dir(path))
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInstalledTap(t *testing.T) {
+	prefix := t.TempDir()
+	for _, token := range []string{"core", "tapped", "bare", "garbled"} {
+		install(t, prefix, token, "1.0", "20200101000000.000", ".json")
+	}
+	receipt := func(token, content string) {
+		write(t, filepath.Join(prefix, "Caskroom", token, ".metadata/INSTALL_RECEIPT.json"), content)
+	}
+	receipt("core", `{"source": {"tap": "homebrew/cask", "version": "1.0"}}`)
+	receipt("tapped", `{"source": {"tap": "jigsmiths/tap"}}`)
+	receipt("garbled", `{`)
+	if err := os.Remove(filepath.Join(prefix, "Caskroom/bare/.metadata/INSTALL_RECEIPT.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Installed(prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taps := map[string]string{}
+	for _, c := range got {
+		taps[c.Token] = c.Tap
+	}
+	want := map[string]string{"bare": "", "core": "homebrew/cask", "garbled": "", "tapped": "jigsmiths/tap"}
+	if len(taps) != len(want) {
+		t.Fatalf("taps = %v", taps)
+	}
+	for token, tap := range want {
+		if taps[token] != tap {
+			t.Errorf("%s tap = %q, want %q", token, taps[token], tap)
+		}
+	}
+}
+
+func TestPinned(t *testing.T) {
+	prefix := t.TempDir()
+	install(t, prefix, "slack", "4.53.292", "20261117083153.956", ".json")
+	pins := filepath.Join(prefix, "var/homebrew/pinned_casks")
+	mkdir(t, pins)
+	symlink(t, filepath.Join(prefix, "Caskroom/slack/4.53.292"), filepath.Join(pins, "slack"))
+	symlink(t, filepath.Join(prefix, "Caskroom/gone/1.0"), filepath.Join(pins, "gone"))
+
+	if v, ok := Pinned(prefix, "slack"); !ok || v != "4.53.292" {
+		t.Errorf("Pinned(slack) = %q, %v", v, ok)
+	}
+	for _, token := range []string{"gone", "zed"} {
+		if v, ok := Pinned(prefix, token); ok {
+			t.Errorf("Pinned(%s) = %q, want not pinned", token, v)
+		}
+	}
+}
+
+func TestAppDir(t *testing.T) {
+	prefix := t.TempDir()
+	config := func(token, content string) {
+		write(t, filepath.Join(prefix, "Caskroom", token, ".metadata/config.json"), content)
+	}
+	config("default", `{"default": {"appdir": "/Users/me/Apps"}, "env": {"appdir": "/ignored"}, "explicit": {}}`)
+	config("explicit", `{"default": {"appdir": "/Users/me/Apps"}, "explicit": {"appdir": "/Opt/Apps"}}`)
+	config("garbled", `{`)
+	for token, want := range map[string]string{
+		"default":  "/Users/me/Apps",
+		"explicit": "/Opt/Apps",
+		"garbled":  "/Applications",
+		"missing":  "/Applications",
+	} {
+		if got := AppDir(prefix, token); got != want {
+			t.Errorf("AppDir(%s) = %q, want %q", token, got, want)
+		}
+	}
+}
+
 func TestInstalledWithoutACaskroom(t *testing.T) {
 	if got, err := Installed(t.TempDir()); err != nil || got != nil {
 		t.Errorf("Installed = %v, %v", got, err)

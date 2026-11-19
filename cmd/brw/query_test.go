@@ -38,15 +38,20 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// apiServer serves the formula fixture and returns a client with a fresh cache.
+// apiServer serves the formula and cask fixtures and returns a client with a fresh cache.
 func apiServer(t *testing.T) *api.Client {
 	t.Helper()
-	body := readFile(t, "../../internal/api/testdata/formulae.json")
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	formulae := readFile(t, "../../internal/api/testdata/formulae.json")
+	casks := readFile(t, "../../internal/api/testdata/casks.json")
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := formulae
+		if r.URL.Path == "/cask" {
+			body = casks
+		}
 		_, _ = w.Write(apitest.Listing(apitest.Shared(), []byte(body)))
 	}))
 	t.Cleanup(ts.Close)
-	return &api.Client{Key: &apitest.Shared().PublicKey, URL: ts.URL, CacheDir: t.TempDir()}
+	return &api.Client{Key: &apitest.Shared().PublicKey, URL: ts.URL, CaskURL: ts.URL + "/cask", CacheDir: t.TempDir()}
 }
 
 // prefixWith installs keg receipts from the cellar fixtures into a new prefix.
@@ -251,6 +256,92 @@ func TestOutdated(t *testing.T) {
 	}
 	if got, _ := runCmd(t, e, "outdated", append([]string{"--json"}, flags...)...); !strings.Contains(got, `"pinned_version": "1.0"`) {
 		t.Errorf("pinned outdated --json = %s", got)
+	}
+}
+
+// installCask records a cask install the way brew does.
+func installCask(t *testing.T, prefix, token, version, tap string) {
+	t.Helper()
+	meta := filepath.Join(prefix, "Caskroom", token, ".metadata")
+	writeFile(t, filepath.Join(meta, version, "20261117083153.956", "Casks", token+".json"), "{}")
+	writeFile(t, filepath.Join(meta, "INSTALL_RECEIPT.json"), `{"source": {"tap": "`+tap+`"}}`)
+}
+
+func TestOutdatedCasks(t *testing.T) {
+	t.Setenv("HOMEBREW_UPGRADE_GREEDY_CASKS", "")
+	t.Setenv("HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS", "")
+	prefix := prefixWith(t, map[string]string{"jq@1.0": "jq"})
+	installCask(t, prefix, "1password-cli", "2.40.0", "homebrew/cask")
+	installCask(t, prefix, "gcloud-cli", "575.0.0", "homebrew/cask") // updates itself
+	installCask(t, prefix, "brw", "0.4.0", "jigsmiths/tap")
+	e := &env{host: linux, client: apiServer(t)}
+	run := func(args ...string) string {
+		t.Helper()
+		got, err := runCmd(t, e, "outdated", append([]string{"-prefix", prefix}, args...)...)
+		if err != nil {
+			t.Fatalf("outdated %v: %v", args, err)
+		}
+		return got
+	}
+
+	for args, want := range map[string]string{
+		"":                      "jq\n1password-cli\n",
+		"--cask":                "1password-cli\n",
+		"--casks -v":            "1password-cli (2.40.0) != 2.42.0\n",
+		"--formula":             "jq\n",
+		"--greedy":              "jq\n1password-cli\ngcloud-cli\n",
+		"--greedy-auto-updates": "jq\n1password-cli\ngcloud-cli\n",
+		"--greedy-latest":       "jq\n1password-cli\n",
+		"-v --greedy":           "jq (1.0) < 1.8.2\n1password-cli (2.40.0) != 2.42.0\ngcloud-cli (575.0.0) != 594.0.0\n",
+	} {
+		if got := run(strings.Fields(args)...); got != want {
+			t.Errorf("outdated %s = %q, want %q", args, got, want)
+		}
+	}
+
+	t.Setenv("HOMEBREW_UPGRADE_GREEDY_CASKS", "gcloud-cli zed")
+	if got := run("--cask"); got != "1password-cli\ngcloud-cli\n" {
+		t.Errorf("with HOMEBREW_UPGRADE_GREEDY_CASKS: %q", got)
+	}
+
+	wantJSON := `{
+  "formulae": [],
+  "casks": [
+    {
+      "name": "1password-cli",
+      "installed_versions": [
+        "2.40.0"
+      ],
+      "current_version": "2.42.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "gcloud-cli",
+      "installed_versions": [
+        "575.0.0"
+      ],
+      "current_version": "594.0.0",
+      "pinned": false,
+      "pinned_version": null
+    }
+  ]
+}
+`
+	if got := run("--cask", "--json"); got != wantJSON {
+		t.Errorf("outdated --cask --json =\n%s", got)
+	}
+
+	if _, err := runCmd(t, e, "outdated", "-prefix", prefix, "--cask", "--formula"); err == nil {
+		t.Error("--cask with --formula should fail")
+	}
+}
+
+func TestOutdatedSkipsTheCaskListingWithoutCasks(t *testing.T) {
+	// No cask listing to fetch: a request for it would fail.
+	e := &env{host: linux, client: &api.Client{Key: &apitest.Shared().PublicKey, CaskURL: "http://127.0.0.1:1", CacheDir: t.TempDir()}}
+	if got, err := runCmd(t, e, "outdated", "--cask", "-prefix", t.TempDir()); err != nil || got != "" {
+		t.Errorf("outdated --cask = %q, %v", got, err)
 	}
 }
 

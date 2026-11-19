@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"os"
 	osexec "os/exec"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
@@ -126,6 +128,44 @@ func TestConformanceOutdated(t *testing.T) {
 	}
 	want, _ := brew(t, "outdated", "--formula", "--quiet")
 	same(t, "outdated", got, want)
+}
+
+// brw reads only the casks of the API, so casks from other taps are left out
+// of brew's answer.
+func TestConformanceOutdatedCasks(t *testing.T) {
+	e := conformanceEnv(t)
+	installed, err := caskroom.Installed(defaultPrefix(e.host))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tapped := map[string]bool{}
+	for _, c := range installed {
+		if c.Tap != "" && c.Tap != "homebrew/cask" {
+			tapped[c.Token] = true
+		}
+	}
+	for _, args := range [][]string{
+		{"outdated", "--cask"},
+		{"outdated", "--cask", "--verbose"},
+		{"outdated", "--cask", "--greedy", "--verbose"},
+		{"outdated", "--cask", "--greedy-auto-updates"},
+		{"outdated", "--cask", "--greedy-latest"},
+		{"outdated", "--greedy"},
+	} {
+		got, err := runCmd(t, e, args[0], args[1:]...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, _ := brew(t, args...)
+		var want strings.Builder
+		for line := range strings.Lines(out) {
+			if f := strings.Fields(line); len(f) > 0 && !tapped[f[0]] {
+				want.WriteString(line)
+			}
+		}
+		same(t, strings.Join(args, " "), got, want.String())
+	}
+	t.Logf("left out casks from other taps: %v", slices.Sorted(maps.Keys(tapped)))
 }
 
 // Brew adds spelling suggestions to text searches, so brw's answer may be a subset.
