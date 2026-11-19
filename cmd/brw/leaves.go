@@ -40,7 +40,7 @@ func leavesCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	casks, err := uninstall.CaskDependencies(prefix)
+	casks, err := uninstall.CaskDirectDependencies(prefix)
 	if err != nil {
 		return fmt.Errorf("cannot tell whether a cask needs these formulae: %w", err)
 	}
