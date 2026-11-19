@@ -4,7 +4,7 @@
 
 A Go, Homebrew-compatible package client. It reads Homebrew's metadata and bottles and shares a prefix with `brew`.
 
-**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae.
+**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae. For casks, the queries work; brw does not install or remove them yet.
 
 ## Install
 
@@ -25,7 +25,7 @@ just run deps git --tree         # also: --1, --installed
 just run uses --installed pcre2
 just run leaves                  # not needed by anything else; -r on request, -p as dependency
 just run outdated                # also: --cask, --formula, --greedy, --json, --quiet
-just run update                  # refresh the formula listing and update brw (--no-self to skip that)
+just run update                  # refresh the formula and cask listings and update brw (--no-self to skip that)
 just install                     # put brw on your PATH (GOBIN)
 ```
 
@@ -49,7 +49,7 @@ cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Commands take `--prefix` and default to Homebrew's prefix for this machine. Casks are listed but not yet managed.
+Commands take `--prefix` and default to Homebrew's prefix for this machine. Casks come from Homebrew's API only, not from other taps.
 
 ## Development
 
