@@ -28,6 +28,22 @@ func TestLeaves(t *testing.T) {
 	}
 }
 
+// Like brew, a cask keeps only the formulae it names off the list. What else
+// its receipt recorded at install may no longer be needed by anything.
+func TestLeavesCountsOnlyWhatACaskNames(t *testing.T) {
+	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq", "age@1.0": "age", "bash@5.3": "bash"})
+	writeFile(t, filepath.Join(prefix, "Caskroom/tool/.metadata/INSTALL_RECEIPT.json"), `{"runtime_dependencies": {"formula": [
+		{"full_name": "jq", "declared_directly": true},
+		{"full_name": "bash", "declared_directly": false},
+		{"full_name": "age"}
+	]}}`)
+	// age has no declared_directly, as in older receipts, so it still counts.
+	out, err := runCmd(t, &env{host: mac}, "leaves", "-prefix", prefix)
+	if err != nil || out != "bash\n" {
+		t.Errorf("leaves = %q, %v, want bash alone", out, err)
+	}
+}
+
 func TestLeavesRefusesBadArguments(t *testing.T) {
 	prefix := prefixWith(t, nil)
 	for _, args := range [][]string{{"-r", "-p"}, {"jq"}} {
