@@ -24,6 +24,8 @@ type Cask struct {
 	SHA256         string   `json:"sha256"` // "no_check" when the download is not checked
 	AutoUpdates    bool     `json:"auto_updates"`
 	Caveats        string   `json:"caveats"`
+	CaveatsRosetta bool     `json:"caveats_rosetta"` // built for Intel, so Apple silicon needs Rosetta 2
+	Languages      []string `json:"languages"`
 	RubySourcePath string   `json:"ruby_source_path"`
 
 	Deprecated                    bool   `json:"deprecated"`
@@ -45,14 +47,34 @@ type Cask struct {
 
 // CaskDependsOn is what a cask needs before it can be installed.
 type CaskDependsOn struct {
-	Formula []string `json:"formula"`
-	Cask    []string `json:"cask"`
-	// MacOS maps a comparison such as ">=" or "==" to macOS versions.
-	MacOS map[string][]string `json:"macos"`
-	Arch  []struct {
+	Formula []string          `json:"formula"`
+	Cask    []string          `json:"cask"`
+	MacOS   *MacOSRequirement `json:"macos"` // nil when the cask names none
+	Arch    []struct {
 		Type string `json:"type"` // arm or intel
 		Bits int    `json:"bits"`
 	} `json:"arch"`
+}
+
+// MacOSRequirement is a cask's depends_on macos, such as ">= 12". Brew's
+// comparison is ">=" when the cask names no version.
+type MacOSRequirement struct {
+	Comparator string
+	Versions   []string
+}
+
+// UnmarshalJSON reads the API's form, a map of one comparison to versions: {}
+// for any macOS, {">=": ["12"]} or {"==": ["11", "12"]}.
+func (m *MacOSRequirement) UnmarshalJSON(b []byte) error {
+	var raw map[string][]string
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*m = MacOSRequirement{Comparator: ">="}
+	for cmp, versions := range raw {
+		m.Comparator, m.Versions = cmp, versions
+	}
+	return nil
 }
 
 func ParseCasks(b []byte) ([]Cask, error) {

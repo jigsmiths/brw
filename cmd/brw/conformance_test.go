@@ -297,7 +297,7 @@ func infoNames(t *testing.T, e *env) []string {
 	installed := installedNames(t, e)
 	var names []string
 	for _, n := range installed {
-		if _, err := runCmd(t, e, "info", n); err != nil {
+		if _, err := runCmd(t, e, "info", "--formula", n); err != nil {
 			t.Logf("skipped %s: %v", n, err)
 			continue
 		}
@@ -321,7 +321,7 @@ func TestConformanceInfo(t *testing.T) {
 		t.Fatal("brew info failed")
 	}
 	brews := infoBlocks(want)
-	got, err := runCmd(t, e, "info", names...)
+	got, err := runCmd(t, e, "info", append([]string{"--formula"}, names...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,6 +352,81 @@ func TestConformanceInfo(t *testing.T) {
 	t.Logf("compared %d formulae", len(names))
 }
 
+// caskSections splits brew info output for one cask by its "==> " headings,
+// "" for the title block, leaving out the analytics.
+func caskSections(out string) map[string][]string {
+	sections := map[string][]string{}
+	heading := ""
+	for i, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if name, ok := strings.CutPrefix(line, "==> "); ok && i > 0 {
+			heading = name
+			continue
+		}
+		sections[heading] = append(sections[heading], line)
+	}
+	delete(sections, "Analytics")
+	for k, lines := range sections {
+		for len(lines) > 0 && lines[len(lines)-1] == "" {
+			lines = lines[:len(lines)-1]
+		}
+		sections[k] = lines
+	}
+	return sections
+}
+
+// Compares the installed casks brw can read and a spread of others. Brew sorts
+// artifacts of one kind with an unstable sort, so their order is not compared.
+func TestConformanceInfoCasks(t *testing.T) {
+	e := conformanceEnv(t)
+	idx, err := e.caskIndex(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed, err := caskroom.Installed(defaultPrefix(e.host))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tokens []string
+	for _, c := range installed {
+		if c.Tap == "" || c.Tap == "homebrew/cask" {
+			tokens = append(tokens, c.Token)
+		}
+	}
+	for i, c := range idx.Casks() {
+		if i%200 == 0 {
+			tokens = append(tokens, c.Token)
+		}
+	}
+	for _, token := range tokens {
+		got, err := runCmd(t, e, "info", "--cask", token)
+		if err != nil {
+			t.Errorf("%s: %v", token, err)
+			continue
+		}
+		out, ok := brew(t, "info", "--cask", token)
+		if !ok {
+			t.Logf("skipped %s: brew info failed", token)
+			continue
+		}
+		mine, brews := caskSections(got), caskSections(out)
+		for _, s := range slices.Sorted(maps.Keys(brews)) {
+			b, m := brews[s], mine[s]
+			if s == "Fonts" || s == "Artifacts" || s == "Apps" || s == "Plugins" {
+				b, m = slices.Sorted(slices.Values(b)), slices.Sorted(slices.Values(m))
+			}
+			if !slices.Equal(b, m) {
+				t.Errorf("%s: section %q differs\nbrw:\n%s\nbrew:\n%s", token, s, strings.Join(m, "\n"), strings.Join(b, "\n"))
+			}
+		}
+		for s := range mine {
+			if _, ok := brews[s]; !ok {
+				t.Errorf("%s: brw printed section %q, brew did not", token, s)
+			}
+		}
+	}
+	t.Logf("compared %d casks", len(tokens))
+}
+
 // Brew reads its own copy of the API, which differs from the public listing in
 // these keys, so they are not compared.
 var apiSourceKeys = []string{"tap_git_head", "compatibility_version", "patches", "requirements", "skip_livecheck"}
@@ -363,7 +438,7 @@ func TestConformanceInfoJSON(t *testing.T) {
 	if !ok {
 		t.Fatal("brew info failed")
 	}
-	gotOut, err := runCmd(t, e, "info", append([]string{"--json"}, names...)...)
+	gotOut, err := runCmd(t, e, "info", append([]string{"--formula", "--json"}, names...)...)
 	if err != nil {
 		t.Fatal(err)
 	}

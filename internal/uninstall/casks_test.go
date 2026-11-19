@@ -56,6 +56,29 @@ func TestCaskDependencies(t *testing.T) {
 	}
 }
 
+func TestCaskDirectDependencies(t *testing.T) {
+	f := newFixture(t)
+	f.cask("tool", `{"runtime_dependencies":{"formula":[
+		{"full_name":"python@3.14","declared_directly":true},
+		{"full_name":"openssl@3","declared_directly":false},
+		{"full_name":"xz"}]}}`)
+	all, err := CaskDependencies(f.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string][]string{"python@3.14": {"tool"}, "openssl@3": {"tool"}, "xz": {"tool"}}; !reflect.DeepEqual(all, want) {
+		t.Errorf("CaskDependencies = %v, want %v", all, want)
+	}
+	direct, err := CaskDirectDependencies(f.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// xz is not marked either way, so it counts.
+	if want := map[string][]string{"python@3.14": {"tool"}, "xz": {"tool"}}; !reflect.DeepEqual(direct, want) {
+		t.Errorf("CaskDirectDependencies = %v, want %v", direct, want)
+	}
+}
+
 func TestCaskDependenciesWithoutACaskroom(t *testing.T) {
 	got, err := CaskDependencies(t.TempDir())
 	if err != nil || len(got) != 0 {

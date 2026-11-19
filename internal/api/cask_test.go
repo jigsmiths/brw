@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -70,8 +71,18 @@ func TestParseCasks(t *testing.T) {
 	if !slices.Equal(gcloud.DependsOn.Formula, []string{"python@3.14"}) || !slices.Equal(gcloud.OldTokens, []string{"google-cloud-sdk"}) {
 		t.Errorf("gcloud-cli depends on %+v, old tokens %v", gcloud.DependsOn, gcloud.OldTokens)
 	}
-	if nightly := caskByToken(t, "1password@nightly"); !slices.Equal(nightly.DependsOn.MacOS[">="], []string{"12"}) {
-		t.Errorf("1password@nightly macos = %v", nightly.DependsOn.MacOS)
+	if m := caskByToken(t, "1password@nightly").DependsOn.MacOS; m == nil || m.Comparator != ">=" || !slices.Equal(m.Versions, []string{"12"}) {
+		t.Errorf("1password@nightly macos = %+v", m)
+	}
+	// Any macOS at all, as against no requirement.
+	if m := caskByToken(t, "slack").DependsOn.MacOS; m == nil || m.Comparator != ">=" || len(m.Versions) != 0 {
+		t.Errorf("slack macos = %+v", m)
+	}
+	if m := caskByToken(t, "1password-cli").DependsOn.MacOS; m != nil {
+		t.Errorf("1password-cli macos = %+v", m)
+	}
+	if b := caskByToken(t, "bridge"); !b.CaveatsRosetta {
+		t.Error("bridge needs Rosetta")
 	}
 	if b := caskByToken(t, "bridge"); !b.Deprecated || b.DeprecationReplacementCask != "epic-games" {
 		t.Errorf("bridge = %+v", b)
@@ -241,8 +252,14 @@ func TestCaskIndexMatchesAFreshParse(t *testing.T) {
 		t.Fatalf("%d casks parsed, %d loaded", len(parsed), len(loaded))
 	}
 	for i := range parsed {
-		if a, b := fmt.Sprintf("%+v", parsed[i]), fmt.Sprintf("%+v", loaded[i]); a != b {
-			t.Errorf("%s differs after the round trip\nparsed: %s\nloaded: %s", parsed[i].Token, a, b)
+		p, l := parsed[i], loaded[i]
+		// %+v prints the pointer, not what it points to.
+		if !reflect.DeepEqual(p.DependsOn.MacOS, l.DependsOn.MacOS) {
+			t.Errorf("%s macos differs after the round trip: %+v, %+v", p.Token, p.DependsOn.MacOS, l.DependsOn.MacOS)
+		}
+		p.DependsOn.MacOS, l.DependsOn.MacOS = nil, nil
+		if a, b := fmt.Sprintf("%+v", p), fmt.Sprintf("%+v", l); a != b {
+			t.Errorf("%s differs after the round trip\nparsed: %s\nloaded: %s", p.Token, a, b)
 		}
 	}
 	slack, ok := NewCaskIndex(loaded).Lookup("slack")
