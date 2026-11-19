@@ -15,6 +15,17 @@ import (
 // need it, going by the runtime dependencies in the cask receipts. A cask whose
 // receipt cannot be read is an error, so nothing is removed on a guess.
 func CaskDependencies(prefix string) (map[string][]string, error) {
+	return caskDependencies(prefix, false)
+}
+
+// CaskDirectDependencies is CaskDependencies for the formulae each cask names
+// itself, as brew leaves counts them. A dependency the receipt does not mark
+// either way counts.
+func CaskDirectDependencies(prefix string) (map[string][]string, error) {
+	return caskDependencies(prefix, true)
+}
+
+func caskDependencies(prefix string, directOnly bool) (map[string][]string, error) {
 	entries, err := os.ReadDir(filepath.Join(prefix, "Caskroom"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -39,7 +50,8 @@ func CaskDependencies(prefix string) (map[string][]string, error) {
 		var r struct {
 			RuntimeDependencies *struct {
 				Formula []struct {
-					FullName string `json:"full_name"`
+					FullName         string `json:"full_name"`
+					DeclaredDirectly *bool  `json:"declared_directly"`
 				} `json:"formula"`
 			} `json:"runtime_dependencies"`
 		}
@@ -50,6 +62,9 @@ func CaskDependencies(prefix string) (map[string][]string, error) {
 			continue
 		}
 		for _, d := range r.RuntimeDependencies.Formula {
+			if directOnly && d.DeclaredDirectly != nil && !*d.DeclaredDirectly {
+				continue
+			}
 			name := strings.TrimPrefix(d.FullName, "homebrew/core/")
 			if !slices.Contains(out[name], token) {
 				out[name] = append(out[name], token)
