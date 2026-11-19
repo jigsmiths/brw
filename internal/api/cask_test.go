@@ -11,8 +11,11 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jigsmiths/brw/internal/api/apitest"
 )
 
 const caskFixtureSize = 8
@@ -262,5 +265,46 @@ func TestCaskIndexMatchesAFreshParse(t *testing.T) {
 	slack, ok := NewCaskIndex(loaded).Lookup("slack")
 	if !ok || len(slack.Artifacts) == 0 || len(slack.Variations) == 0 {
 		t.Errorf("slack lost data: %+v", slack)
+	}
+}
+
+func TestRefreshCasksReportsWhatChanged(t *testing.T) {
+	var listing []map[string]any
+	if err := json.Unmarshal(caskFixture(t), &listing); err != nil {
+		t.Fatal(err)
+	}
+	removed := listing[0]["token"].(string)
+	newer := listing[1:]
+	added := map[string]any{}
+	for k, v := range listing[1] {
+		added[k] = v
+	}
+	added["token"], added["full_token"], added["old_tokens"] = "new-cask", "new-cask", []string{}
+	newer = append(newer, added)
+	newBody, err := json.Marshal(newer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var body atomic.Pointer[[]byte]
+	old := caskFixture(t)
+	body.Store(&old)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(apitest.Listing(apitest.Shared(), *body.Load()))
+	}))
+	defer ts.Close()
+	c := &Client{Key: testKey(), CaskURL: ts.URL, CacheDir: t.TempDir()}
+
+	up, err := c.RefreshCasks(context.Background())
+	if err != nil || !up.Changed || up.Total != caskFixtureSize || up.Added != nil {
+		t.Fatalf("first refresh = %+v, %v", up, err)
+	}
+	if up, err = c.RefreshCasks(context.Background()); err != nil || up.Changed {
+		t.Errorf("unchanged refresh = %+v, %v", up, err)
+	}
+	body.Store(&newBody)
+	up, err = c.RefreshCasks(context.Background())
+	if err != nil || !up.Changed || !slices.Equal(up.Added, []string{"new-cask"}) || !slices.Equal(up.Removed, []string{removed}) {
+		t.Errorf("refresh = %+v, %v; want +new-cask and -%s", up, err, removed)
 	}
 }

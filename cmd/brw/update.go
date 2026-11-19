@@ -11,8 +11,9 @@ import (
 	"github.com/jigsmiths/brw/internal/selfupdate"
 )
 
-// updateCommand refreshes the formula listing now, rather than when the cached
-// one is ten minutes old, and then updates brw itself to the latest release.
+// updateCommand refreshes the formula and cask listings now, rather than when
+// the cached ones are ten minutes old, and then updates brw itself to the
+// latest release.
 func updateCommand(e *env, args []string) error {
 	fs := newFlagSet("update")
 	noSelf := fs.Bool("no-self", false, "do not update brw itself")
@@ -27,11 +28,15 @@ func updateCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	up, err := c.Refresh(context.Background())
+	formulae, err := c.Refresh(context.Background())
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprint(e.out, updateSummary(up)); err != nil {
+	casks, err := c.RefreshCasks(context.Background())
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprint(e.out, updateSummary(formulae, casks)); err != nil {
 		return err
 	}
 	if *noSelf || os.Getenv("BRW_NO_SELF_UPDATE") != "" || e.selfUpdate == nil {
@@ -52,11 +57,19 @@ func updateCommand(e *env, args []string) error {
 	return err
 }
 
-func updateSummary(up api.Update) string {
-	if !up.Changed {
+func updateSummary(formulae, casks api.Update) string {
+	if !formulae.Changed && !casks.Changed {
 		return "Already up-to-date.\n"
 	}
-	s := fmt.Sprintf("Updated the formula listing: %d formulae", up.Total)
+	return listingSummary("formula", "formulae", formulae) + listingSummary("cask", "casks", casks)
+}
+
+// listingSummary is a line for a listing that changed, or "".
+func listingSummary(kind, plural string, up api.Update) string {
+	if !up.Changed {
+		return ""
+	}
+	s := fmt.Sprintf("Updated the %s listing: %d %s", kind, up.Total, plural)
 	var parts []string
 	if n := len(up.Added); n > 0 {
 		parts = append(parts, fmt.Sprintf("+%d new", n))

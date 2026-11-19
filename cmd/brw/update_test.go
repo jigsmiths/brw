@@ -11,10 +11,13 @@ import (
 	"github.com/jigsmiths/brw/internal/selfupdate"
 )
 
+// listingsUpdated is what a first update of the test listings prints.
+const listingsUpdated = "Updated the formula listing: 19 formulae\nUpdated the cask listing: 8 casks\n"
+
 func TestUpdate(t *testing.T) {
 	e := &env{host: linux, client: apiServer(t)}
 	out, err := runCmd(t, e, "update")
-	if err != nil || out != "Updated the formula listing: 19 formulae\n" {
+	if err != nil || out != listingsUpdated {
 		t.Errorf("first update = %q, %v", out, err)
 	}
 	out, err = runCmd(t, e, "update")
@@ -36,6 +39,15 @@ func TestUpdateFailsOffline(t *testing.T) {
 	}
 }
 
+func TestUpdateFailsWhenTheCaskListingFails(t *testing.T) {
+	c := apiServer(t)
+	c.CaskURL = "http://127.0.0.1:1"
+	out, err := runCmd(t, &env{host: linux, client: c}, "update")
+	if err == nil || out != "" {
+		t.Errorf("update = %q, %v; want an error and no output", out, err)
+	}
+}
+
 func TestUpdateTakesNoArguments(t *testing.T) {
 	e := &env{host: linux, client: apiServer(t)}
 	if _, err := runCmd(t, e, "update", "jq"); err == nil || !strings.Contains(err.Error(), "usage: brw update") {
@@ -44,18 +56,22 @@ func TestUpdateTakesNoArguments(t *testing.T) {
 }
 
 func TestUpdateSummary(t *testing.T) {
+	unchanged := api.Update{Total: 7}
 	for _, tc := range []struct {
-		up   api.Update
-		want string
+		formulae, casks api.Update
+		want            string
 	}{
-		{api.Update{}, "Already up-to-date.\n"},
-		{api.Update{Changed: true, Total: 5}, "Updated the formula listing: 5 formulae\n"},
-		{api.Update{Changed: true, Total: 5, Added: []string{"a", "b"}}, "Updated the formula listing: 5 formulae (+2 new)\n"},
-		{api.Update{Changed: true, Total: 5, Removed: []string{"a"}}, "Updated the formula listing: 5 formulae (-1 removed)\n"},
-		{api.Update{Changed: true, Total: 5, Added: []string{"a"}, Removed: []string{"b", "c", "d"}}, "Updated the formula listing: 5 formulae (+1 new, -3 removed)\n"},
+		{api.Update{}, api.Update{}, "Already up-to-date.\n"},
+		{api.Update{Changed: true, Total: 5}, unchanged, "Updated the formula listing: 5 formulae\n"},
+		{api.Update{Changed: true, Total: 5, Added: []string{"a", "b"}}, unchanged, "Updated the formula listing: 5 formulae (+2 new)\n"},
+		{api.Update{Changed: true, Total: 5, Removed: []string{"a"}}, unchanged, "Updated the formula listing: 5 formulae (-1 removed)\n"},
+		{api.Update{Changed: true, Total: 5, Added: []string{"a"}, Removed: []string{"b", "c", "d"}}, unchanged, "Updated the formula listing: 5 formulae (+1 new, -3 removed)\n"},
+		{unchanged, api.Update{Changed: true, Total: 9, Added: []string{"x"}}, "Updated the cask listing: 9 casks (+1 new)\n"},
+		{api.Update{Changed: true, Total: 5}, api.Update{Changed: true, Total: 9},
+			"Updated the formula listing: 5 formulae\nUpdated the cask listing: 9 casks\n"},
 	} {
-		if got := updateSummary(tc.up); got != tc.want {
-			t.Errorf("%+v: got %q, want %q", tc.up, got, tc.want)
+		if got := updateSummary(tc.formulae, tc.casks); got != tc.want {
+			t.Errorf("%+v, %+v: got %q, want %q", tc.formulae, tc.casks, got, tc.want)
 		}
 	}
 }
@@ -73,7 +89,7 @@ func TestUpdateUpdatesBrwToo(t *testing.T) {
 	hook, calls := selfUpdates(selfupdate.Result{From: "0.1.0", To: "0.2.0", Updated: true}, nil)
 	e := &env{host: linux, client: apiServer(t), selfUpdate: hook}
 	out, err := runCmd(t, e, "update")
-	want := "Updated the formula listing: 19 formulae\nUpdated brw 0.1.0 -> 0.2.0\n"
+	want := listingsUpdated + "Updated brw 0.1.0 -> 0.2.0\n"
 	if err != nil || out != want || *calls != 1 {
 		t.Errorf("out = %q, err = %v, calls = %d", out, err, *calls)
 	}
@@ -106,7 +122,7 @@ func TestUpdateWarnsWhenBrwCannotBeUpdated(t *testing.T) {
 	if err != nil {
 		t.Errorf("a failed self-update failed the command: %v", err)
 	}
-	if out != "Updated the formula listing: 19 formulae\n" {
+	if out != listingsUpdated {
 		t.Errorf("out = %q", out)
 	}
 	if got := errOut.String(); got != "brw: warning: could not update brw: no network\n" {
@@ -118,7 +134,7 @@ func TestUpdateCanSkipUpdatingBrw(t *testing.T) {
 	hook, calls := selfUpdates(selfupdate.Result{Updated: true}, nil)
 	e := &env{host: linux, client: apiServer(t), selfUpdate: hook}
 	out, err := runCmd(t, e, "update", "--no-self")
-	if err != nil || out != "Updated the formula listing: 19 formulae\n" || *calls != 0 {
+	if err != nil || out != listingsUpdated || *calls != 0 {
 		t.Errorf("--no-self: out = %q, err = %v, calls = %d", out, err, *calls)
 	}
 	t.Setenv("BRW_NO_SELF_UPDATE", "1")

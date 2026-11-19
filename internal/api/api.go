@@ -241,12 +241,12 @@ func (c *Client) now() time.Time {
 	return time.Now()
 }
 
-// Update says what Refresh found.
+// Update says what Refresh or RefreshCasks found.
 type Update struct {
 	Changed bool
 	Total   int
-	// Added and Removed name the formulae that came or went. They are empty
-	// when there was no listing before.
+	// Added and Removed name the formulae or casks that came or went. They are
+	// empty when there was no listing before.
 	Added, Removed []string
 }
 
@@ -254,13 +254,22 @@ type Update struct {
 // Unlike Formulae it fails when the server cannot be reached, rather than
 // settling for the cache.
 func (c *Client) Refresh(ctx context.Context) (Update, error) {
-	before, _ := os.ReadFile(filepath.Join(c.CacheDir, "formula.json"))
-	formulae, err := load(ctx, c, c.formulaListing(), true)
+	return refresh(ctx, c, c.formulaListing(), func(f Formula) string { return f.Name })
+}
+
+// RefreshCasks is Refresh for the cask listing.
+func (c *Client) RefreshCasks(ctx context.Context) (Update, error) {
+	return refresh(ctx, c, c.caskListing(), func(k Cask) string { return k.Token })
+}
+
+func refresh[T any](ctx context.Context, c *Client, l listing[T], name func(T) string) (Update, error) {
+	before, _ := os.ReadFile(l.file(c.CacheDir, ".json"))
+	items, err := load(ctx, c, l, true)
 	if err != nil {
 		return Update{}, err
 	}
-	up := Update{Total: len(formulae)}
-	after, err := os.ReadFile(filepath.Join(c.CacheDir, "formula.json"))
+	up := Update{Total: len(items)}
+	after, err := os.ReadFile(l.file(c.CacheDir, ".json"))
 	if err != nil {
 		return Update{}, err
 	}
@@ -268,23 +277,23 @@ func (c *Client) Refresh(ctx context.Context) (Update, error) {
 		return up, nil
 	}
 	up.Changed = true
-	if old, err := Parse(before); err == nil && len(before) > 0 {
-		up.Added, up.Removed = nameDiff(old, formulae)
+	if old, err := l.parse(before); err == nil && len(before) > 0 {
+		up.Added, up.Removed = nameDiff(old, items, name)
 	}
 	return up, nil
 }
 
 // nameDiff lists the sorted names in next that are not in old, and the reverse.
-func nameDiff(old, next []Formula) (added, removed []string) {
+func nameDiff[T any](old, next []T, name func(T) string) (added, removed []string) {
 	was := map[string]bool{}
-	for _, f := range old {
-		was[f.Name] = true
+	for _, item := range old {
+		was[name(item)] = true
 	}
-	for _, f := range next {
-		if !was[f.Name] {
-			added = append(added, f.Name)
+	for _, item := range next {
+		if n := name(item); !was[n] {
+			added = append(added, n)
 		}
-		delete(was, f.Name)
+		delete(was, name(item))
 	}
 	removed = slices.Sorted(maps.Keys(was))
 	slices.Sort(added)
