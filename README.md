@@ -18,7 +18,7 @@ Needs [just](https://github.com/casey/just) and Go.
 
 ```sh
 just build                       # build bin/brw
-just run list                    # installed formulae (--versions for versions)
+just run list                    # installed formulae and casks (--formula, --cask, --versions)
 just run search jq               # also: search --desc "json processor", search '/^lib/'
 just run info jq                 # also: info --json jq
 just run deps git --tree         # also: --1, --installed
@@ -49,7 +49,7 @@ cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Commands take `--prefix` and default to Homebrew's prefix for this machine. Formulae only, no casks.
+Commands take `--prefix` and default to Homebrew's prefix for this machine. Casks are listed but not yet managed.
 
 ## Development
 
