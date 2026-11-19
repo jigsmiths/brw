@@ -512,12 +512,18 @@ func (e *env) outdatedCasks(prefix string, o outdated.CaskOptions) ([]outdated.R
 	if o.Tag, err = platform.Tag(e.host); err != nil {
 		return nil, err
 	}
+	setCaskMachine(&o, prefix)
+	return outdated.CheckCasks(api.NewCaskIndex(list), prefix, installed, o)
+}
+
+// setCaskMachine fills in what the cask outdated check reads from this
+// machine and its environment.
+func setCaskMachine(o *outdated.CaskOptions, prefix string) {
 	o.GreedyTokens = strings.Fields(os.Getenv("HOMEBREW_UPGRADE_GREEDY_CASKS"))
 	o.NoAutoUpdates = os.Getenv("HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS") != ""
 	o.AppDir = func(token string) string { return caskroom.AppDir(prefix, token) }
 	o.Bundle = outdated.ReadBundle
 	o.Home, _ = os.UserHomeDir()
-	return outdated.CheckCasks(api.NewCaskIndex(list), prefix, installed, o)
 }
 
 func hasKeg(kegs []cellar.Keg, name string) bool {
@@ -541,37 +547,87 @@ func infoCommand(e *env, args []string) error {
 	fs := newFlagSet("info")
 	prefix := prefixFlag(e, fs)
 	asJSON := fs.Bool("json", false, "print JSON")
+	var formulaOnly, caskOnly bool
+	fs.BoolVar(&formulaOnly, "formula", false, "only formulae")
+	fs.BoolVar(&formulaOnly, "formulae", false, "only formulae")
+	fs.BoolVar(&caskOnly, "cask", false, "only casks")
+	fs.BoolVar(&caskOnly, "casks", false, "only casks")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw info [--json] FORMULA [FORMULA ...]")
+		return errors.New("usage: brw info [--formula|--cask] [--json] NAME [NAME ...]")
 	}
-	idx, client, err := e.indexAndClient(context.Background())
-	if err != nil {
-		return err
+	if formulaOnly && caskOnly {
+		return errors.New("--formula and --cask are mutually exclusive")
 	}
+	ctx := context.Background()
 	kegs, err := e.kegs(*prefix)
 	if err != nil {
 		return err
 	}
-	stale, err := outdated.Check(idx, cellar.Prefix(*prefix), kegs)
-	if err != nil {
-		return err
+
+	// Like brew, a name is a formula if there is one, else a cask.
+	var idx *api.Index
+	var client *api.Client
+	if !caskOnly {
+		if idx, client, err = e.indexAndClient(ctx); err != nil {
+			return err
+		}
 	}
-	env := info.Env{Index: idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale}
+	var casks *api.CaskIndex
+	type item struct {
+		formula *api.Formula
+		cask    *api.Cask
+	}
+	var items []item
+	for _, name := range names {
+		if idx != nil {
+			if f, ok := idx.Lookup(name); ok {
+				items = append(items, item{formula: f})
+				continue
+			}
+		}
+		if !formulaOnly {
+			if casks == nil {
+				if casks, err = e.caskIndex(ctx); err != nil {
+					return err
+				}
+			}
+			if c, ok := casks.Lookup(name); ok {
+				items = append(items, item{cask: c})
+				continue
+			}
+		}
+		switch {
+		case formulaOnly:
+			return fmt.Errorf("no available formula with the name %q", name)
+		case caskOnly:
+			return fmt.Errorf("no available cask with the name %q", name)
+		}
+		return fmt.Errorf("no available formula or cask with the name %q", name)
+	}
 
 	var formulae []*api.Formula
-	for _, name := range names {
-		f, ok := idx.Lookup(name)
-		if !ok {
-			return fmt.Errorf("no available formula with the name %q", name)
+	for _, it := range items {
+		if it.formula != nil {
+			formulae = append(formulae, it.formula)
 		}
-		formulae = append(formulae, f)
+	}
+	var env info.Env
+	if len(formulae) > 0 {
+		stale, err := outdated.Check(idx, cellar.Prefix(*prefix), kegs)
+		if err != nil {
+			return err
+		}
+		env = info.Env{Index: idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale}
 	}
 
 	if *asJSON {
+		if len(formulae) < len(items) {
+			return errors.New("info --json for casks is not supported yet")
+		}
 		entries := []json.RawMessage{}
 		for _, f := range formulae {
 			raw, err := client.Raw(f.Name)
@@ -593,9 +649,27 @@ func infoCommand(e *env, args []string) error {
 		}{entries, []struct{}{}})
 	}
 
+	var caskEnv info.CaskEnv
+	if casks != nil {
+		installed, err := caskroom.Installed(*prefix)
+		if err != nil {
+			return err
+		}
+		caskEnv = info.CaskEnv{Casks: casks, Host: e.host, Prefix: *prefix, Installed: installed, Kegs: kegs}
+		setCaskMachine(&caskEnv.Outdated, *prefix)
+		caskEnv.Home = caskEnv.Outdated.Home
+		_, statErr := os.Stat(rosettaRuntime)
+		caskEnv.Rosetta = statErr == nil
+	}
+
 	var b strings.Builder
-	for i, f := range formulae {
-		text, err := info.Text(f, env)
+	for i, it := range items {
+		var text string
+		if it.formula != nil {
+			text, err = info.Text(it.formula, env)
+		} else {
+			text, err = info.CaskText(it.cask, caskEnv)
+		}
 		if err != nil {
 			return err
 		}
@@ -607,3 +681,6 @@ func infoCommand(e *env, args []string) error {
 	_, err = io.WriteString(e.out, b.String())
 	return err
 }
+
+// rosettaRuntime is there when Rosetta 2 is installed, as brew checks.
+const rosettaRuntime = "/Library/Apple/usr/libexec/oah/libRosettaRuntime"
