@@ -172,7 +172,7 @@ func TestConformanceOutdatedCasks(t *testing.T) {
 func TestConformanceSearch(t *testing.T) {
 	e := conformanceEnv(t)
 	for _, q := range []string{"jq", "json", "sqlite", "python 3", "c++", "node", "/^lib/", "/json$/", "/^JSON/"} {
-		got, err := runCmd(t, e, "search", q)
+		got, err := runCmd(t, e, "search", "--formula", q)
 		if err != nil {
 			t.Logf("search %q: %v", q, err)
 		}
@@ -186,6 +186,58 @@ func TestConformanceSearch(t *testing.T) {
 		if strings.HasPrefix(q, "/") {
 			same(t, "search "+q, got, wantOut)
 		}
+	}
+}
+
+// Brew also searches the casks of other taps, so its answer is cut down to
+// the casks of the API before comparing.
+func TestConformanceSearchCasks(t *testing.T) {
+	e := conformanceEnv(t)
+	idx, err := e.caskIndex(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	inAPI := func(token string) bool {
+		c, ok := idx.Lookup(token)
+		return ok && c.Token == token
+	}
+	for _, q := range []string{"slack", "1password", "zed", "font-fira", "/^docker/", "/-cli$/", "/^z/"} {
+		got, err := runCmd(t, e, "search", "--cask", q)
+		if err != nil {
+			t.Logf("search --cask %q: %v", q, err)
+		}
+		out, _ := brew(t, "search", "--cask", q)
+		var want []string
+		for _, token := range strings.Fields(out) {
+			if inAPI(token) {
+				want = append(want, token)
+			}
+		}
+		if strings.HasPrefix(q, "/") {
+			same(t, "search --cask "+q, got, lines(want))
+			continue
+		}
+		// Text searches: brew adds spelling suggestions, so brw's answer may be a subset.
+		for _, token := range strings.Fields(got) {
+			if !slices.Contains(want, token) {
+				t.Errorf("search --cask %q: brw found %s, brew did not", q, token)
+			}
+		}
+	}
+	for _, q := range []string{"team communication", "password manager", "/^Docker/"} {
+		got, err := runCmd(t, e, "search", "--desc", "--cask", q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, _ := brew(t, "search", "--desc", "--cask", q)
+		var want strings.Builder
+		for line := range strings.Lines(out) {
+			token, _, ok := strings.Cut(line, ": ")
+			if !ok || inAPI(token) {
+				want.WriteString(line)
+			}
+		}
+		same(t, "search --desc --cask "+q, got, want.String())
 	}
 }
 
