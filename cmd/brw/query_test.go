@@ -460,6 +460,58 @@ func TestInfo(t *testing.T) {
 	}
 }
 
+func TestInfoCasks(t *testing.T) {
+	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq"})
+	linkKeg(t, prefix, "jq", "1.8.2")
+	installCask(t, prefix, "slack", "4.53.292", "homebrew/cask")
+	mac := platform.Host{OS: "darwin", MacVersion: "27.0", Arch: "arm64"}
+	e := &env{host: mac, client: apiServer(t)}
+	info := func(args ...string) (string, error) {
+		t.Helper()
+		return runCmd(t, e, "info", append([]string{"-prefix", prefix}, args...)...)
+	}
+
+	// A name that is no formula is a cask, and both kinds mix.
+	got, err := info("jq", "slack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"==> jq: stable 1.8.2",
+		"\n\n==> slack (Slack): 4.53.292 (auto_updates)\n",
+		"Installed (as dependency)\nFrom: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/s/slack.rb\n",
+		"==> Apps\nSlack.app\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("info jq slack is missing %q:\n%s", want, got)
+		}
+	}
+	if got, err := info("--cask", "aptible"); err != nil || !strings.Contains(got, "==> aptible (Aptible Toolbelt): 1.0.7\n") {
+		t.Errorf("info --cask aptible = %q, %v", got, err)
+	}
+
+	for args, want := range map[string]string{
+		"--cask jq":           `no available cask with the name "jq"`,
+		"--formula slack":     `no available formula with the name "slack"`,
+		"nosuchthing":         `no available formula or cask with the name "nosuchthing"`,
+		"--json slack":        "info --json for casks is not supported yet",
+		"--formula --cask jq": "--formula and --cask are mutually exclusive",
+	} {
+		if _, err := info(strings.Fields(args)...); err == nil || err.Error() != want {
+			t.Errorf("info %s: err = %v, want %q", args, err, want)
+		}
+	}
+}
+
+func TestInfoFormulaeSkipsTheCaskListing(t *testing.T) {
+	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq"})
+	c := apiServer(t)
+	c.CaskURL = "http://127.0.0.1:1" // a request for it would fail
+	if _, err := runCmd(t, &env{host: linux, client: c}, "info", "-prefix", prefix, "jq"); err != nil {
+		t.Errorf("info jq: %v", err)
+	}
+}
+
 func TestInfoJSON(t *testing.T) {
 	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq"})
 	linkKeg(t, prefix, "jq", "1.8.2")

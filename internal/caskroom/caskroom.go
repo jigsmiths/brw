@@ -18,6 +18,8 @@ type Cask struct {
 	Version  string // of the latest install
 	Caskfile string // the definition stored by that install, .json or .rb
 	Tap      string // from the install receipt; empty when it names none or cannot be read
+	// OnRequest is from the install receipt; false when it cannot be read.
+	OnRequest bool
 }
 
 func dir(prefix string) string { return filepath.Join(prefix, "Caskroom") }
@@ -75,28 +77,96 @@ func installed(prefix, token string) (Cask, bool, error) {
 	for _, ext := range []string{".json", ".rb"} {
 		file := filepath.Join(meta, version, stamp, "Casks", token+ext)
 		if _, err := os.Stat(file); err == nil {
-			return Cask{Token: token, Version: version, Caskfile: file, Tap: receiptTap(meta)}, true, nil
+			c := Cask{Token: token, Version: version, Caskfile: file}
+			c.Tap, c.OnRequest = readReceipt(meta)
+			return c, true, nil
 		}
 	}
 	return Cask{}, false, nil
 }
 
-// receiptTap is best effort, as brew's is: a cask with no readable receipt
+// readReceipt is best effort, as brew's is: a cask with no readable receipt
 // counts as installed from the API.
-func receiptTap(meta string) string {
+func readReceipt(meta string) (tap string, onRequest bool) {
 	b, err := os.ReadFile(filepath.Join(meta, "INSTALL_RECEIPT.json"))
 	if err != nil {
-		return ""
+		return "", false
 	}
 	var r struct {
 		Source struct {
 			Tap string `json:"tap"`
 		} `json:"source"`
+		InstalledOnRequest bool `json:"installed_on_request"`
 	}
 	if json.Unmarshal(b, &r) != nil {
-		return ""
+		return "", false
 	}
-	return r.Source.Tap
+	return r.Source.Tap, r.InstalledOnRequest
+}
+
+// DiskUsage is what brew info reports for an installed version: the size of
+// each entry of its Caskroom directory, following a symlink such as the one
+// to the app in /Applications. ok is false when the directory is missing.
+func DiskUsage(prefix, token, version string) (size int64, ok bool) {
+	root := filepath.Join(dir(prefix), token, version)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return 0, false
+	}
+	for _, e := range entries {
+		size += entryUsage(filepath.Join(root, e.Name()))
+	}
+	return size, true
+}
+
+// entryUsage follows brew's Pathname#disk_usage: a symlink counts as what it
+// leads to, a dangling one as nothing, and a hard link once per entry.
+func entryUsage(path string) int64 {
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return 0
+		}
+		path = resolved
+	}
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return 0
+	}
+	if !fi.IsDir() {
+		return fi.Size()
+	}
+	var size int64
+	seen := map[[2]uint64]bool{}
+	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // brew skips what vanished or cannot be read
+		}
+		fi, err := os.Lstat(p)
+		if err != nil {
+			return nil
+		}
+		if fi.IsDir() {
+			size += fi.Size()
+			return nil
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			if t, err := os.Stat(p); err == nil && t.IsDir() {
+				size += fi.Size()
+				return nil
+			}
+		}
+		if st, ok := fi.Sys().(*syscall.Stat_t); ok {
+			id := [2]uint64{uint64(st.Dev), st.Ino} //nolint:gosec,unconvert // Dev is int32 on darwin
+			if seen[id] {
+				return nil
+			}
+			seen[id] = true
+		}
+		size += fi.Size()
+		return nil
+	})
+	return size
 }
 
 // Pinned returns the version a cask is pinned at, if it is.
