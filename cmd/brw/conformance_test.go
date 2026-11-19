@@ -43,23 +43,26 @@ func same(t *testing.T, label, got, want string) bool {
 
 func TestConformanceList(t *testing.T) {
 	e := conformanceEnv(t)
-	want, _ := brew(t, "list", "--formula")
-	got, err := runCmd(t, e, "list")
-	if err != nil {
-		t.Fatal(err)
+	for _, args := range [][]string{
+		{"list"},
+		{"list", "--versions"},
+		{"list", "--formula"},
+		{"list", "--formula", "--versions"},
+		{"list", "--cask"},
+		{"list", "--cask", "--versions"},
+	} {
+		want, _ := brew(t, args...)
+		got, err := runCmd(t, e, args[0], args[1:]...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		same(t, strings.Join(args, " "), got, want)
 	}
-	same(t, "list", got, want)
-	want, _ = brew(t, "list", "--formula", "--versions")
-	got, err = runCmd(t, e, "list", "--versions")
-	if err != nil {
-		t.Fatal(err)
-	}
-	same(t, "list --versions", got, want)
 }
 
 func installedNames(t *testing.T, e *env) []string {
 	t.Helper()
-	got, err := runCmd(t, e, "list", "--versions")
+	got, err := runCmd(t, e, "list", "--formula", "--versions")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/deps"
 	"github.com/jigsmiths/brw/internal/info"
@@ -83,13 +84,24 @@ func list(e *env, args []string) error {
 	prefix := prefixFlag(e, fs)
 	versions := fs.Bool("versions", false, "show installed versions")
 	pinned := fs.Bool("pinned", false, "list only pinned formulae")
+	var formulaOnly, caskOnly bool
+	fs.BoolVar(&formulaOnly, "formula", false, "list only formulae")
+	fs.BoolVar(&formulaOnly, "formulae", false, "list only formulae")
+	fs.BoolVar(&caskOnly, "cask", false, "list only casks")
+	fs.BoolVar(&caskOnly, "casks", false, "list only casks")
 	rest, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
+	if formulaOnly && caskOnly {
+		return errors.New("--formula and --cask are mutually exclusive")
+	}
 	if *pinned {
 		if len(rest) > 0 {
 			return errors.New("--pinned with formula names is not supported yet")
+		}
+		if caskOnly {
+			return errors.New("--pinned with --cask is not supported yet")
 		}
 		out, err := pinnedList(*prefix, *versions)
 		if err == nil {
@@ -97,19 +109,53 @@ func list(e *env, args []string) error {
 		}
 		return err
 	}
-	if *versions {
-		kegs, err := e.kegs(*prefix)
-		if err != nil {
-			return err
+
+	// Like brew, a terminal gets a heading over each kind unless one was asked for.
+	headings := e.tty && !formulaOnly && !caskOnly
+	var b strings.Builder
+	if !caskOnly {
+		if *versions {
+			kegs, err := e.kegs(*prefix)
+			if err != nil {
+				return err
+			}
+			b.WriteString(formatVersions(kegs))
+		} else {
+			names, err := cellar.Prefix(*prefix).Names()
+			if err != nil {
+				return err
+			}
+			if len(names) > 0 && headings {
+				b.WriteString("==> Formulae\n" + lines(names) + "\n")
+			} else {
+				b.WriteString(lines(names))
+			}
 		}
-		_, err = io.WriteString(e.out, formatVersions(kegs))
-		return err
 	}
-	names, err := cellar.Prefix(*prefix).Names()
-	if err != nil {
-		return err
+	if !formulaOnly {
+		if *versions {
+			casks, err := caskroom.Installed(*prefix)
+			if err != nil {
+				return err
+			}
+			for _, c := range casks {
+				b.WriteString(c.Token + " " + c.Version + "\n")
+			}
+		} else {
+			names, broken, err := caskroom.Names(*prefix)
+			if err != nil {
+				return err
+			}
+			if len(names) > 0 && headings {
+				b.WriteString("==> Casks\n")
+			}
+			b.WriteString(lines(names))
+			if len(broken) > 0 {
+				_, _ = fmt.Fprintf(e.err, "brw: warning: broken Caskroom symlinks: %s\n", strings.Join(broken, ", "))
+			}
+		}
 	}
-	_, err = io.WriteString(e.out, lines(names))
+	_, err = io.WriteString(e.out, b.String())
 	return err
 }
 

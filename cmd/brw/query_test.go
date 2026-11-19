@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +83,59 @@ func TestList(t *testing.T) {
 	}
 	if got, err := runCmd(t, e, "list", "-versions", "-prefix", prefix); err != nil || got != "age 1.0\njq 1.8.2\n" {
 		t.Errorf("list --versions = %q, %v", got, err)
+	}
+}
+
+func TestListWithCasks(t *testing.T) {
+	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq"})
+	for token, version := range map[string]string{"slack": "4.53.292", "zed": "1.28.1"} {
+		writeFile(t, filepath.Join(prefix, "Caskroom", token, ".metadata", version, "20261117083153.956", "Casks", token+".json"), "{}")
+	}
+	if err := os.Symlink("nowhere", filepath.Join(prefix, "Caskroom/broken")); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		args []string
+		tty  bool
+		want string
+	}{
+		{nil, false, "jq\nbroken\nslack\nzed\n"},
+		{nil, true, "==> Formulae\njq\n\n==> Casks\nbroken\nslack\nzed\n"},
+		{[]string{"--formula"}, true, "jq\n"},
+		{[]string{"--formulae"}, false, "jq\n"},
+		{[]string{"--cask"}, true, "broken\nslack\nzed\n"},
+		{[]string{"--casks"}, false, "broken\nslack\nzed\n"},
+		{[]string{"--versions"}, true, "jq 1.8.2\nslack 4.53.292\nzed 1.28.1\n"},
+		{[]string{"--versions", "--cask"}, false, "slack 4.53.292\nzed 1.28.1\n"},
+		{[]string{"--versions", "--formula"}, false, "jq 1.8.2\n"},
+	} {
+		errs := &bytes.Buffer{}
+		e := &env{host: linux, tty: tc.tty, err: errs}
+		got, err := runCmd(t, e, "list", append([]string{"-prefix", prefix}, tc.args...)...)
+		if err != nil || got != tc.want {
+			t.Errorf("list %v (tty %v) = %q, %v; want %q", tc.args, tc.tty, got, err, tc.want)
+		}
+		listsCasks := !slices.Contains(tc.args, "--formula") && !slices.Contains(tc.args, "--formulae") && !slices.Contains(tc.args, "--versions")
+		if warned := strings.Contains(errs.String(), "broken Caskroom symlinks: broken"); warned != listsCasks {
+			t.Errorf("list %v: stderr = %q", tc.args, errs.String())
+		}
+	}
+
+	if _, err := runCmd(t, &env{host: linux}, "list", "-prefix", prefix, "--formula", "--cask"); err == nil {
+		t.Error("--formula with --cask should fail")
+	}
+	if _, err := runCmd(t, &env{host: linux}, "list", "-prefix", prefix, "--pinned", "--cask"); err == nil {
+		t.Error("--pinned with --cask should fail")
+	}
+}
+
+func TestListOnlyCasks(t *testing.T) {
+	prefix := t.TempDir()
+	writeFile(t, filepath.Join(prefix, "Caskroom/slack/.metadata/1.0/20261117083153.956/Casks/slack.json"), "{}")
+	// No formulae means no formula heading and no blank line.
+	if got, err := runCmd(t, &env{host: linux, tty: true}, "list", "-prefix", prefix); err != nil || got != "==> Casks\nslack\n" {
+		t.Errorf("list = %q, %v", got, err)
 	}
 }
 
