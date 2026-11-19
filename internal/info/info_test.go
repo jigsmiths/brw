@@ -229,7 +229,7 @@ func TestBuildDependenciesShownOnlyWhenBuilt(t *testing.T) {
 		"source":    true,  // built here
 		"fresh":     false, // not installed, but a bottle exists
 		"nobottle":  true,  // not installed and no bottle
-		"linuxonly": false, // not installed and only for another OS
+		"linuxonly": true,  // brew ignores requirements here, as its own listing has none
 	}
 	for name, want := range tests {
 		if got := strings.Contains(text(t, name, env), "Build (1): cmake"); got != want {

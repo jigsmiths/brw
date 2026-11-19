@@ -480,9 +480,7 @@ func (e Env) dependencies(f *api.Formula, kegs []keg, bottled bool) (string, err
 			}
 		}
 	} else {
-		hideBuild = bottled || slices.ContainsFunc(f.Requirements, func(r struct{ Name string }) bool {
-			return r.Name == "macos" || r.Name == "linux"
-		})
+		hideBuild = bottled
 	}
 
 	var lines []string
