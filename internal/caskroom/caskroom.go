@@ -2,6 +2,7 @@
 package caskroom
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -16,6 +17,7 @@ type Cask struct {
 	Token    string
 	Version  string // of the latest install
 	Caskfile string // the definition stored by that install, .json or .rb
+	Tap      string // from the install receipt; empty when it names none or cannot be read
 }
 
 func dir(prefix string) string { return filepath.Join(prefix, "Caskroom") }
@@ -73,10 +75,62 @@ func installed(prefix, token string) (Cask, bool, error) {
 	for _, ext := range []string{".json", ".rb"} {
 		file := filepath.Join(meta, version, stamp, "Casks", token+ext)
 		if _, err := os.Stat(file); err == nil {
-			return Cask{Token: token, Version: version, Caskfile: file}, true, nil
+			return Cask{Token: token, Version: version, Caskfile: file, Tap: receiptTap(meta)}, true, nil
 		}
 	}
 	return Cask{}, false, nil
+}
+
+// receiptTap is best effort, as brew's is: a cask with no readable receipt
+// counts as installed from the API.
+func receiptTap(meta string) string {
+	b, err := os.ReadFile(filepath.Join(meta, "INSTALL_RECEIPT.json"))
+	if err != nil {
+		return ""
+	}
+	var r struct {
+		Source struct {
+			Tap string `json:"tap"`
+		} `json:"source"`
+	}
+	if json.Unmarshal(b, &r) != nil {
+		return ""
+	}
+	return r.Source.Tap
+}
+
+// Pinned returns the version a cask is pinned at, if it is.
+func Pinned(prefix, token string) (string, bool) {
+	resolved, err := filepath.EvalSymlinks(filepath.Join(prefix, "var/homebrew/pinned_casks", token))
+	if err != nil {
+		return "", false
+	}
+	return filepath.Base(resolved), true
+}
+
+// AppDir is where the cask's apps went, from the configuration stored at
+// install: an explicit --appdir, else the default. Like brew, it ignores the
+// environment recorded then. brw does not read HOMEBREW_CASK_OPTS.
+func AppDir(prefix, token string) string {
+	const fallback = "/Applications"
+	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
+	if err != nil {
+		return fallback
+	}
+	var c struct {
+		Explicit, Default struct {
+			AppDir string `json:"appdir"`
+		}
+	}
+	if json.Unmarshal(b, &c) != nil {
+		return fallback
+	}
+	for _, d := range []string{c.Explicit.AppDir, c.Default.AppDir} {
+		if d != "" {
+			return d
+		}
+	}
+	return fallback
 }
 
 // visible lists the names in a directory that a shell glob would match. A
