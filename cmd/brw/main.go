@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,7 +8,6 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/platform"
-	"github.com/jigsmiths/brw/internal/selfupdate"
 )
 
 const usage = "usage: brw list|search|info|install|reinstall|upgrade|uninstall|autoremove|leaves|link|unlink|cleanup|pin|unpin|version|update|deps|uses|outdated|tag|dev [flags]"
@@ -20,9 +18,6 @@ type env struct {
 	tty      bool // out is a terminal
 	host     platform.Host
 	client   *api.Client
-
-	// selfUpdate brings brw up to the latest release; nil skips that.
-	selfUpdate func(context.Context) (selfupdate.Result, error)
 
 	defaultPrefix string // overrides the host's default prefix, for tests
 }
@@ -53,7 +48,7 @@ func main() {
 
 // newEnv is the environment of the real brw.
 func newEnv(host platform.Host) *env {
-	return &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host, selfUpdate: selfUpdateBrw}
+	return &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host}
 }
 
 func run(e *env, cmd string, args []string) error {

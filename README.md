@@ -25,7 +25,7 @@ just run deps git --tree         # also: --1, --installed
 just run uses --installed pcre2
 just run leaves                  # not needed by anything else; -r on request, -p as dependency
 just run outdated                # also: --cask, --formula, --greedy, --json, --quiet
-just run update                  # refresh the formula and cask listings and update brw (--no-self to skip that)
+just run update                  # refresh the formula and cask listings
 just install                     # put brw on your PATH (GOBIN)
 ```
 
@@ -41,7 +41,7 @@ just run link jq                 # also: unlink; link --force, --overwrite
 just run cleanup                 # also: --prune=30, --scrub, --prune-prefix
 ```
 
-`brw update` replaces brw itself only if `checksums.txt` of the release carries a Sigstore signature from this repository's release workflow. To check a release by hand:
+Update brw itself with `brew upgrade --cask brw`. Each release signs `checksums.txt` with Sigstore. To check a release by hand:
 
 ```sh
 cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
