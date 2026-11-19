@@ -135,6 +135,24 @@ func TestCaskForTagNullKeepsTheValue(t *testing.T) {
 	}
 }
 
+func TestCaskURLSpecsAndContainer(t *testing.T) {
+	cs, err := ParseCasks([]byte(`[{"token": "x", "url_specs": {"user_agent": ":fake"}, "container": {"type": "naked"},
+		"variations": {"t": {"url_specs": {}, "container": null}, "u": {"container": {"nested": "a.dmg"}}}}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := cs[0]
+	if string(c.URLSpecs["user_agent"]) != `":fake"` || string(c.Container) != `{"type": "naked"}` {
+		t.Errorf("url_specs %v, container %s", c.URLSpecs, c.Container)
+	}
+	if got := forCaskTag(t, c, "t"); len(got.URLSpecs) != 0 || string(got.Container) != `{"type": "naked"}` {
+		t.Errorf("t: url_specs %v, container %s", got.URLSpecs, got.Container)
+	}
+	if got := forCaskTag(t, c, "u"); string(got.Container) != `{"nested": "a.dmg"}` {
+		t.Errorf("u: container %s", got.Container)
+	}
+}
+
 func TestCaskForTagMalformedVariation(t *testing.T) {
 	c := Cask{Token: "x", Variations: map[string]json.RawMessage{"t": json.RawMessage(`{"version": 3}`)}}
 	if _, err := c.ForTag("t"); err == nil {

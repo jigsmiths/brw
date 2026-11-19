@@ -12,21 +12,25 @@ const DefaultCaskURL = "https://formulae.brew.sh/api/cask.jws.json"
 // Cask is an entry of the cask listing. Artifacts stay as the API has them,
 // since each kind of artifact has its own shape.
 type Cask struct {
-	Token          string   `json:"token"`
-	FullToken      string   `json:"full_token"`
-	OldTokens      []string `json:"old_tokens"`
-	Tap            string   `json:"tap"`
-	Names          []string `json:"name"`
-	Desc           string   `json:"desc"`
-	Homepage       string   `json:"homepage"`
-	Version        string   `json:"version"` // "latest" for a cask without versions
-	URL            string   `json:"url"`
-	SHA256         string   `json:"sha256"` // "no_check" when the download is not checked
-	AutoUpdates    bool     `json:"auto_updates"`
-	Caveats        string   `json:"caveats"`
-	CaveatsRosetta bool     `json:"caveats_rosetta"` // built for Intel, so Apple silicon needs Rosetta 2
-	Languages      []string `json:"languages"`
-	RubySourcePath string   `json:"ruby_source_path"`
+	Token     string   `json:"token"`
+	FullToken string   `json:"full_token"`
+	OldTokens []string `json:"old_tokens"`
+	Tap       string   `json:"tap"`
+	Names     []string `json:"name"`
+	Desc      string   `json:"desc"`
+	Homepage  string   `json:"homepage"`
+	Version   string   `json:"version"` // "latest" for a cask without versions
+	URL       string   `json:"url"`
+	SHA256    string   `json:"sha256"` // "no_check" when the download is not checked
+	// URLSpecs are options for fetching the URL, such as user_agent.
+	URLSpecs map[string]json.RawMessage `json:"url_specs"`
+	// Container says how to open the download, such as {"type":"naked"}; null by default.
+	Container      json.RawMessage `json:"container"`
+	AutoUpdates    bool            `json:"auto_updates"`
+	Caveats        string          `json:"caveats"`
+	CaveatsRosetta bool            `json:"caveats_rosetta"` // built for Intel, so Apple silicon needs Rosetta 2
+	Languages      []string        `json:"languages"`
+	RubySourcePath string          `json:"ruby_source_path"`
 
 	Deprecated                    bool   `json:"deprecated"`
 	Disabled                      bool   `json:"disabled"`
@@ -93,12 +97,14 @@ func (c Cask) ForTag(tag string) (Cask, error) {
 		return c, nil
 	}
 	var o struct {
-		Version   *string            `json:"version"`
-		URL       *string            `json:"url"`
-		SHA256    *string            `json:"sha256"`
-		Caveats   *string            `json:"caveats"`
-		DependsOn *CaskDependsOn     `json:"depends_on"`
-		Artifacts *[]json.RawMessage `json:"artifacts"`
+		Version   *string                     `json:"version"`
+		URL       *string                     `json:"url"`
+		SHA256    *string                     `json:"sha256"`
+		URLSpecs  *map[string]json.RawMessage `json:"url_specs"`
+		Container *json.RawMessage            `json:"container"`
+		Caveats   *string                     `json:"caveats"`
+		DependsOn *CaskDependsOn              `json:"depends_on"`
+		Artifacts *[]json.RawMessage          `json:"artifacts"`
 	}
 	if err := json.Unmarshal(raw, &o); err != nil {
 		return c, fmt.Errorf("%s variation %s: %w", c.Token, tag, err)
@@ -106,6 +112,8 @@ func (c Cask) ForTag(tag string) (Cask, error) {
 	set(&c.Version, o.Version)
 	set(&c.URL, o.URL)
 	set(&c.SHA256, o.SHA256)
+	set(&c.URLSpecs, o.URLSpecs)
+	set(&c.Container, o.Container)
 	set(&c.Caveats, o.Caveats)
 	set(&c.DependsOn, o.DependsOn)
 	set(&c.Artifacts, o.Artifacts)
