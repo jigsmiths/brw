@@ -152,11 +152,11 @@ func TestSearch(t *testing.T) {
 	if got, err := runCmd(t, e, "search", "/^lib/"); err != nil || got != "libmpdec\nlibunistring\n" {
 		t.Errorf("search regex = %q, %v", got, err)
 	}
-	want := "==> Formulae\njq: Lightweight and flexible command-line JSON processor\njson-c: JSON parser for C\n"
+	want := "==> Formulae\njq: Lightweight and flexible command-line JSON processor\njson-c: JSON parser for C\n\n==> Casks\n"
 	if got, err := runCmd(t, e, "search", "--desc", "json"); err != nil || got != want {
 		t.Errorf("search --desc = %q, %v", got, err)
 	}
-	if got, err := runCmd(t, e, "search", "--desc", "zzzqqq"); err != nil || got != "==> Formulae\n" {
+	if got, err := runCmd(t, e, "search", "--desc", "zzzqqq"); err != nil || got != "==> Formulae\n\n==> Casks\n" {
 		t.Errorf("search --desc without matches = %q, %v", got, err)
 	}
 	if _, err := runCmd(t, e, "search", "zzzqqq"); err == nil {
@@ -164,6 +164,46 @@ func TestSearch(t *testing.T) {
 	}
 	if _, err := runCmd(t, e, "search"); err == nil {
 		t.Error("search needs a query")
+	}
+}
+
+func TestSearchCasks(t *testing.T) {
+	e := &env{host: linux, client: apiServer(t)}
+	for _, tc := range []struct {
+		args []string
+		tty  bool
+		want string
+	}{
+		{[]string{"/^lib|^a/"}, false, "libmpdec\nlibunistring\n\nadobe-connect\naptible\n"},
+		{[]string{"/^lib|^a/"}, true, "==> Formulae\nlibmpdec\nlibunistring\n\n==> Casks\nadobe-connect\naptible\n"},
+		{[]string{"1password"}, false, "1password-cli\n1password@nightly\n"},
+		{[]string{"1password"}, true, "==> Casks\n1password-cli\n1password@nightly\n"},
+		{[]string{"--cask", "/^lib|^a/"}, false, "adobe-connect\naptible\n"},
+		{[]string{"--casks", "/^lib|^a/"}, false, "adobe-connect\naptible\n"},
+		{[]string{"--formula", "/^lib|^a/"}, false, "libmpdec\nlibunistring\n"},
+		{[]string{"--desc", "--cask", "google"}, false, "==> Casks\ngcloud-cli: (Google Cloud CLI) Set of tools to manage resources and applications hosted on Google Cloud\n"},
+		{[]string{"--desc", "--formula", "json"}, false, "==> Formulae\njq: Lightweight and flexible command-line JSON processor\njson-c: JSON parser for C\n"},
+		{[]string{"--desc", "nightly"}, false, "==> Formulae\n\n==> Casks\n1password@nightly: (1Password Nightly) Password manager\n"},
+	} {
+		e.tty = tc.tty
+		if got, err := runCmd(t, e, "search", tc.args...); err != nil || got != tc.want {
+			t.Errorf("search %v (tty %v) = %q, %v; want %q", tc.args, tc.tty, got, err, tc.want)
+		}
+	}
+	e.tty = false
+	if _, err := runCmd(t, e, "search", "--formula", "1password"); err == nil || err.Error() != `no formulae or casks found for "1password"` {
+		t.Errorf("a formula search for a cask = %v", err)
+	}
+	if _, err := runCmd(t, e, "search", "--formula", "--cask", "x"); err == nil {
+		t.Error("--formula with --cask should fail")
+	}
+}
+
+func TestSearchFormulaeSkipsTheCaskListing(t *testing.T) {
+	c := apiServer(t)
+	c.CaskURL = "http://127.0.0.1:1" // a request for it would fail
+	if got, err := runCmd(t, &env{host: linux, client: c}, "search", "--formula", "json"); err != nil || got != "json-c\n" {
+		t.Errorf("search --formula = %q, %v", got, err)
 	}
 }
 

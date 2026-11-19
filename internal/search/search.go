@@ -95,6 +95,48 @@ func sortNames(names []string) {
 	})
 }
 
+// CaskTokens returns the sorted tokens matching query. As with Names, brew's
+// fuzzy spelling suggestions are not included.
+func CaskTokens(idx *api.CaskIndex, query string) ([]string, error) {
+	match, err := newMatcher(query)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, c := range idx.Casks() {
+		if match(c.Token) {
+			out = append(out, c.Token)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+// CaskMatch is a cask whose names or description matched.
+type CaskMatch struct {
+	Token string
+	Names string // the cask's names, joined by ", "
+	Desc  string
+}
+
+// CaskDescriptions returns the casks whose names or description match query,
+// by token. Like brew, it leaves out casks without a description.
+func CaskDescriptions(idx *api.CaskIndex, query string) ([]CaskMatch, error) {
+	match, err := newMatcher(query)
+	if err != nil {
+		return nil, err
+	}
+	var out []CaskMatch
+	for _, c := range idx.Casks() {
+		names := strings.Join(c.Names, ", ")
+		if c.Desc != "" && (match(c.Desc) || (names != "" && match(names))) {
+			out = append(out, CaskMatch{c.Token, names, c.Desc})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Token < out[j].Token })
+	return out, nil
+}
+
 // Descriptions returns the formulae whose description matches query, by name.
 func Descriptions(idx *api.Index, query string) ([]Match, error) {
 	match, err := newMatcher(query)

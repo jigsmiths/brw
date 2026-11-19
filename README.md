@@ -19,7 +19,7 @@ Needs [just](https://github.com/casey/just) and Go.
 ```sh
 just build                       # build bin/brw
 just run list                    # installed formulae and casks (--formula, --cask, --versions)
-just run search jq               # also: search --desc "json processor", search '/^lib/'
+just run search jq               # also: search --desc "json processor", search '/^lib/', --cask, --formula
 just run info jq                 # also: info --json jq
 just run deps git --tree         # also: --1, --installed
 just run uses --installed pcre2

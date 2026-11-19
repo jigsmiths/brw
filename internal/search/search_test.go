@@ -21,6 +21,64 @@ func index(t *testing.T) *api.Index {
 	return api.NewIndex(fs)
 }
 
+func caskIndex(t *testing.T, extra ...api.Cask) *api.CaskIndex {
+	t.Helper()
+	b, err := os.ReadFile("../api/testdata/casks.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs, err := api.ParseCasks(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return api.NewCaskIndex(append(cs, extra...))
+}
+
+func TestCaskTokens(t *testing.T) {
+	idx := caskIndex(t)
+	for query, want := range map[string][]string{
+		"1password":            {"1password-cli", "1password@nightly"},
+		"CLI":                  {"1password-cli", "gcloud-cli"},
+		"4k-video-downloader+": {"4k-video-downloader+"},
+		"/^a/":                 {"adobe-connect", "aptible"},
+		"zzzqqq":               nil,
+	} {
+		got, err := CaskTokens(idx, query)
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("CaskTokens(%q) = %q, %v; want %q", query, got, err, want)
+		}
+	}
+	if _, err := CaskTokens(idx, "/(/"); err == nil {
+		t.Error("an invalid regex should fail")
+	}
+}
+
+func TestCaskDescriptions(t *testing.T) {
+	idx := caskIndex(t, api.Cask{Token: "nodesc", Names: []string{"Nightly Thing"}})
+	for query, want := range map[string][]string{
+		"google":      {"gcloud-cli"},        // the description
+		"nightly":     {"1password@nightly"}, // the name; nodesc has no description
+		"/^Password/": {"1password@nightly"},
+		"zzzqqq":      nil,
+	} {
+		got, err := CaskDescriptions(idx, query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var tokens []string
+		for _, m := range got {
+			tokens = append(tokens, m.Token)
+		}
+		if !reflect.DeepEqual(tokens, want) {
+			t.Errorf("CaskDescriptions(%q) = %q, want %q", query, tokens, want)
+		}
+	}
+	got, _ := CaskDescriptions(idx, "google")
+	if got[0] != (CaskMatch{"gcloud-cli", "Google Cloud CLI", "Set of tools to manage resources and applications hosted on Google Cloud"}) {
+		t.Errorf("match = %+v", got[0])
+	}
+}
+
 func TestNames(t *testing.T) {
 	tests := []struct {
 		query string
