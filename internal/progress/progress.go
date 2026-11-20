@@ -61,6 +61,7 @@ type Display struct {
 	stale  bool // updates not yet on screen
 }
 
+// New returns a Display that writes to w; tty says whether w is a terminal.
 func New(w io.Writer, tty bool) *Display {
 	return &Display{Now: time.Now, w: w, tty: tty}
 }

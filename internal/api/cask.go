@@ -83,6 +83,7 @@ func (m *MacOSRequirement) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// ParseCasks decodes the cask listing.
 func ParseCasks(b []byte) ([]Cask, error) {
 	var casks []Cask
 	if err := json.Unmarshal(b, &casks); err != nil {
@@ -134,6 +135,7 @@ type CaskIndex struct {
 	all     []*Cask
 }
 
+// NewCaskIndex indexes casks, which it keeps pointers into.
 func NewCaskIndex(casks []Cask) *CaskIndex {
 	idx := &CaskIndex{byToken: make(map[string]*Cask, len(casks))}
 	for i := range casks {
@@ -153,6 +155,7 @@ func NewCaskIndex(casks []Cask) *CaskIndex {
 // Casks returns every cask once, in listing order.
 func (i *CaskIndex) Casks() []*Cask { return i.all }
 
+// Lookup finds a cask by token or old token.
 func (i *CaskIndex) Lookup(token string) (*Cask, bool) {
 	c, ok := i.byToken[token]
 	return c, ok
