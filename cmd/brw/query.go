@@ -46,6 +46,32 @@ func prefixFlag(e *env, fs *flag.FlagSet) *string {
 	return fs.String("prefix", defaultPrefix(e.host), "Homebrew prefix")
 }
 
+// kindFlags adds --formula and --cask, with their plurals. Call the result
+// after parsing to read them; it refuses both at once.
+func kindFlags(fs *flag.FlagSet) func() (formulaOnly, caskOnly bool, err error) {
+	var formula, cask bool
+	for _, n := range []string{"formula", "formulae"} {
+		fs.BoolVar(&formula, n, false, "only formulae")
+	}
+	for _, n := range []string{"cask", "casks"} {
+		fs.BoolVar(&cask, n, false, "only casks")
+	}
+	return func() (bool, bool, error) {
+		if formula && cask {
+			return false, false, errors.New("--formula and --cask are mutually exclusive")
+		}
+		return formula, cask, nil
+	}
+}
+
+// plural is one when n is 1, else many.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // apiClient returns the formula API client, warning on stderr when it falls
 // back to the cache.
 func (e *env) apiClient() (*api.Client, error) {
@@ -85,17 +111,14 @@ func list(e *env, args []string) error {
 	prefix := prefixFlag(e, fs)
 	versions := fs.Bool("versions", false, "show installed versions")
 	pinned := fs.Bool("pinned", false, "list only pinned formulae")
-	var formulaOnly, caskOnly bool
-	fs.BoolVar(&formulaOnly, "formula", false, "list only formulae")
-	fs.BoolVar(&formulaOnly, "formulae", false, "list only formulae")
-	fs.BoolVar(&caskOnly, "cask", false, "list only casks")
-	fs.BoolVar(&caskOnly, "casks", false, "list only casks")
+	kinds := kindFlags(fs)
 	rest, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
-	if formulaOnly && caskOnly {
-		return errors.New("--formula and --cask are mutually exclusive")
+	formulaOnly, caskOnly, err := kinds()
+	if err != nil {
+		return err
 	}
 	if *pinned {
 		if len(rest) > 0 {
@@ -194,11 +217,7 @@ func (e *env) caskIndex(ctx context.Context) (*api.CaskIndex, error) {
 func searchCommand(e *env, args []string) error {
 	fs := newFlagSet("search")
 	desc := fs.Bool("desc", false, "search descriptions")
-	var formulaOnly, caskOnly bool
-	fs.BoolVar(&formulaOnly, "formula", false, "only formulae")
-	fs.BoolVar(&formulaOnly, "formulae", false, "only formulae")
-	fs.BoolVar(&caskOnly, "cask", false, "only casks")
-	fs.BoolVar(&caskOnly, "casks", false, "only casks")
+	kinds := kindFlags(fs)
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -206,8 +225,9 @@ func searchCommand(e *env, args []string) error {
 	if len(pos) != 1 {
 		return errors.New("usage: brw search [--formula|--cask] [--desc] TEXT|/REGEX/")
 	}
-	if formulaOnly && caskOnly {
-		return errors.New("--formula and --cask are mutually exclusive")
+	formulaOnly, caskOnly, err := kinds()
+	if err != nil {
+		return err
 	}
 	query := pos[0]
 	ctx := context.Background()
@@ -403,11 +423,7 @@ func outdatedCommand(e *env, args []string) error {
 	fs.BoolVar(&quiet, "q", false, "names only")
 	fs.BoolVar(&verbose, "verbose", false, "show versions")
 	fs.BoolVar(&verbose, "v", false, "show versions")
-	var formulaOnly, caskOnly bool
-	fs.BoolVar(&formulaOnly, "formula", false, "only formulae")
-	fs.BoolVar(&formulaOnly, "formulae", false, "only formulae")
-	fs.BoolVar(&caskOnly, "cask", false, "only casks")
-	fs.BoolVar(&caskOnly, "casks", false, "only casks")
+	kinds := kindFlags(fs)
 	var o outdated.CaskOptions
 	fs.BoolVar(&o.Greedy, "greedy", false, "include casks that update themselves or are unversioned")
 	fs.BoolVar(&o.GreedyLatest, "greedy-latest", false, "include unversioned casks")
@@ -417,8 +433,9 @@ func outdatedCommand(e *env, args []string) error {
 	} else if len(pos) != 0 {
 		return errors.New("usage: brw outdated [--formula|--cask] [--greedy] [--json] [--quiet] [--verbose]")
 	}
-	if formulaOnly && caskOnly {
-		return errors.New("--formula and --cask are mutually exclusive")
+	formulaOnly, caskOnly, err := kinds()
+	if err != nil {
+		return err
 	}
 
 	var formulae, casks []outdated.Result
@@ -471,7 +488,7 @@ func outdatedCommand(e *env, args []string) error {
 		}
 		b.WriteByte('\n')
 	}
-	_, err := io.WriteString(e.out, b.String())
+	_, err = io.WriteString(e.out, b.String())
 	return err
 }
 
@@ -547,11 +564,7 @@ func infoCommand(e *env, args []string) error {
 	fs := newFlagSet("info")
 	prefix := prefixFlag(e, fs)
 	asJSON := fs.Bool("json", false, "print JSON")
-	var formulaOnly, caskOnly bool
-	fs.BoolVar(&formulaOnly, "formula", false, "only formulae")
-	fs.BoolVar(&formulaOnly, "formulae", false, "only formulae")
-	fs.BoolVar(&caskOnly, "cask", false, "only casks")
-	fs.BoolVar(&caskOnly, "casks", false, "only casks")
+	kinds := kindFlags(fs)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -559,8 +572,9 @@ func infoCommand(e *env, args []string) error {
 	if len(names) == 0 {
 		return errors.New("usage: brw info [--formula|--cask] [--json] NAME [NAME ...]")
 	}
-	if formulaOnly && caskOnly {
-		return errors.New("--formula and --cask are mutually exclusive")
+	formulaOnly, caskOnly, err := kinds()
+	if err != nil {
+		return err
 	}
 	ctx := context.Background()
 	kegs, err := e.kegs(*prefix)

@@ -95,7 +95,7 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 		}
 	}
 	in.logf("==> Purging files for version %s of Cask %s", version, token)
-	if err := in.purge(api.Cask{Token: token, Version: version}); err != nil {
+	if err := in.purge(ctx, api.Cask{Token: token, Version: version}); err != nil {
 		return err
 	}
 	if force {
@@ -250,7 +250,7 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 			}
 			if found {
 				if _, err := in.privileged(ctx, sudo, "/bin/launchctl", "remove", s); err == nil {
-					time.Sleep(in.wait(time.Second))
+					in.sleep(time.Second)
 				}
 			}
 			for _, dir := range []string{"/Library/LaunchAgents", "/Library/LaunchDaemons"} {
@@ -273,12 +273,12 @@ func (in *Installer) privileged(ctx context.Context, sudo bool, name string, arg
 	return in.exec(ctx, name, args...)
 }
 
-// wait shortens brew's pauses in tests.
-func (in *Installer) wait(d time.Duration) time.Duration {
-	if in.Exec != nil {
-		return 0
+func (in *Installer) sleep(d time.Duration) {
+	if in.Sleep != nil {
+		in.Sleep(d)
+		return
 	}
-	return d
+	time.Sleep(d)
 }
 
 // runningServices are the running launchd services that match a pattern
@@ -356,7 +356,7 @@ func (in *Installer) quit(ctx context.Context, ids []string) {
 				quit = true
 				break
 			}
-			time.Sleep(in.wait(100 * time.Millisecond))
+			in.sleep(100 * time.Millisecond)
 		}
 		if !quit {
 			in.warnf("Application '%s' did not quit. %s", id, automationAccess)
@@ -579,11 +579,7 @@ func (in *Installer) unlinkBinary(m move) error {
 	if err != nil || fi.Mode()&fs.ModeSymlink == 0 {
 		return nil
 	}
-	cellar := filepath.Join(in.Where.Prefix, "Cellar")
-	if real, err := filepath.EvalSymlinks(cellar); err == nil {
-		cellar = real
-	}
-	if real, err := filepath.EvalSymlinks(m.target); err == nil && in.inside(cellar, real) {
+	if _, ok := in.formulaLink(m.target); ok {
 		return nil
 	}
 	rel, err := in.prefixRel(m.target)
