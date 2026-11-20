@@ -49,7 +49,7 @@ func TestConformanceUpgrade(t *testing.T) {
 	brwIn := func(args ...string) string {
 		return sh(t, "", brwEnv, bin, append(args[:1:1], append([]string{"-prefix", mine}, args[1:]...)...)...)
 	}
-	brwUpdate := func() string { return sh(t, "", brwEnv, bin, "update", "--no-self") }
+	brwUpdate := func() string { return sh(t, "", brwEnv, bin, "update") }
 
 	brewIn(theirs, append([]string{"install"}, upgradeSet...)...)
 	brwIn(append([]string{"install"}, upgradeSet...)...)
