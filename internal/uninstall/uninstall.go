@@ -20,9 +20,11 @@ import (
 	"github.com/jigsmiths/brw/internal/racks"
 )
 
-// NoSuchKegError and UnavailableError are what racks.Finder reports.
+// Errors racks.Finder reports, aliased so callers need not import racks.
 type (
-	NoSuchKegError   = racks.NoSuchKegError
+	// NoSuchKegError is racks.NoSuchKegError.
+	NoSuchKegError = racks.NoSuchKegError
+	// UnavailableError is racks.UnavailableError.
 	UnavailableError = racks.UnavailableError
 )
 
@@ -59,11 +61,13 @@ func sentence(words []string) string {
 	return strings.Join(words[:len(words)-1], ", ") + ", and " + words[len(words)-1]
 }
 
+// Options are the flags of brw uninstall.
 type Options struct {
 	Force, IgnoreDependencies bool
 	Autoremove                bool // afterwards, remove dependencies nothing needs any more
 }
 
+// Remover uninstalls kegs and the dependencies nothing needs any more.
 type Remover struct {
 	Root   *fsx.Root
 	Prefix string // absolute path of Root

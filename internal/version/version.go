@@ -160,6 +160,7 @@ type Version struct {
 	tokens []token
 }
 
+// Parse splits s into tokens as brew does; it fails only on an empty version.
 func Parse(s string) (Version, error) {
 	if strings.TrimSpace(s) == "" {
 		return Version{}, errors.New("version must not be empty")
@@ -173,8 +174,11 @@ func Parse(s string) (Version, error) {
 
 func (v Version) String() string { return v.s }
 
+// IsHead reports whether v is a HEAD build, such as "HEAD-abc1234".
 func (v Version) IsHead() bool { return head.MatchString(v.s) }
 
+// Compare returns -1, 0 or 1 as v is older than, equal to or newer than o.
+// HEAD is newer than any other version.
 func (v Version) Compare(o Version) int {
 	if v.s == o.s {
 		return 0
@@ -229,11 +233,13 @@ type PkgVersion struct {
 
 var pkgPattern = regexp.MustCompile(`^(.+?)(?:_([0-9]+))?$`)
 
+// NewPkg builds a PkgVersion from a formula's version and revision.
 func NewPkg(version string, revision int) (PkgVersion, error) {
 	v, err := Parse(version)
 	return PkgVersion{v, revision}, err
 }
 
+// ParsePkg parses "1.2_3"; without a _N suffix the revision is 0.
 func ParsePkg(s string) (PkgVersion, error) {
 	m := pkgPattern.FindStringSubmatch(s)
 	if m == nil {
@@ -257,6 +263,7 @@ func (p PkgVersion) String() string {
 	return p.Version.String()
 }
 
+// Compare orders by version, then by revision.
 func (p PkgVersion) Compare(o PkgVersion) int {
 	if c := p.Version.Compare(o.Version); c != 0 {
 		return c

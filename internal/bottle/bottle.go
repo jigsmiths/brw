@@ -25,6 +25,7 @@ const auth = "Bearer QQ=="
 
 const defaultWorkers = 4
 
+// Request names the bottle to fetch.
 type Request struct {
 	Name       string
 	PkgVersion string // version and revision, such as 2.56.0_1
@@ -33,6 +34,7 @@ type Request struct {
 	File       api.BottleFile
 }
 
+// Result is a fetched bottle and what its manifest says about it.
 type Result struct {
 	Path string          // the tarball
 	Tab  json.RawMessage // the sh.brew.tab annotation of the bottle's manifest

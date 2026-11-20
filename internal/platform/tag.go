@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// Host is what picks a bottle tag: the OS, macOS version and CPU.
 type Host struct {
 	OS         string // GOOS: "darwin" or "linux"
 	MacVersion string // product version, e.g. "27.0.1"; darwin only
@@ -33,6 +34,7 @@ func Current(macVersion string) Host {
 	return Host{OS: runtime.GOOS, MacVersion: macVersion, Arch: runtime.GOARCH}
 }
 
+// Tag is the bottle tag for h, such as "arm64_sequoia" or "x86_64_linux".
 func Tag(h Host) (string, error) {
 	switch h.OS {
 	case "linux":
