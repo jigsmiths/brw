@@ -24,7 +24,7 @@ import (
 
 // installCasks installs the casks that are not installed yet. brw does not
 // upgrade casks, so an installed one is left with a warning.
-func installCasks(e *env, prefix, journal, appDirArg string, dryRun bool, casks []api.Cask) error {
+func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool, casks []api.Cask) error {
 	tag, err := platform.Tag(e.host)
 	if err != nil {
 		return err
@@ -98,6 +98,7 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun bool, casks 
 			Warn:    e.err,
 			Now:     time.Now,
 			Version: version,
+			Adopt:   adopt,
 			APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json"),
 			Config:  cask.Config{Languages: macLanguages(), ExplicitAppDir: explicit(appDirArg, appDir)},
 		}

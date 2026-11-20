@@ -32,12 +32,13 @@ func installCommand(e *env, args []string) error {
 	fs.BoolVar(&caskOnly, "cask", false, "only casks")
 	fs.BoolVar(&caskOnly, "casks", false, "only casks")
 	appDir := fs.String("appdir", "", "move apps into this folder instead of /Applications")
+	adopt := fs.Bool("adopt", false, "take over apps already in the app folder")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw install [--formula|--cask] [--appdir DIR] [--dry-run] NAME [NAME ...]")
+		return errors.New("usage: brw install [--formula|--cask] [--appdir DIR] [--adopt] [--dry-run] NAME [NAME ...]")
 	}
 	if formulaOnly && caskOnly {
 		return errors.New("--formula and --cask are mutually exclusive")
@@ -55,7 +56,7 @@ func installCommand(e *env, args []string) error {
 		failures = append(failures, installFormulae(e, prefix, *journal, dryRun, r))
 	}
 	if len(r.casks) > 0 {
-		failures = append(failures, installCasks(e, prefix, *journal, *appDir, dryRun, r.casks))
+		failures = append(failures, installCasks(e, prefix, *journal, *appDir, dryRun, *adopt, r.casks))
 	}
 	return errors.Join(failures...)
 }

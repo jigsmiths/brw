@@ -13,7 +13,8 @@ import (
 
 // This test installs the same casks with brew and with brw into two fresh
 // copies of a brew checkout, each with its own applications folder, and
-// compares them; then each uninstalls its own and they are compared again.
+// compares them; then each forgets and adopts its own, then uninstalls them,
+// and they are compared after each.
 // It needs a checkout at
 // $BRW_ORACLE (default ~/.brw-oracle/hb) and BRW_CONFORMANCE_CASK_INSTALL=1.
 
@@ -88,11 +89,28 @@ func TestConformanceCaskInstall(t *testing.T) {
 		brewIn(mine, "info", "--cask", token)
 	}
 
+	// Each forgets its casks, then adopts the apps and links left behind.
+	for _, p := range []string{theirs, mine} {
+		for _, token := range caskInstallSet {
+			if err := os.RemoveAll(filepath.Join(p, "Caskroom", token)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	steps := regexp.MustCompile(`(?m)^(==> (Installing|Adopting|Moving|Linking|Binary)|Warning: It seems|Error).*$`)
+	adopt := append([]string{"install", "--cask", "--adopt"}, caskInstallSet...)
+	a := steps.FindAllString(normal(brewIn(theirs, append(adopt, "--appdir", theirApps)...), theirs, theirApps), -1)
+	b := steps.FindAllString(normal(sh(t, "", brwEnv, bin, append(adopt, "-prefix", mine, "--appdir", myApps)...), mine, myApps), -1)
+	if d := lineDiff(strings.Join(a, "\n"), strings.Join(b, "\n")); len(d) > 0 {
+		t.Errorf("adopt output differs:\n%s", strings.Join(d, "\n"))
+	}
+	compareTrees("adopt")
+
 	// brw uninstalls as brew does.
 	uninstall := append([]string{"uninstall", "--cask"}, caskInstallSet...)
-	a := normal(brewIn(theirs, uninstall...), theirs, theirApps)
-	b := normal(sh(t, "", brwEnv, bin, append([]string{"uninstall", "--cask", "-prefix", mine}, caskInstallSet...)...), mine, myApps)
-	if d := lineDiff(a, b); len(d) > 0 {
+	ua := normal(brewIn(theirs, uninstall...), theirs, theirApps)
+	ub := normal(sh(t, "", brwEnv, bin, append([]string{"uninstall", "--cask", "-prefix", mine}, caskInstallSet...)...), mine, myApps)
+	if d := lineDiff(ua, ub); len(d) > 0 {
 		t.Errorf("uninstall output differs:\n%s", strings.Join(d, "\n"))
 	}
 	compareTrees("uninstall")

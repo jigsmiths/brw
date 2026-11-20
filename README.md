@@ -33,7 +33,7 @@ Commands that change the prefix take `--dry-run` (`-n`) to show what they would 
 
 ```sh
 just run install jq              # bottle and its dependencies
-just run install --cask slack    # app and binary casks; also --appdir; formulae and casks can be mixed
+just run install --cask slack    # app and binary casks; also --appdir, --adopt; formulae and casks can be mixed
 just run upgrade                 # all outdated formulae, or name some
 just run reinstall jq
 just run uninstall jq            # also: --cask, --force, --ignore-dependencies
@@ -63,7 +63,7 @@ just fmt
 just conformance    # compare the read-only commands with the real brew (slow)
 just conformance-install    # install with brew and brw, compare the prefixes
 just conformance-uninstall  # the same for upgrade, reinstall, cleanup, link and uninstall
-just conformance-cask-install  # install and uninstall casks with brew and brw in scratch app folders, compare
+just conformance-cask-install  # install, adopt and uninstall casks with brew and brw in scratch app folders, compare
 just clean
 ```
 

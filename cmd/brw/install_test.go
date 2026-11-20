@@ -253,6 +253,32 @@ func TestInstallFormulaAndCaskTogether(t *testing.T) {
 	}
 }
 
+func TestInstallCaskAdopt(t *testing.T) {
+	s := newStore(t)
+	s.appCask("app")
+	e, prefix := s.env()
+	apps := t.TempDir()
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "app"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(prefix, "Caskroom/app")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "app"); err == nil {
+		t.Error("installed over an existing app without --adopt")
+	}
+	out, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "--adopt", "app")
+	if err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	if want := "==> Adopting existing App at '" + filepath.Join(apps, "App.app") + "'\n"; !strings.Contains(out, want) {
+		t.Errorf("output is missing %q:\n%s", want, out)
+	}
+	if got, _ := os.Readlink(filepath.Join(prefix, "Caskroom/app/1.0/App.app")); got != filepath.Join(apps, "App.app") {
+		t.Errorf("Caskroom link -> %q", got)
+	}
+}
+
 func TestInstallCaskDryRunChangesNothing(t *testing.T) {
 	s := newStore(t)
 	s.appCask("app")

@@ -41,6 +41,7 @@ type Installer struct {
 	APIPath string // brew's cask listing, which the receipt names as the source
 	Config  Config
 	Exec    Exec // nil runs commands; uninstall's commands go through it
+	Adopt   bool // take over an app already at the target, as brew's --adopt
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -119,15 +120,23 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 		return err
 	}
 	for _, m := range p.apps {
-		if err := in.moveApp(version, m, &undo); err != nil {
+		if err := in.moveApp(version, m, c.AutoUpdates, &undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
 	for i, m := range p.binaries {
-		if !links[i] {
+		if links[i] == skipLink {
 			continue
 		}
-		if err := in.linkBinary(staged, m, &undo); err != nil {
+		action, _, err := in.binaryAction(c, m)
+		if err != nil {
+			return err
+		}
+		if action == alreadyLinked {
+			in.logf("==> Binary '%s' is already linked to '%s'", filepath.Base(m.source), m.target)
+			continue
+		}
+		if err := in.linkBinary(staged, m, action, &undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
@@ -152,25 +161,29 @@ func badge() string {
 	return "🍺  "
 }
 
+// linkAction is what linking does to a binary's target, as brew's link_action.
+type linkAction int
+
+const (
+	newLink       linkAction = iota // nothing there, or a broken link
+	overwrite                       // adopting a link of this cask's
+	alreadyLinked                   // a link to the source
+	skipLink                        // a formula's link
+)
+
 // checkTargets fails before anything is downloaded when an app or binary
-// would land on something already there. It says which binaries to link: one
-// whose target a formula has linked is skipped with brew's warning.
-func (in *Installer) checkTargets(c api.Cask, p installPlan) ([]bool, error) {
+// would land on something already there. It says what to do with each
+// binary: one whose target a formula has linked is skipped with brew's warning.
+func (in *Installer) checkTargets(c api.Cask, p installPlan) ([]linkAction, error) {
 	for _, m := range p.apps {
 		if _, err := in.appRel(m.target); err != nil {
 			return nil, fmt.Errorf("%s: %w", c.Token, err)
 		}
-		if _, err := os.Lstat(m.target); err == nil {
+		if _, err := os.Lstat(m.target); err == nil && !in.Adopt {
 			return nil, brewError("%s: It seems there is already an App at '%s'.", c.Token, m.target)
 		}
 	}
-	links := make([]bool, len(p.binaries))
-	// Compared with resolved links, so resolved too.
-	cellar := filepath.Join(in.Where.Prefix, "Cellar")
-	if real, err := filepath.EvalSymlinks(cellar); err == nil {
-		cellar = real
-	}
-	cellar += string(filepath.Separator)
+	links := make([]linkAction, len(p.binaries))
 	for i, m := range p.binaries {
 		if _, err := in.prefixRel(m.target); err != nil {
 			return nil, fmt.Errorf("%s: %w", c.Token, err)
@@ -178,24 +191,66 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan) ([]bool, error) {
 		if filepath.IsAbs(m.source) && !in.inside(in.Where.AppDir, m.source) && !in.inside(in.Where.Prefix, m.source) {
 			return nil, fmt.Errorf("%s: binary source %s: outside %s and %s: %w", c.Token, m.source, in.Where.AppDir, in.Where.Prefix, ErrUnsupported)
 		}
-		fi, err := os.Lstat(m.target)
-		if errors.Is(err, fs.ErrNotExist) {
-			links[i] = true
-			continue
-		}
+		action, formula, err := in.binaryAction(c, m)
 		if err != nil {
 			return nil, err
 		}
-		if fi.Mode()&fs.ModeSymlink != 0 {
-			if real, err := filepath.EvalSymlinks(m.target); err == nil && strings.HasPrefix(real, cellar) {
-				formula, _, _ := strings.Cut(strings.TrimPrefix(real, cellar), string(filepath.Separator))
-				in.warnf("It seems there is already a Binary at '%s' from formula %s; skipping link.", m.target, formula)
-				continue
-			}
+		if action == skipLink {
+			in.warnf("It seems there is already a Binary at '%s' from formula %s; skipping link.", m.target, formula)
 		}
-		return nil, brewError("%s: It seems there is already a Binary at '%s'.", c.Token, m.target)
+		links[i] = action
 	}
 	return links, nil
+}
+
+// binaryAction is brew's link_action for a binary's target, and the formula
+// whose link it is when skipped. It changes once the cask is staged, since
+// links into the Caskroom resolve again.
+func (in *Installer) binaryAction(c api.Cask, m move) (linkAction, string, error) {
+	fi, err := os.Lstat(m.target)
+	if errors.Is(err, fs.ErrNotExist) {
+		return newLink, "", nil
+	}
+	if err != nil {
+		return 0, "", err
+	}
+	if fi.Mode()&fs.ModeSymlink != 0 {
+		// Compared with resolved links, so resolved too.
+		resolved := func(dir string) string {
+			if real, err := filepath.EvalSymlinks(dir); err == nil {
+				dir = real
+			}
+			return dir + string(filepath.Separator)
+		}
+		cellar := resolved(filepath.Join(in.Where.Prefix, "Cellar"))
+		real, err := filepath.EvalSymlinks(m.target)
+		switch {
+		case err != nil: // brew's ln --force replaces a broken link
+			return newLink, "", nil
+		case in.Adopt && (strings.HasPrefix(real, resolved(filepath.Join(in.Where.Prefix, "Caskroom", c.Token))) || in.linksToSource(c, m, real)):
+			return overwrite, "", nil
+		case in.linksToSource(c, m, real):
+			return alreadyLinked, "", nil
+		case strings.HasPrefix(real, cellar):
+			formula, _, _ := strings.Cut(strings.TrimPrefix(real, cellar), string(filepath.Separator))
+			return skipLink, formula, nil
+		}
+	}
+	return 0, "", brewError("%s: It seems there is already a Binary at '%s'.", c.Token, m.target)
+}
+
+// linksToSource is brew's target_links_to_source?, for the link at the
+// binary's target resolved to real.
+func (in *Installer) linksToSource(c api.Cask, m move, real string) bool {
+	source := m.source
+	if !filepath.IsAbs(source) {
+		source = filepath.Join(in.Where.Prefix, "Caskroom", c.Token, c.Version, source)
+	}
+	if link, err := os.Readlink(m.target); err == nil && link == source {
+		return true
+	}
+	resolved, err := filepath.EvalSymlinks(source)
+	return err == nil && resolved == real
 }
 
 func (in *Installer) inside(dir, path string) bool {
@@ -218,8 +273,9 @@ func (in *Installer) prefixRel(target string) (string, error) {
 }
 
 // moveApp moves the staged app to its target, leaves a link to it in its
-// place, as brew does, and sets brew's permissions.
-func (in *Installer) moveApp(version string, m move, undo *[]func() error) error {
+// place, as brew does, and sets brew's permissions. When adopting, an app
+// already at the target is kept, and kept on rollback too, unlike brew.
+func (in *Installer) moveApp(version string, m move, autoUpdates bool, undo *[]func() error) error {
 	staged := filepath.Join(version, m.source)
 	if _, err := in.Root.Lstat(staged); err != nil {
 		abs, _ := in.Root.Abs(staged)
@@ -229,8 +285,24 @@ func (in *Installer) moveApp(version string, m move, undo *[]func() error) error
 	if err != nil {
 		return err
 	}
-	in.logf("==> Moving App '%s' to '%s'", filepath.Base(m.source), m.target)
 	ctx := context.Background()
+	if _, err := os.Lstat(m.target); err == nil && in.Adopt {
+		in.logf("==> Adopting existing App at '%s'", m.target)
+		if !autoUpdates {
+			abs, err := in.Root.Abs(staged)
+			if err != nil {
+				return err
+			}
+			if !in.sameApp(ctx, abs, m.target) {
+				return brewError("It seems the existing App is different from the one being installed.")
+			}
+		}
+		if err := in.Root.RemoveAll(staged); err != nil {
+			return err
+		}
+		return in.linkApp(staged, m, undo)
+	}
+	in.logf("==> Moving App '%s' to '%s'", filepath.Base(m.source), m.target)
 	if err := in.mkdirPath(ctx, in.Apps, filepath.Dir(rel)); err != nil {
 		return err
 	}
@@ -253,6 +325,12 @@ func (in *Installer) moveApp(version string, m move, undo *[]func() error) error
 			return err
 		}
 	}
+	return in.linkApp(staged, m, undo)
+}
+
+// linkApp is brew's post_move and app permissions: a link to the app in
+// the Caskroom, and the app readable by all.
+func (in *Installer) linkApp(staged string, m move, undo *[]func() error) error {
 	if err := in.Root.SymlinkTo(in.Apps, m.target, staged); err != nil {
 		return err
 	}
@@ -288,7 +366,7 @@ func caskroomGroup() string {
 
 // linkBinary links the binary from the prefix's bin, as brew does: through
 // the staged version for a relative source, and makes it executable.
-func (in *Installer) linkBinary(staged string, m move, undo *[]func() error) error {
+func (in *Installer) linkBinary(staged string, m move, action linkAction, undo *[]func() error) error {
 	source := m.source
 	if !filepath.IsAbs(source) {
 		source = filepath.Join(staged, source)
@@ -301,8 +379,17 @@ func (in *Installer) linkBinary(staged string, m move, undo *[]func() error) err
 	if err != nil {
 		return err
 	}
+	if action == overwrite {
+		in.warnf("It seems there is already a Binary at '%s'; overwriting.", m.target)
+		if err := in.removePath(context.Background(), in.Root, rel); err != nil {
+			return err
+		}
+	}
 	in.logf("==> Linking Binary '%s' to '%s'", filepath.Base(m.source), m.target)
 	if err := in.Root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
+		return err
+	}
+	if err := removeIfThere(in.Root, rel); err != nil { // a broken link, as ln --force
 		return err
 	}
 	if in.inside(in.Where.AppDir, source) {
