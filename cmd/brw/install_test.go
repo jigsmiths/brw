@@ -1,7 +1,11 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,11 +23,38 @@ import (
 
 var mac = platform.Host{OS: "darwin", MacVersion: "26.0", Arch: "arm64"}
 
-// store is a formula API and a registry with the bottles it lists.
+// store is a formula API and a registry with the bottles it lists, and a cask
+// API with the downloads it lists.
 type store struct {
 	t        *testing.T
 	reg      *installtest.Registry
 	formulae []map[string]any
+	casks    []map[string]any
+}
+
+// appCask adds a cask whose download, a tar.gz served here, holds App.app and
+// a tool it links.
+func (s *store) appCask(token string) {
+	s.t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, f := range []struct{ name, body string }{{"App.app/Contents/Info.plist", "<plist/>"}, {"tool", "#!/bin/sh\n"}} {
+		_ = tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0o755, Size: int64(len(f.body)), Typeflag: tar.TypeReg})
+		_, _ = tw.Write([]byte(f.body))
+	}
+	_ = tw.Close()
+	_ = gz.Close()
+	body := buf.Bytes()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	s.t.Cleanup(ts.Close)
+	sum := sha256.Sum256(body)
+	s.casks = append(s.casks, map[string]any{
+		"token": token, "full_token": token, "tap": "homebrew/cask", "name": []string{"App"}, "version": "1.0",
+		"url": ts.URL + "/App-1.0.tar.gz", "sha256": hex.EncodeToString(sum[:]),
+		"artifacts":  []any{map[string]any{"app": []string{"App.app"}}, map[string]any{"binary": []string{"tool"}}},
+		"depends_on": map[string]any{},
+	})
 }
 
 // formula adds a formula with a bottle for the Mac tag. extra overrides API keys.
@@ -50,11 +81,20 @@ func (s *store) env() (*env, string) {
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	casks, err := json.Marshal(append([]map[string]any{}, s.casks...))
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/cask" {
+			_, _ = w.Write(apitest.Listing(apitest.Shared(), casks))
+			return
+		}
 		_, _ = w.Write(apitest.Listing(apitest.Shared(), body))
 	}))
 	s.t.Cleanup(ts.Close)
-	return &env{host: mac, client: &api.Client{Key: &apitest.Shared().PublicKey, URL: ts.URL, CacheDir: s.t.TempDir()}, err: &bytes.Buffer{}}, s.t.TempDir()
+	client := &api.Client{Key: &apitest.Shared().PublicKey, URL: ts.URL, CaskURL: ts.URL + "/cask", CacheDir: s.t.TempDir()}
+	return &env{host: mac, client: client, err: &bytes.Buffer{}}, s.t.TempDir()
 }
 
 func newStore(t *testing.T) *store { return &store{t: t, reg: installtest.NewRegistry(t)} }
@@ -177,6 +217,95 @@ func TestInstallInstallsWhatItCanAndExplainsWhatItRefuses(t *testing.T) {
 	}
 	if _, err := runCmd(t, e, "install", "-prefix", prefix); err == nil {
 		t.Error("install needs a formula")
+	}
+}
+
+func TestInstallFormulaAndCaskTogether(t *testing.T) {
+	s := newStore(t)
+	s.formula(jqBottle(), nil, nil)
+	s.appCask("app")
+	e, prefix := s.env()
+	apps := t.TempDir()
+	out, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "jq", "app")
+	if err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	for _, want := range []string{"==> Pouring jq 1.0\n", "==> Installing Cask app\n", "==> Moving App 'App.app' to '" + filepath.Join(apps, "App.app") + "'\n", "app was successfully installed!\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output is missing %q:\n%s", want, out)
+		}
+	}
+	if !exists(t, prefix, "Cellar/jq/1.0") || !exists(t, apps, "App.app/Contents/Info.plist") || !exists(t, prefix, "bin/tool") {
+		t.Error("jq, App.app and bin/tool should all be installed")
+	}
+	if got, _ := os.Readlink(filepath.Join(prefix, "Caskroom/app/1.0/App.app")); got != filepath.Join(apps, "App.app") {
+		t.Errorf("Caskroom link -> %q", got)
+	}
+
+	// Again: brew leaves an installed cask that is up to date alone, and says so.
+	e.err = &bytes.Buffer{}
+	out, err = runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "app")
+	if err != nil || strings.Contains(out, "Installing") {
+		t.Errorf("second install: %q, %v", out, err)
+	}
+	if w := e.err.(*bytes.Buffer).String(); w != "brw: warning: Not upgrading app, the latest version is already installed\n" {
+		t.Errorf("stderr = %q", w)
+	}
+}
+
+func TestInstallCaskDryRunChangesNothing(t *testing.T) {
+	s := newStore(t)
+	s.appCask("app")
+	e, prefix := s.env()
+	apps := filepath.Join(t.TempDir(), "Apps")
+	out, err := runCmd(t, e, "install", "-n", "-prefix", prefix, "--appdir", apps, "app")
+	if err != nil || out != "==> Would install 1 cask:\napp 1.0\n" {
+		t.Errorf("out = %q, %v", out, err)
+	}
+	if entries, _ := os.ReadDir(prefix); len(entries) != 0 {
+		t.Errorf("a dry run wrote %v", entries)
+	}
+	if exists(t, filepath.Dir(apps), "Apps") || exists(t, e.client.CacheDir, "cask-downloads") {
+		t.Error("a dry run made the app folder or downloaded")
+	}
+}
+
+func TestInstallNamesThatAreNeither(t *testing.T) {
+	s := newStore(t)
+	s.formula(jqBottle(), nil, nil)
+	e, prefix := s.env()
+	_, err := runCmd(t, e, "install", "-prefix", prefix, "jq", "nosuchthing")
+	if err == nil || !strings.Contains(err.Error(), "1 of 2 names are neither a formula nor a cask") {
+		t.Errorf("err = %v", err)
+	}
+	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, `brw: no available formula or cask with the name "nosuchthing"`) {
+		t.Errorf("stderr = %q", w)
+	}
+	if !exists(t, prefix, "Cellar/jq/1.0") {
+		t.Error("jq should be installed anyway")
+	}
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "--formula", "--cask", "jq"); err == nil {
+		t.Error("--formula with --cask accepted")
+	}
+}
+
+func TestInstallCaskFlagPicksTheCask(t *testing.T) {
+	s := newStore(t)
+	s.formula(jqBottle(), nil, nil)
+	s.appCask("jq")
+	e, prefix := s.env()
+	apps := t.TempDir()
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "--cask", "jq"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(t, prefix, "Cellar/jq") || !exists(t, prefix, "Caskroom/jq/1.0") {
+		t.Error("--cask should install the cask, not the formula")
+	}
+	// brew makes the prefix's standard folders before any install.
+	for _, d := range []string{"Cellar", "Frameworks", "include", "lib", "opt", "sbin", "share", "var/homebrew/linked"} {
+		if !exists(t, prefix, d) {
+			t.Errorf("%s is missing", d)
+		}
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/cask"
 	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/outdated"
@@ -430,13 +431,7 @@ func cmpOr(vals ...string) string {
 // placeholders fills in the API's placeholders as brew does when it loads a
 // cask.
 func (e CaskEnv) placeholders(appDir string) func(string) string {
-	r := strings.NewReplacer(
-		"/$HOME", e.Home,
-		"$HOMEBREW_PREFIX", e.Prefix,
-		"$HOMEBREW_CELLAR", filepath.Join(e.Prefix, "Cellar"),
-		"$APPDIR", appDir,
-	)
-	return r.Replace
+	return cask.Placeholders(cask.Where{Prefix: e.Prefix, AppDir: appDir, Home: e.Home})
 }
 
 // caskCaveats is the cask's caveats and the Rosetta caveat brew adds on Apple
@@ -456,16 +451,6 @@ Note that it is very difficult to remove Rosetta 2 once it is installed.
 	return strings.Join(parts, "\n")
 }
 
-var caskDeprecationReasons = map[string]string{
-	"discontinued":             "is discontinued upstream",
-	"moved_to_mas":             "is now exclusively distributed on the Mac App Store",
-	"no_longer_available":      "is no longer available upstream",
-	"no_longer_meets_criteria": "no longer meets the criteria for acceptable casks",
-	"unmaintained":             "is not maintained upstream",
-	"fails_gatekeeper_check":   "does not pass the macOS Gatekeeper check",
-	"unreachable":              "is no longer reliably reachable upstream",
-}
-
 // CaskDeprecation is the notice for a deprecated or disabled cask, or "".
 func CaskDeprecation(c *api.Cask, now time.Time) string {
 	var kind, reason string
@@ -482,7 +467,7 @@ func CaskDeprecation(c *api.Cask, now time.Time) string {
 	if c.Disabled {
 		replacement = replacementWithType(c.DisableReplacementFormula, c.DisableReplacementCask)
 	}
-	if r, ok := caskDeprecationReasons[reason]; ok {
+	if r, ok := cask.DeprecationReasons[reason]; ok {
 		reason = r
 	}
 	msg := kind + "!"

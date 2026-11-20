@@ -351,6 +351,99 @@ func TestLink(t *testing.T) {
 	}
 }
 
+func TestSymlinkTo(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	apps, appDir, _ := newRoot(t)
+	target := filepath.Join(appDir, "Code.app/Contents/bin/code")
+	if err := r.SymlinkTo(apps, target, "bin/code"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(filepath.Join(dir, "bin/code")); err != nil || got != target {
+		t.Errorf("target = %q, %v", got, err)
+	}
+	if got := journal.String(); got != "symlink bin/code -> "+target+"\n" {
+		t.Errorf("journal = %q", got)
+	}
+	if err := r.SymlinkTo(apps, target, "bin/code"); !errors.Is(err, ErrExists) {
+		t.Errorf("replace error = %v, want ErrExists", err)
+	}
+	for _, bad := range []string{"/etc/passwd", "Code.app/x", filepath.Join(appDir, "../x")} {
+		if err := r.SymlinkTo(apps, bad, "bin/bad"); err == nil {
+			t.Errorf("target %s accepted", bad)
+		}
+	}
+}
+
+func TestMoveTo(t *testing.T) {
+	r, dir, journal := newRoot(t)
+	apps, appDir, _ := newRoot(t)
+	if err := r.WriteFile("Caskroom/app/1.0/App.app/Contents/Info.plist", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	journal.Reset()
+	if err := r.MoveTo(apps, "Caskroom/app/1.0/App.app", "App.app"); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(appDir, "App.app/Contents/Info.plist")); err != nil || string(b) != "x" {
+		t.Errorf("moved contents = %q, %v", b, err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "Caskroom/app/1.0/App.app")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("source still exists: %v", err)
+	}
+	if got := journal.String(); got != "move Caskroom/app/1.0/App.app "+filepath.Join(appDir, "App.app")+"\n" {
+		t.Errorf("journal = %q", got)
+	}
+}
+
+func TestMoveToNeverReplaces(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	apps, appDir, _ := newRoot(t)
+	if err := r.WriteFile("stage/App.app/new", []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := apps.Mkdir("App.app", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.MoveTo(apps, "stage/App.app", "App.app"); !errors.Is(err, ErrExists) {
+		t.Errorf("err = %v, want ErrExists", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "stage/App.app/new")); err != nil {
+		t.Errorf("source lost: %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(appDir, "App.app")); len(entries) != 0 {
+		t.Errorf("existing app changed: %v", entries)
+	}
+	if err := r.MoveTo(apps, "stage/App.app", "../App.app"); err == nil {
+		t.Error("destination outside the other root accepted")
+	}
+	if err := r.MoveTo(apps, "stage/App.app", "Sub/App.app"); err == nil {
+		t.Error("MoveTo created a missing parent")
+	}
+}
+
+func TestMoveToDryRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "stage/App.app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var journal bytes.Buffer
+	r, err := OpenDryRun(dir, &journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close() }()
+	apps, appDir, _ := newRoot(t)
+	if err := r.MoveTo(apps, "stage/App.app", "App.app"); err != nil {
+		t.Fatal(err)
+	}
+	if got := journal.String(); got != "would move stage/App.app "+filepath.Join(appDir, "App.app")+"\n" {
+		t.Errorf("journal = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "stage/App.app")); err != nil {
+		t.Errorf("a dry run moved the app: %v", err)
+	}
+}
+
 func TestRename(t *testing.T) {
 	r, dir, journal := newRoot(t)
 	if err := r.WriteFile("stage/jq/1.0/bin/jq", []byte("x"), 0o755); err != nil {

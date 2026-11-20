@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -264,6 +265,77 @@ func (r *Root) Symlink(target, name string) error {
 		return err
 	}
 	return r.log("symlink %s -> %s", rel, target)
+}
+
+// SymlinkTo creates name -> target, where target is an absolute path inside
+// dst, such as a cask's app in the applications folder; ErrExists if name exists.
+func (r *Root) SymlinkTo(dst *Root, target, name string) error {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	if !filepath.IsAbs(target) {
+		return fmt.Errorf("symlink target %s: not an absolute path", target)
+	}
+	if _, err := dst.rel(target); err != nil {
+		return fmt.Errorf("symlink target %s: outside %s", target, dst.dir)
+	}
+	if r.dry {
+		if err := r.mustNotExist(rel); err != nil {
+			return err
+		}
+		return r.log("symlink %s -> %s", rel, target)
+	}
+	if err := r.root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
+		return err
+	}
+	if err := r.root.Symlink(target, rel); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%s: %w", rel, ErrExists)
+		}
+		return err
+	}
+	return r.log("symlink %s -> %s", rel, target)
+}
+
+// MoveTo moves oldname into dst as newname, whose parent must exist, without
+// replacing anything; ErrExists if newname exists. Across file systems it
+// copies with cp -pR, keeping extended attributes, then removes the original.
+func (r *Root) MoveTo(dst *Root, oldname, newname string) error {
+	oldRel, err := r.rel(oldname)
+	if err != nil {
+		return err
+	}
+	newRel, err := dst.rel(newname)
+	if err != nil {
+		return err
+	}
+	if _, err := dst.root.Lstat(newRel); err == nil {
+		return fmt.Errorf("%s: %w", filepath.Join(dst.dir, newRel), ErrExists)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := dst.hasParent(newRel); err != nil {
+		return err
+	}
+	if _, err := r.root.Lstat(oldRel); err != nil {
+		return err
+	}
+	from, to := filepath.Join(r.dir, oldRel), filepath.Join(dst.dir, newRel)
+	if r.dry {
+		return r.log("move %s %s", oldRel, to)
+	}
+	err = os.Rename(from, to)
+	if errors.Is(err, syscall.EXDEV) {
+		if out, cerr := exec.Command("/bin/cp", "-pR", from, to).CombinedOutput(); cerr != nil {
+			return fmt.Errorf("cp -pR %s %s: %w: %s", from, to, cerr, bytes.TrimSpace(out))
+		}
+		err = os.RemoveAll(from)
+	}
+	if err != nil {
+		return err
+	}
+	return r.log("move %s %s", oldRel, to)
 }
 
 // Mkdir creates one directory, whose parent must exist; ErrExists if name

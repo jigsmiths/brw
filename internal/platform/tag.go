@@ -134,6 +134,16 @@ func MacMajor(version string) (int, error) {
 	return major, nil
 }
 
+// ReleaseName returns the release name of a macOS major version, such as "ventura" for 13.
+func ReleaseName(major int) (string, bool) {
+	for _, r := range macReleases {
+		if r.major == major {
+			return r.name, true
+		}
+	}
+	return "", false
+}
+
 // ReleaseMajor returns the major version of a macOS release name such as "ventura".
 func ReleaseMajor(name string) (int, bool) {
 	for _, r := range macReleases {
