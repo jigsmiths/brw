@@ -57,7 +57,7 @@ func TestConformanceUninstall(t *testing.T) {
 	sameLine := func(name, outBrew, outBrw, start string) {
 		t.Helper()
 		find := func(out string) string {
-			for _, l := range strings.Split(out, "\n") {
+			for l := range strings.SplitSeq(out, "\n") {
 				if strings.HasPrefix(l, start) {
 					return l
 				}
@@ -196,7 +196,7 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 	wouldRemove := func(out, prefix string) []string {
 		var lines []string
-		for _, l := range strings.Split(out, "\n") {
+		for l := range strings.SplitSeq(out, "\n") {
 			if strings.HasPrefix(l, "Would remove") && strings.Contains(l, prefix) && !strings.Contains(l, "/Library/") {
 				lines = append(lines, strings.ReplaceAll(l, prefix, "<prefix>"))
 			}
@@ -336,7 +336,7 @@ func TestConformanceUninstall(t *testing.T) {
 	// that brew does not leave as well (post_install can make some).
 	if !failed {
 		brewLeft := snapshot(t, theirs)
-		for _, line := range strings.Split(snapshot(t, mine), "\n") {
+		for line := range strings.SplitSeq(snapshot(t, mine), "\n") {
 			if !strings.Contains(line, "Cellar/") && !strings.HasPrefix(line, "L opt/") && !strings.HasPrefix(line, "L var/homebrew/linked/") {
 				continue
 			}

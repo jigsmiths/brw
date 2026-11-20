@@ -14,11 +14,8 @@ import (
 
 func reinstallCommand(e *env, args []string) error {
 	fs := newFlagSet("reinstall")
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
 	var dryRun bool
-	fs.BoolVar(&dryRun, "dry-run", false, "show what would be reinstalled")
-	fs.BoolVar(&dryRun, "n", false, "show what would be reinstalled")
+	prefixArg, journal := changeFlags(e, fs, &dryRun)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err

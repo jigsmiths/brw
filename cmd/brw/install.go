@@ -21,11 +21,8 @@ import (
 
 func installCommand(e *env, args []string) error {
 	fs := newFlagSet("install")
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
 	var dryRun bool
-	fs.BoolVar(&dryRun, "dry-run", false, "show what would be installed")
-	fs.BoolVar(&dryRun, "n", false, "show what would be installed")
+	prefixArg, journal := changeFlags(e, fs, &dryRun)
 	kinds := kindFlags(fs)
 	appDir := fs.String("appdir", "", "move apps into this folder instead of /Applications")
 	adopt := fs.Bool("adopt", false, "take over apps already in the app folder")

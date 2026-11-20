@@ -25,12 +25,9 @@ const defaultPruneDays = 120
 
 func cleanupCommand(e *env, args []string) (err error) {
 	fs := newFlagSet("cleanup")
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
-	prune := fs.String("prune", "", "remove cached downloads older than this many days, or `all`")
 	var dryRun, scrub, prunePrefix bool
-	fs.BoolVar(&dryRun, "dry-run", false, "show what would be removed")
-	fs.BoolVar(&dryRun, "n", false, "show what would be removed")
+	prefixArg, journal := changeFlags(e, fs, &dryRun)
+	prune := fs.String("prune", "", "remove cached downloads older than this many days, or `all`")
 	fs.BoolVar(&scrub, "scrub", false, "also remove downloads of what is not installed")
 	fs.BoolVar(&scrub, "s", false, "also remove downloads of what is not installed")
 	fs.BoolVar(&prunePrefix, "prune-prefix", false, "only remove broken symlinks and empty directories from the prefix")

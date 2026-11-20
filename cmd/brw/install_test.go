@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,9 +69,7 @@ func (s *store) formula(b installtest.Bottle, deps []string, extra map[string]an
 			"arm64_tahoe": map[string]any{"cellar": file.Cellar, "url": file.URL, "sha256": file.SHA256},
 		}}},
 	}
-	for k, v := range extra {
-		m[k] = v
-	}
+	maps.Copy(m, extra)
 	s.formulae = append(s.formulae, m)
 }
 

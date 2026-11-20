@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -73,9 +74,7 @@ func formulaJSON(t *testing.T, name string, extra map[string]any) *api.Formula {
 	t.Helper()
 	m := map[string]any{"name": name, "full_name": name, "tap": "homebrew/core", "versions": map[string]any{"stable": "1.0"},
 		"aliases": []string{}, "version_scheme": 0, "bottle": map[string]any{"stable": map[string]any{"rebuild": 0}}}
-	for k, v := range extra {
-		m[k] = v
-	}
+	maps.Copy(m, extra)
 	b, err := json.Marshal([]any{m})
 	if err != nil {
 		t.Fatal(err)

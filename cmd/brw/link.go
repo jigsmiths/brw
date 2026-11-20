@@ -20,13 +20,10 @@ import (
 
 func linkCommand(e *env, args []string) error {
 	fs := newFlagSet("link")
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
 	var force, dryRun, overwrite bool
+	prefixArg, journal := changeFlags(e, fs, &dryRun)
 	fs.BoolVar(&force, "force", false, "link a keg-only formula")
 	fs.BoolVar(&force, "f", false, "link a keg-only formula")
-	fs.BoolVar(&dryRun, "dry-run", false, "show what would be linked")
-	fs.BoolVar(&dryRun, "n", false, "show what would be linked")
 	fs.BoolVar(&overwrite, "overwrite", false, "replace files that are in the way")
 	names, err := parse(fs, args)
 	if err != nil {
@@ -45,11 +42,8 @@ func linkCommand(e *env, args []string) error {
 
 func unlinkCommand(e *env, args []string) error {
 	fs := newFlagSet("unlink")
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
 	var dryRun bool
-	fs.BoolVar(&dryRun, "dry-run", false, "show what would be unlinked")
-	fs.BoolVar(&dryRun, "n", false, "show what would be unlinked")
+	prefixArg, journal := changeFlags(e, fs, &dryRun)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err

@@ -99,9 +99,10 @@ func (f *File) Bytes() []byte { return f.data }
 
 func (f *File) IsDylib() bool { return le.Uint32(f.data[12:]) == mhDylib }
 
-// str reads the string a load command points at with its offset field.
-func (f *File) str(c command, fieldOff int) string {
-	start := c.off + int(le.Uint32(f.data[c.off+fieldOff:]))
+// str reads the string a load command points at with its offset field, which
+// is at 8 in both dylib_command and rpath_command.
+func (f *File) str(c command) string {
+	start := c.off + int(le.Uint32(f.data[c.off+8:]))
 	if start >= c.off+c.size {
 		return ""
 	}
@@ -119,7 +120,7 @@ func (f *File) DylibID() (string, bool) {
 	}
 	for _, c := range f.cmds {
 		if c.cmd == lcIDDylib {
-			return f.str(c, 8), true
+			return f.str(c), true
 		}
 	}
 	return "", false
@@ -130,7 +131,7 @@ func (f *File) Dylibs() []string {
 	var names []string
 	for _, c := range f.cmds {
 		if slices.Contains(loadDylib, c.cmd) {
-			if name := f.str(c, 8); !slices.Contains(names, name) {
+			if name := f.str(c); !slices.Contains(names, name) {
 				names = append(names, name)
 			}
 		}
@@ -142,7 +143,7 @@ func (f *File) Rpaths() []string {
 	var paths []string
 	for _, c := range f.cmds {
 		if c.cmd == lcRpath {
-			paths = append(paths, f.str(c, 8))
+			paths = append(paths, f.str(c))
 		}
 	}
 	return paths
@@ -163,7 +164,7 @@ func (f *File) ChangeID(name string) error {
 // ChangeInstallName replaces the first load command for the library old.
 func (f *File) ChangeInstallName(old, name string) error {
 	for _, c := range f.cmds {
-		if slices.Contains(loadDylib, c.cmd) && f.str(c, 8) == old {
+		if slices.Contains(loadDylib, c.cmd) && f.str(c) == old {
 			return f.replace(c, f.dylibCommand(c, name))
 		}
 	}
@@ -173,7 +174,7 @@ func (f *File) ChangeInstallName(old, name string) error {
 // ChangeRpath replaces the first rpath equal to old.
 func (f *File) ChangeRpath(old, path string) error {
 	for _, c := range f.cmds {
-		if c.cmd == lcRpath && f.str(c, 8) == old {
+		if c.cmd == lcRpath && f.str(c) == old {
 			return f.replace(c, command2(lcRpath, rpathHeader, path, nil))
 		}
 	}

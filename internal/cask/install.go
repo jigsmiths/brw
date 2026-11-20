@@ -102,8 +102,8 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 			return
 		}
 		in.logf("==> Purging files for version %s of Cask %s", c.Version, c.Token)
-		for i := len(undo) - 1; i >= 0; i-- {
-			err = errors.Join(err, undo[i]())
+		for _, u := range slices.Backward(undo) {
+			err = errors.Join(err, u())
 		}
 		err = errors.Join(err, in.purge(context.WithoutCancel(ctx), c))
 	}()

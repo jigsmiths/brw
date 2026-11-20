@@ -3,6 +3,7 @@ package info
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -34,9 +35,7 @@ func base(name string, extra formula) formula {
 		}}},
 		"ruby_source_path": "Formula/" + name[:1] + "/" + name + ".rb",
 	}
-	for k, v := range extra {
-		f[k] = v
-	}
+	maps.Copy(f, extra)
 	return f
 }
 

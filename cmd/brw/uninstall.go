@@ -19,15 +19,12 @@ import (
 
 func uninstallCommand(e *env, args []string) error {
 	fs := newFlagSet("uninstall")
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
-	var o uninstall.Options
 	var dryRun bool
+	prefixArg, journal := changeFlags(e, fs, &dryRun)
+	var o uninstall.Options
 	fs.BoolVar(&o.Force, "force", false, "remove every installed version")
 	fs.BoolVar(&o.Force, "f", false, "remove every installed version")
 	fs.BoolVar(&o.IgnoreDependencies, "ignore-dependencies", false, "remove even if installed formulae need it")
-	fs.BoolVar(&dryRun, "dry-run", false, "show what would be removed")
-	fs.BoolVar(&dryRun, "n", false, "show what would be removed")
 	kinds := kindFlags(fs)
 	names, err := parse(fs, args)
 	if err != nil {
@@ -95,11 +92,8 @@ func uninstallCommand(e *env, args []string) error {
 
 func autoremoveCommand(e *env, args []string) error {
 	fs := newFlagSet("autoremove")
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
 	var dryRun bool
-	fs.BoolVar(&dryRun, "dry-run", false, "show what would be removed")
-	fs.BoolVar(&dryRun, "n", false, "show what would be removed")
+	prefixArg, journal := changeFlags(e, fs, &dryRun)
 	rest, err := parse(fs, args)
 	if err != nil {
 		return err

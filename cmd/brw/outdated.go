@@ -1,0 +1,154 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/caskroom"
+	"github.com/jigsmiths/brw/internal/cellar"
+	"github.com/jigsmiths/brw/internal/outdated"
+	"github.com/jigsmiths/brw/internal/platform"
+)
+
+type outdatedJSON struct {
+	Name              string   `json:"name"`
+	InstalledVersions []string `json:"installed_versions"`
+	CurrentVersion    string   `json:"current_version"`
+	Pinned            bool     `json:"pinned"`
+	PinnedVersion     *string  `json:"pinned_version"`
+}
+
+func outdatedCommand(e *env, args []string) error {
+	fs := newFlagSet("outdated")
+	prefix := prefixFlag(e, fs)
+	asJSON := fs.Bool("json", false, "print JSON")
+	var quiet, verbose bool
+	fs.BoolVar(&quiet, "quiet", false, "names only")
+	fs.BoolVar(&quiet, "q", false, "names only")
+	fs.BoolVar(&verbose, "verbose", false, "show versions")
+	fs.BoolVar(&verbose, "v", false, "show versions")
+	kinds := kindFlags(fs)
+	var o outdated.CaskOptions
+	fs.BoolVar(&o.Greedy, "greedy", false, "include casks that update themselves or are unversioned")
+	fs.BoolVar(&o.GreedyLatest, "greedy-latest", false, "include unversioned casks")
+	fs.BoolVar(&o.GreedyAutoUpdates, "greedy-auto-updates", false, "include casks that update themselves")
+	if pos, err := parse(fs, args); err != nil {
+		return err
+	} else if len(pos) != 0 {
+		return errors.New("usage: brw outdated [--formula|--cask] [--greedy] [--json] [--quiet] [--verbose]")
+	}
+	formulaOnly, caskOnly, err := kinds()
+	if err != nil {
+		return err
+	}
+
+	var formulae, casks []outdated.Result
+	if !caskOnly {
+		kegs, err := e.kegs(*prefix)
+		if err != nil {
+			return err
+		}
+		idx, err := e.index(context.Background())
+		if err != nil {
+			return err
+		}
+		if formulae, err = outdated.Check(idx, cellar.Prefix(*prefix), kegs); err != nil {
+			return err
+		}
+	}
+	if !formulaOnly {
+		var err error
+		if casks, err = e.outdatedCasks(*prefix, o); err != nil {
+			return err
+		}
+	}
+
+	if *asJSON {
+		doc := struct {
+			Formulae []outdatedJSON `json:"formulae"`
+			Casks    []outdatedJSON `json:"casks"`
+		}{Formulae: outdatedEntries(formulae), Casks: outdatedEntries(casks)}
+		b, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(e.out, "%s\n", b)
+		return err
+	}
+
+	long := !quiet && (verbose || e.tty)
+	var b strings.Builder
+	for _, r := range formulae {
+		b.WriteString(r.Name)
+		if long {
+			b.WriteString(" (" + strings.Join(r.InstalledVersions, ", ") + ") < " + r.CurrentVersion + pinnedAt(r))
+		}
+		b.WriteByte('\n')
+	}
+	for _, r := range casks {
+		b.WriteString(r.Name)
+		if long {
+			b.WriteString(" (" + r.InstalledVersions[0] + ") != " + r.CurrentVersion + pinnedAt(r))
+		}
+		b.WriteByte('\n')
+	}
+	_, err = io.WriteString(e.out, b.String())
+	return err
+}
+
+func pinnedAt(r outdated.Result) string {
+	if !r.Pinned {
+		return ""
+	}
+	return " [pinned at " + r.PinnedVersion + "]"
+}
+
+func outdatedEntries(results []outdated.Result) []outdatedJSON {
+	out := []outdatedJSON{}
+	for _, r := range results {
+		j := outdatedJSON{r.Name, r.InstalledVersions, r.CurrentVersion, r.Pinned, nil}
+		if r.Pinned {
+			j.PinnedVersion = &r.PinnedVersion
+		}
+		out = append(out, j)
+	}
+	return out
+}
+
+// outdatedCasks checks the installed casks against the cask listing, which is
+// only fetched when there are casks to check.
+func (e *env) outdatedCasks(prefix string, o outdated.CaskOptions) ([]outdated.Result, error) {
+	installed, err := caskroom.Installed(prefix)
+	if err != nil || len(installed) == 0 {
+		return nil, err
+	}
+	c, err := e.apiClient()
+	if err != nil {
+		return nil, err
+	}
+	list, err := c.Casks(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	if o.Tag, err = platform.Tag(e.host); err != nil {
+		return nil, err
+	}
+	setCaskMachine(&o, prefix)
+	return outdated.CheckCasks(api.NewCaskIndex(list), prefix, installed, o)
+}
+
+// setCaskMachine fills in what the cask outdated check reads from this
+// machine and its environment.
+func setCaskMachine(o *outdated.CaskOptions, prefix string) {
+	o.GreedyTokens = strings.Fields(os.Getenv("HOMEBREW_UPGRADE_GREEDY_CASKS"))
+	o.NoAutoUpdates = os.Getenv("HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS") != ""
+	o.AppDir = func(token string) string { return caskroom.AppDir(prefix, token) }
+	o.Bundle = outdated.ReadBundle
+	o.Home, _ = os.UserHomeDir()
+}

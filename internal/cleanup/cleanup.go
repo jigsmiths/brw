@@ -226,7 +226,7 @@ func keepmeRefs(keg string) []string {
 		return nil
 	}
 	var out []string
-	for _, line := range strings.Split(string(b), "\n") {
+	for line := range strings.SplitSeq(string(b), "\n") {
 		ref := strings.TrimSpace(line)
 		if ref == "" {
 			continue
