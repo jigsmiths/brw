@@ -500,8 +500,7 @@ func describe(b *strings.Builder, t reflect.Type, seen map[reflect.Type]bool) {
 		}
 		seen[t] = true
 		b.WriteString("struct{")
-		for i := range t.NumField() {
-			f := t.Field(i)
+		for f := range t.Fields() {
 			b.WriteString(f.Name + " ")
 			describe(b, f.Type, seen)
 			b.WriteString(";")

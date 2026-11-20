@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -33,9 +34,7 @@ func server(t *testing.T, body []byte, header http.Header) (*httptest.Server, *a
 			return
 		}
 		hits.Add(1)
-		for k, v := range header {
-			w.Header()[k] = v
-		}
+		maps.Copy(w.Header(), header)
 		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)

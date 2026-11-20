@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -294,9 +295,7 @@ func TestRefreshCasksReportsWhatChanged(t *testing.T) {
 	removed := listing[0]["token"].(string)
 	newer := listing[1:]
 	added := map[string]any{}
-	for k, v := range listing[1] {
-		added[k] = v
-	}
+	maps.Copy(added, listing[1])
 	added["token"], added["full_token"], added["old_tokens"] = "new-cask", "new-cask", []string{}
 	newer = append(newer, added)
 	newBody, err := json.Marshal(newer)

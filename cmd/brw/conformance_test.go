@@ -178,7 +178,7 @@ func TestConformanceSearch(t *testing.T) {
 		}
 		wantOut, _ := brew(t, "search", "--formula", q)
 		want := strings.Fields(wantOut)
-		for _, name := range strings.Fields(got) {
+		for name := range strings.FieldsSeq(got) {
 			if !slices.Contains(want, name) {
 				t.Errorf("search %q: brw found %s, brew did not", q, name)
 			}
@@ -208,7 +208,7 @@ func TestConformanceSearchCasks(t *testing.T) {
 		}
 		out, _ := brew(t, "search", "--cask", q)
 		var want []string
-		for _, token := range strings.Fields(out) {
+		for token := range strings.FieldsSeq(out) {
 			if inAPI(token) {
 				want = append(want, token)
 			}
@@ -218,7 +218,7 @@ func TestConformanceSearchCasks(t *testing.T) {
 			continue
 		}
 		// Text searches: brew adds spelling suggestions, so brw's answer may be a subset.
-		for _, token := range strings.Fields(got) {
+		for token := range strings.FieldsSeq(got) {
 			if !slices.Contains(want, token) {
 				t.Errorf("search --cask %q: brw found %s, brew did not", q, token)
 			}

@@ -27,6 +27,7 @@ fmt:
 # Same checks as CI and the pre-commit hook
 check:
     test -z "$(gofmt -l .)"
+    test -z "$(go fix -diff ./...)"
     just lint
     just test
 

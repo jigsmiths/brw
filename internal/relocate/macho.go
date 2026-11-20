@@ -233,9 +233,7 @@ func codesign(files []string, arm bool, run runner, refresh func(file string) er
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, runtime.NumCPU())
 	for _, batch := range batches {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			if _, err := run(signArgs(batch...)...); err != nil {
@@ -243,7 +241,7 @@ func codesign(files []string, arm bool, run runner, refresh func(file string) er
 				retry = append(retry, batch...)
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

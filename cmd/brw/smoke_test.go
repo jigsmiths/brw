@@ -132,7 +132,7 @@ func missingMachO(path string) []string {
 	}
 	cmds, _ := osexec.Command("otool", "-l", path).Output()
 	var rpaths []string
-	for _, l := range strings.Split(string(cmds), "\n") {
+	for l := range strings.SplitSeq(string(cmds), "\n") {
 		if m := rpathLine.FindStringSubmatch(l); m != nil {
 			rpaths = append(rpaths, m[1])
 		}
@@ -182,7 +182,7 @@ func missingELF(path string) []string {
 	}
 	out, _ := osexec.Command("ldd", path).CombinedOutput()
 	var missing []string
-	for _, l := range strings.Split(string(out), "\n") {
+	for l := range strings.SplitSeq(string(out), "\n") {
 		if strings.Contains(l, "not found") {
 			missing = append(missing, strings.TrimSpace(strings.Split(l, "=>")[0]))
 		}

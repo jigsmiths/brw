@@ -199,8 +199,7 @@ func TestUninstallRefusesWhenAnInstalledFormulaNeedsTheKeg(t *testing.T) {
 	f.keg("oniguruma", "6.9", true)
 	f.keg("jq", "1.0", true, "oniguruma")
 	err := f.run(Options{}, "oniguruma")
-	var de *DependentsError
-	if !errors.As(err, &de) {
+	if _, ok := errors.AsType[*DependentsError](err); !ok {
 		t.Fatalf("err = %v", err)
 	}
 	want := "refusing to uninstall " + f.kegPath("oniguruma", "6.9") + "\nbecause it is required by jq, which is currently installed.\n" +
@@ -349,8 +348,7 @@ func TestUninstallWorksWithoutAFormulaListing(t *testing.T) {
 	r = f.remover()
 	r.Resolve = nil
 	err := r.Run([]string{"jq"}, Options{})
-	var nk *NoSuchKegError
-	if !errors.As(err, &nk) {
+	if _, ok := errors.AsType[*NoSuchKegError](err); !ok {
 		t.Errorf("a missing keg with no listing = %v", err)
 	}
 }

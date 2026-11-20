@@ -249,9 +249,7 @@ func (f *Fetcher) FetchAll(ctx context.Context, reqs []Request) ([]Result, error
 	sem := make(chan struct{}, workers)
 	var wg sync.WaitGroup
 	for i, req := range reqs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
@@ -263,7 +261,7 @@ func (f *Fetcher) FetchAll(ctx context.Context, reqs []Request) ([]Result, error
 			if errs[i] != nil {
 				cancel()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

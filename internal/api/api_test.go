@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -612,8 +613,8 @@ func TestFingerprint(t *testing.T) {
 		X int
 		Y []int
 	}
-	fa, fb, fc := fingerprint(reflect.TypeOf(a{})), fingerprint(reflect.TypeOf(b{})), fingerprint(reflect.TypeOf(c{}))
-	if fa != fingerprint(reflect.TypeOf(a{})) {
+	fa, fb, fc := fingerprint(reflect.TypeFor[a]()), fingerprint(reflect.TypeFor[b]()), fingerprint(reflect.TypeFor[c]())
+	if fa != fingerprint(reflect.TypeFor[a]()) {
 		t.Error("fingerprint is not stable")
 	}
 	if fa == fb || fa == fc || fb == fc {
@@ -724,9 +725,7 @@ func TestRefreshReportsWhatChanged(t *testing.T) {
 	newer := listing[1:]
 	for _, name := range []string{"new-b", "new-a"} { // out of order, as a listing may be
 		added := map[string]any{}
-		for k, v := range listing[1] {
-			added[k] = v
-		}
+		maps.Copy(added, listing[1])
 		added["name"], added["full_name"], added["aliases"], added["oldnames"] = name, name, []string{}, []string{}
 		newer = append(newer, added)
 	}

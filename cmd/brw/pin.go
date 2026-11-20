@@ -24,8 +24,7 @@ func unpinCommand(e *env, args []string) error { return pinOrUnpin(e, "unpin", a
 // skipped (and fails pin, not unpin), and one in the wanted state gets a warning.
 func pinOrUnpin(e *env, verb string, args []string) error {
 	fs := newFlagSet(verb)
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
+	prefixArg, journal := changeFlags(e, fs, nil)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err

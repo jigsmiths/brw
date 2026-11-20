@@ -152,9 +152,7 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 	want := map[string]string{}
 	for i := range plan.Items {
 		it := &plan.Items[i]
-		if err := p.check(it, &problems); err != nil {
-			return nil, err
-		}
+		p.check(it, &problems)
 		if it.Tag != "" {
 			want[it.Formula.Name] = it.Tag
 		}
@@ -450,7 +448,7 @@ func (p *Planner) installed(f *api.Formula) (bool, error) {
 }
 
 // check records what stops f being installed, and picks its bottle tag.
-func (p *Planner) check(it *Item, problems *[]error) error {
+func (p *Planner) check(it *Item, problems *[]error) {
 	f := it.Formula
 	if f.Disabled {
 		*problems = append(*problems, fmt.Errorf("%s: %w", f.Name, ErrDisabled))
@@ -477,7 +475,6 @@ func (p *Planner) check(it *Item, problems *[]error) error {
 		}
 		*problems = append(*problems, fmt.Errorf("%s: %w: %s", f.Name, ErrConflict, other.Name))
 	}
-	return nil
 }
 
 // checkCellar refuses bottles that need work we cannot do for this prefix.

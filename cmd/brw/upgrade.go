@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jigsmiths/brw/internal/cellar"
@@ -22,11 +23,8 @@ import (
 
 func upgradeCommand(e *env, args []string) error {
 	fs := newFlagSet("upgrade")
-	prefixArg := prefixFlag(e, fs)
-	journal := fs.String("journal", "", "append changes to this file")
 	var dryRun bool
-	fs.BoolVar(&dryRun, "dry-run", false, "show what would be upgraded")
-	fs.BoolVar(&dryRun, "n", false, "show what would be upgraded")
+	prefixArg, journal := changeFlags(e, fs, &dryRun)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -88,11 +86,12 @@ func upgradeCommand(e *env, args []string) error {
 	}
 	var failures []error
 	if len(pinned) > 0 {
-		msg := fmt.Sprintf("not upgrading %d pinned %s:", len(pinned), plural(len(pinned), "package", "packages"))
+		var msg strings.Builder
+		fmt.Fprintf(&msg, "not upgrading %d pinned %s:", len(pinned), plural(len(pinned), "package", "packages"))
 		for _, r := range pinned {
-			msg += fmt.Sprintf("\n%s %s", r.Name, r.PinnedVersion)
+			fmt.Fprintf(&msg, "\n%s %s", r.Name, r.PinnedVersion)
 		}
-		failures = append(failures, errors.New(msg))
+		failures = append(failures, errors.New(msg.String()))
 	}
 	if len(upgrade) == 0 {
 		if len(names) == 0 {
