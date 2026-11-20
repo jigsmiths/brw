@@ -1,18 +1,18 @@
 package main
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
+	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
-	"github.com/jigsmiths/brw/internal/selfupdate"
 )
 
-const usage = "usage: brw list|search|info|install|reinstall|upgrade|uninstall|autoremove|leaves|link|unlink|cleanup|pin|unpin|version|update|deps|uses|outdated|tag|dev [flags]"
+const usage = "usage: brw list|search|info|install|reinstall|upgrade|uninstall|autoremove|leaves|link|unlink|cleanup|pin|unpin|version|update|deps|uses|outdated|tag [flags]"
 
 // env is everything a command needs from the outside world.
 type env struct {
@@ -20,9 +20,6 @@ type env struct {
 	tty      bool // out is a terminal
 	host     platform.Host
 	client   *api.Client
-
-	// selfUpdate brings brw up to the latest release; nil skips that.
-	selfUpdate func(context.Context) (selfupdate.Result, error)
 
 	defaultPrefix string // overrides the host's default prefix, for tests
 }
@@ -53,7 +50,7 @@ func main() {
 
 // newEnv is the environment of the real brw.
 func newEnv(host platform.Host) *env {
-	return &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host, selfUpdate: selfUpdateBrw}
+	return &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host}
 }
 
 func run(e *env, cmd string, args []string) error {
@@ -103,10 +100,26 @@ func run(e *env, cmd string, args []string) error {
 		}
 		_, err = fmt.Fprintln(e.out, tag)
 		return err
-	case "dev":
-		return dev(args, e.out)
 	}
 	return fmt.Errorf("unknown command %q\n%s", cmd, usage)
+}
+
+func withRoot(prefix, journalPath string, fn func(*fsx.Root) error) (err error) {
+	var journal io.Writer
+	if journalPath != "" {
+		f, openErr := os.OpenFile(journalPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //fsx:allow journal lives outside the prefix
+		if openErr != nil {
+			return openErr
+		}
+		defer func() { err = errors.Join(err, f.Close()) }()
+		journal = f
+	}
+	root, err := fsx.Open(prefix, journal)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, root.Close()) }()
+	return fn(root)
 }
 
 func isTerminal(f *os.File) bool {
