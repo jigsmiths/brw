@@ -11,6 +11,7 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
+// Placeholders brew writes into a bottle in place of paths of the prefix.
 const (
 	PrefixPlaceholder     = "@@HOMEBREW_PREFIX@@"
 	CellarPlaceholder     = "@@HOMEBREW_CELLAR@@"

@@ -26,6 +26,7 @@ type Formula struct {
 	Rebuild    int // of the bottle
 }
 
+// Cleaner removes old kegs, stale downloads and leftovers from a prefix.
 type Cleaner struct {
 	Root   *fsx.Root
 	Prefix string // absolute path of Root

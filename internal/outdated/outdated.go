@@ -10,6 +10,7 @@ import (
 	"github.com/jigsmiths/brw/internal/version"
 )
 
+// Result is an outdated formula, as brew outdated reports it.
 type Result struct {
 	Name              string
 	InstalledVersions []string

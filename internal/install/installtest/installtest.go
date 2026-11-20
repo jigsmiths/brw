@@ -51,6 +51,7 @@ type Registry struct {
 	manifests atomic.Int32
 }
 
+// NewRegistry starts an empty registry whose servers close when t ends.
 func NewRegistry(t testing.TB) *Registry {
 	t.Helper()
 	r := &Registry{t: t, blobs: map[string][]byte{}, tabs: map[string]string{}, supps: map[string]string{}, digests: map[string]string{}, tampered: map[string]bool{}}

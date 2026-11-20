@@ -27,6 +27,7 @@ import (
 // DefaultURL is the listing as Homebrew signs it, which brw checks before use.
 const DefaultURL = "https://formulae.brew.sh/api/formula.jws.json"
 
+// Formula is an entry of the formula listing, with the fields brw uses.
 type Formula struct {
 	Name                 string   `json:"name"`
 	FullName             string   `json:"full_name"`
@@ -84,6 +85,7 @@ type UsesFromMacOS struct {
 	Since string // macOS release that provides it; older macOS needs the real dependency
 }
 
+// UnmarshalJSON accepts either form the listing uses: a name or an object.
 func (u *UsesFromMacOS) UnmarshalJSON(b []byte) error {
 	var name string
 	if json.Unmarshal(b, &name) == nil {
@@ -147,6 +149,7 @@ type Bottle struct {
 	Tags    []string // sorted
 }
 
+// UnmarshalJSON keeps the tags of the bottle files and drops their URLs and checksums.
 func (b *Bottle) UnmarshalJSON(data []byte) error {
 	var v struct {
 		Rebuild int                 `json:"rebuild"`
@@ -163,6 +166,7 @@ func (b *Bottle) UnmarshalJSON(data []byte) error {
 // BottleTags returns the tags in sorted order.
 func (f *Formula) BottleTags() []string { return f.Bottle.Stable.Tags }
 
+// Parse decodes the formula listing.
 func Parse(b []byte) ([]Formula, error) {
 	var formulae []Formula
 	if err := json.Unmarshal(b, &formulae); err != nil {
@@ -185,6 +189,7 @@ type Index struct {
 	all    []*Formula
 }
 
+// NewIndex indexes formulae, which it keeps pointers into.
 func NewIndex(formulae []Formula) *Index {
 	idx := &Index{byName: make(map[string]*Formula, len(formulae))}
 	for i := range formulae {
@@ -204,6 +209,7 @@ func NewIndex(formulae []Formula) *Index {
 // Formulae returns every formula once, in listing order.
 func (i *Index) Formulae() []*Formula { return i.all }
 
+// Lookup finds a formula by name, alias or old name.
 func (i *Index) Lookup(name string) (*Formula, bool) {
 	f, ok := i.byName[name]
 	return f, ok
@@ -302,8 +308,9 @@ func nameDiff[T any](old, next []T, name func(T) string) (added, removed []strin
 	return added, removed
 }
 
-// Formulae loads the formula listing. It also learns where each entry is in
-// the cached listing, so Raw and Bottles can read one without a scan.
+// Formulae loads the formula listing, from the cache while it is still valid.
+// It also learns where each entry is in the cached listing, so Raw and
+// Bottles can read one without a scan.
 func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	var spans []span
 	l := c.formulaListing()

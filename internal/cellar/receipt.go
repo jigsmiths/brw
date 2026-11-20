@@ -38,6 +38,7 @@ type Receipt struct {
 	onRequestOK bool // the receipt says whether it was installed on request
 }
 
+// Dependency is a runtime dependency as the receipt records it.
 type Dependency struct {
 	FullName             string          `json:"full_name"`
 	Version              string          `json:"version"`
@@ -55,6 +56,7 @@ type Source struct {
 	raw    json.RawMessage
 }
 
+// UnmarshalJSON reads the tap and version scheme and keeps the raw JSON.
 func (s *Source) UnmarshalJSON(b []byte) error {
 	var v struct {
 		Tap      string `json:"tap"`
@@ -70,6 +72,7 @@ func (s *Source) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// MarshalJSON writes back the JSON it read, so a rewritten receipt keeps brew's key order.
 func (s Source) MarshalJSON() ([]byte, error) {
 	if s.raw == nil {
 		return json.Marshal(map[string]string{"tap": s.Tap})
@@ -80,6 +83,7 @@ func (s Source) MarshalJSON() ([]byte, error) {
 // VersionScheme is the formula's version scheme when the keg was installed.
 func (r *Receipt) VersionScheme() int { return r.Source.scheme }
 
+// ParseReceipt decodes an INSTALL_RECEIPT.json.
 func ParseReceipt(b []byte) (*Receipt, error) {
 	var r Receipt
 	if err := json.Unmarshal(b, &r); err != nil {

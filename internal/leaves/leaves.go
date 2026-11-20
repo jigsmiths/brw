@@ -11,6 +11,7 @@ import (
 // Filter narrows the leaves by how they were installed.
 type Filter int
 
+// Filters for every leaf, those installed on request, and those installed as a dependency.
 const (
 	All Filter = iota
 	OnRequest

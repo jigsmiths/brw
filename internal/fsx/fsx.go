@@ -23,12 +23,14 @@ import (
 // place. brew ignores directories that start with a dot in the Cellar.
 const Staging = "Cellar/.brw-staging"
 
+// Errors a Root returns instead of doing something unsafe.
 var (
 	ErrExists = errors.New("path already exists")
 	ErrRoot   = errors.New("refusing to remove the root")
 	ErrDryRun = errors.New("a dry run writes nothing")
 )
 
+// Root is a prefix opened for changes; every path it takes is relative to it.
 type Root struct {
 	dir     string
 	root    *os.Root
@@ -61,6 +63,7 @@ func OpenDryRun(dir string, journal io.Writer) (*Root, error) {
 	return r, err
 }
 
+// Close releases the root.
 func (r *Root) Close() error { return r.root.Close() }
 
 // WriteFile atomically creates name and syncs it to disk; ErrExists if it exists.
@@ -231,6 +234,7 @@ func (r *Root) ReadFile(name string) ([]byte, error) {
 	return r.root.ReadFile(rel)
 }
 
+// Lstat is os.Lstat confined to the root.
 func (r *Root) Lstat(name string) (fs.FileInfo, error) {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -398,6 +402,7 @@ func (r *Root) MkdirAll(name string, perm fs.FileMode) error {
 	return nil
 }
 
+// Chtimes is os.Chtimes confined to the root, and journaled.
 func (r *Root) Chtimes(name string, atime, mtime time.Time) error {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -415,6 +420,7 @@ func (r *Root) Chtimes(name string, atime, mtime time.Time) error {
 	return r.log("chtimes %s", rel)
 }
 
+// Chmod is os.Chmod confined to the root, and journaled.
 func (r *Root) Chmod(name string, perm fs.FileMode) error {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -532,6 +538,7 @@ func (r *Root) Replace(name string, data []byte) (err error) {
 	return r.log("replace %s", rel)
 }
 
+// Remove is os.Remove confined to the root, and journaled; it refuses the root itself.
 func (r *Root) Remove(name string) error {
 	rel, err := r.rel(name)
 	if err != nil {
