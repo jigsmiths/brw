@@ -215,7 +215,11 @@ func (r *Root) ReadDir(name string) ([]fs.DirEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	d, err := r.root.Open(rel)
+	return readDir(r.root, rel)
+}
+
+func readDir(root *os.Root, name string) ([]fs.DirEntry, error) {
+	d, err := root.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +227,39 @@ func (r *Root) ReadDir(name string) ([]fs.DirEntry, error) {
 	entries, err := d.ReadDir(-1)
 	slices.SortFunc(entries, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 	return entries, err
+}
+
+// WalkDir calls fn for each entry below dir, depth first and sorted by name,
+// skipping directories it cannot read. It does not follow symlinks. Each
+// directory is opened relative to its parent instead of from the root, which
+// on a deep tree is several times faster than ReadDir on every path.
+func (r *Root) WalkDir(dir string, fn func(name string, e fs.DirEntry)) error {
+	rel, err := r.rel(dir)
+	if err != nil {
+		return err
+	}
+	return walkDir(r.root, rel, rel, fn)
+}
+
+func walkDir(parent *os.Root, base, rel string, fn func(string, fs.DirEntry)) error {
+	entries, err := readDir(parent, base)
+	if err != nil {
+		return err
+	}
+	var sub *os.Root
+	if slices.ContainsFunc(entries, fs.DirEntry.IsDir) {
+		if sub, err = parent.OpenRoot(base); err == nil {
+			defer func() { _ = sub.Close() }()
+		}
+	}
+	for _, e := range entries {
+		name := filepath.Join(rel, e.Name())
+		fn(name, e)
+		if e.IsDir() && sub != nil {
+			_ = walkDir(sub, e.Name(), name, fn)
+		}
+	}
+	return nil
 }
 
 // ReadFile reads a file inside the root. It changes nothing and is not journaled.

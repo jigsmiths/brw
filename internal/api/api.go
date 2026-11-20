@@ -223,7 +223,7 @@ const freshFor = 10 * time.Minute
 // different, or the index itself changes shape, so an index written by an older
 // brw is not trusted. Changes to the Formula or Cask type are caught by their
 // fingerprints.
-const indexVersion = "3"
+const indexVersion = "4"
 
 // Client fetches the formula and cask listings and caches each in CacheDir by
 // ETag. It also keeps an index of each parsed listing, which is much faster to
@@ -337,6 +337,9 @@ type listing[T any] struct {
 	parse       func([]byte) ([]T, error)
 	fingerprint string  // of the index, see indexFingerprint
 	spans       *[]span // set to the entries' spans when known, if not nil
+	// slim, if set, drops what can be read back from an entry's span, so the
+	// index is smaller and quicker to load. It is only used when the spans are known.
+	slim func(T) T
 }
 
 func (l listing[T]) file(dir, ext string) string { return filepath.Join(dir, l.stem+ext) }
@@ -534,6 +537,13 @@ func storeIndex[T any](c *Client, l listing[T], etag string, items []T, data []b
 	if l.spans != nil {
 		*l.spans = spans
 	}
+	if l.slim != nil && spans != nil {
+		slim := make([]T, len(items))
+		for i, item := range items {
+			slim[i] = l.slim(item)
+		}
+		items = slim
+	}
 	var b bytes.Buffer
 	if err := gob.NewEncoder(&b).Encode(listingIndex[T]{l.fingerprint, etag, items, spans}); err != nil {
 		return
@@ -606,6 +616,20 @@ func (c *Client) each(fn func(name string, raw json.RawMessage) (done bool, err 
 	return nil
 }
 
+// readEntry reads one entry of a cached listing.
+func readEntry(file string, s span) ([]byte, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	raw := make([]byte, s.Len)
+	if _, err := f.ReadAt(raw, s.Off); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
 // entry reads one formula's entry where Formulae found it. ok is false when
 // it is not known, or the listing changed since, so the caller scans instead.
 func (c *Client) entry(name string) (json.RawMessage, bool) {
@@ -613,13 +637,8 @@ func (c *Client) entry(name string) (json.RawMessage, bool) {
 	if !ok {
 		return nil, false
 	}
-	f, err := os.Open(filepath.Join(c.CacheDir, "formula.json"))
+	raw, err := readEntry(filepath.Join(c.CacheDir, "formula.json"), s)
 	if err != nil {
-		return nil, false
-	}
-	defer func() { _ = f.Close() }()
-	raw := make([]byte, s.Len)
-	if _, err := f.ReadAt(raw, s.Off); err != nil {
 		return nil, false
 	}
 	var probe struct{ Name string }

@@ -55,10 +55,11 @@ func (k Keg) Abv() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return formatAbv(files, size), nil
+	return FormatAbv(files, size), nil
 }
 
-func formatAbv(files int, size int64) string {
+// FormatAbv summarises a file count and size the way Abv does.
+func FormatAbv(files int, size int64) string {
 	var b strings.Builder
 	if files > 1 {
 		b.WriteString(withCommas(files) + " files, ")

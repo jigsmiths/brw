@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"slices"
+	"sync"
 )
 
 // DefaultCaskURL is the cask listing as Homebrew signs it, which brw checks before use.
@@ -131,41 +134,102 @@ func set[T any](dst *T, v *T) {
 
 // CaskIndex finds casks by token or old token. Current tokens win over old ones.
 type CaskIndex struct {
-	byToken map[string]*Cask
+	byToken map[string]int // into all
 	all     []*Cask
+
+	// From Client.CaskIndex: the cached listing and where each cask's entry is
+	// in it, for completing the casks that were loaded without their artifacts
+	// and variations. Nil when every cask is whole.
+	mu      sync.Mutex
+	listing string
+	spans   []span
+	whole   []bool
 }
 
 // NewCaskIndex indexes casks, which it keeps pointers into.
 func NewCaskIndex(casks []Cask) *CaskIndex {
-	idx := &CaskIndex{byToken: make(map[string]*Cask, len(casks))}
+	idx := &CaskIndex{byToken: make(map[string]int, len(casks))}
 	for i := range casks {
-		idx.byToken[casks[i].Token] = &casks[i]
+		idx.byToken[casks[i].Token] = i
 		idx.all = append(idx.all, &casks[i])
 	}
 	for i := range casks {
 		for _, old := range casks[i].OldTokens {
 			if _, taken := idx.byToken[old]; !taken {
-				idx.byToken[old] = &casks[i]
+				idx.byToken[old] = i
 			}
 		}
 	}
 	return idx
 }
 
-// Casks returns every cask once, in listing order.
+// Casks returns every cask once, in listing order. From Client.CaskIndex they
+// can lack their artifacts and variations: Lookup returns a cask whole.
 func (i *CaskIndex) Casks() []*Cask { return i.all }
 
 // Lookup finds a cask by token or old token.
 func (i *CaskIndex) Lookup(token string) (*Cask, bool) {
-	c, ok := i.byToken[token]
-	return c, ok
+	n, ok := i.byToken[token]
+	if !ok || !i.complete(n) {
+		return nil, false
+	}
+	return i.all[n], true
 }
 
-// Casks loads the cask listing, with the same caching as Formulae.
-func (c *Client) Casks(ctx context.Context) ([]Cask, error) {
-	return load(ctx, c, c.caskListing(), false)
+// complete reads the rest of a cask from the cached listing, or from a full
+// parse of it when it changed since the index was loaded.
+func (i *CaskIndex) complete(n int) bool {
+	if i.spans == nil {
+		return true
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.whole[n] {
+		return true
+	}
+	c := i.all[n]
+	var whole Cask
+	raw, err := readEntry(i.listing, i.spans[n])
+	if err != nil || json.Unmarshal(raw, &whole) != nil || whole.Token != c.Token {
+		data, err := os.ReadFile(i.listing)
+		if err != nil {
+			return false
+		}
+		casks, err := ParseCasks(data)
+		k := slices.IndexFunc(casks, func(k Cask) bool { return k.Token == c.Token })
+		if err != nil || k < 0 {
+			return false
+		}
+		whole = casks[k]
+	}
+	*c, i.whole[n] = whole, true
+	return true
+}
+
+// CaskIndex loads the cask listing, with the same caching as Formulae. Casks
+// come from the cache without their artifacts and variations, which are most
+// of the listing, and Lookup reads those for just the casks it is asked for.
+func (c *Client) CaskIndex(ctx context.Context) (*CaskIndex, error) {
+	var spans []span
+	l := c.caskListing()
+	l.spans = &spans
+	casks, err := load(ctx, c, l, false)
+	if err != nil {
+		return nil, err
+	}
+	idx := NewCaskIndex(casks)
+	if spans != nil && len(spans) == len(casks) {
+		idx.listing, idx.spans, idx.whole = l.file(c.CacheDir, ".json"), spans, make([]bool, len(casks))
+	}
+	return idx, nil
 }
 
 func (c *Client) caskListing() listing[Cask] {
-	return listing[Cask]{stem: "cask", url: c.CaskURL, parse: ParseCasks, fingerprint: caskIndexFingerprint}
+	return listing[Cask]{stem: "cask", url: c.CaskURL, parse: ParseCasks, fingerprint: caskIndexFingerprint, slim: slimCask}
+}
+
+// slimCask leaves out what CaskIndex.Lookup reads back from the listing.
+func slimCask(c Cask) Cask {
+	c.Artifacts, c.Variations = nil, nil
+	return c
 }

@@ -49,9 +49,5 @@ func (e *env) caskIndex(ctx context.Context) (*api.CaskIndex, error) {
 	if err != nil {
 		return nil, err
 	}
-	casks, err := c.Casks(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return api.NewCaskIndex(casks), nil
+	return c.CaskIndex(ctx)
 }

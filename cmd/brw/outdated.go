@@ -8,8 +8,8 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
-	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/outdated"
@@ -48,25 +48,26 @@ func outdatedCommand(e *env, args []string) error {
 		return err
 	}
 
-	var formulae, casks []outdated.Result
-	if !caskOnly {
-		kegs, err := e.kegs(*prefix)
-		if err != nil {
-			return err
-		}
-		idx, err := e.index(context.Background())
-		if err != nil {
-			return err
-		}
-		if formulae, err = outdated.Check(idx, cellar.Prefix(*prefix), kegs); err != nil {
-			return err
-		}
-	}
+	// The two listings are separate files, so they load at the same time.
+	shared := *e
+	shared.err = &lockedWriter{w: e.err}
+	e = &shared
+	var casks []outdated.Result
+	var caskErr error
+	var wg sync.WaitGroup
 	if !formulaOnly {
-		var err error
-		if casks, err = e.outdatedCasks(*prefix, o); err != nil {
-			return err
-		}
+		wg.Go(func() { casks, caskErr = e.outdatedCasks(*prefix, o) })
+	}
+	var formulae []outdated.Result
+	if !caskOnly {
+		formulae, err = e.outdatedFormulae(*prefix)
+	}
+	wg.Wait()
+	if err != nil {
+		return err
+	}
+	if caskErr != nil {
+		return caskErr
 	}
 
 	if *asJSON {
@@ -121,6 +122,31 @@ func outdatedEntries(results []outdated.Result) []outdatedJSON {
 	return out
 }
 
+// lockedWriter lets goroutines share a writer for warnings.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
+
+// outdatedFormulae checks the installed kegs against the formula listing.
+func (e *env) outdatedFormulae(prefix string) ([]outdated.Result, error) {
+	kegs, err := e.kegs(prefix)
+	if err != nil {
+		return nil, err
+	}
+	idx, err := e.index(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return outdated.Check(idx, cellar.Prefix(prefix), kegs)
+}
+
 // outdatedCasks checks the installed casks against the cask listing, which is
 // only fetched when there are casks to check.
 func (e *env) outdatedCasks(prefix string, o outdated.CaskOptions) ([]outdated.Result, error) {
@@ -128,11 +154,7 @@ func (e *env) outdatedCasks(prefix string, o outdated.CaskOptions) ([]outdated.R
 	if err != nil || len(installed) == 0 {
 		return nil, err
 	}
-	c, err := e.apiClient()
-	if err != nil {
-		return nil, err
-	}
-	list, err := c.Casks(context.Background())
+	idx, err := e.caskIndex(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +162,7 @@ func (e *env) outdatedCasks(prefix string, o outdated.CaskOptions) ([]outdated.R
 		return nil, err
 	}
 	setCaskMachine(&o, prefix)
-	return outdated.CheckCasks(api.NewCaskIndex(list), prefix, installed, o)
+	return outdated.CheckCasks(idx, prefix, installed, o)
 }
 
 // setCaskMachine fills in what the cask outdated check reads from this
