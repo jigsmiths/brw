@@ -12,6 +12,7 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
+// Errors for a dependency missing from the listing or from the prefix.
 var (
 	ErrNotFound     = errors.New("no available formula")
 	ErrNotInstalled = errors.New("not installed")
@@ -26,6 +27,7 @@ type Resolver struct {
 	reverse  map[string][]string
 }
 
+// NewResolver returns a Resolver for host; it fails if host has no bottle tag.
 func NewResolver(idx *api.Index, host platform.Host) (*Resolver, error) {
 	tag, err := platform.Tag(host)
 	if err != nil {

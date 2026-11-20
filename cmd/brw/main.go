@@ -1,3 +1,4 @@
+// Command brw is a Homebrew-compatible package client.
 package main
 
 import (

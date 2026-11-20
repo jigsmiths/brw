@@ -19,6 +19,7 @@ import (
 	"github.com/jigsmiths/brw/internal/poststep"
 )
 
+// Reasons a formula cannot be planned for install.
 var (
 	ErrNoBottle        = errors.New("no bottle for this host")
 	ErrDisabled        = errors.New("disabled")
@@ -34,6 +35,7 @@ type BottleSource interface {
 	Bottles(want map[string]string) (map[string]api.BottleFile, error)
 }
 
+// Item is one formula of a plan, with the bottle chosen for this host.
 type Item struct {
 	Formula *api.Formula
 	Tag     string

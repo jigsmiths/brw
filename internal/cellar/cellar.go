@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 )
 
+// Prefix is the absolute path of a Homebrew prefix.
 type Prefix string
 
+// Keg is an installed version of a formula, under Cellar/<name>/<version>.
 type Keg struct {
 	Name    string
 	Version string
@@ -80,6 +82,7 @@ func readReceipt(kegPath string) (*Receipt, error) {
 	return ParseReceipt(b)
 }
 
+// OptVersion is the version of the keg that opt/<name> points at, if any.
 func (p Prefix) OptVersion(name string) (string, bool) {
 	path, ok := p.resolveKeg(filepath.Join(string(p), "opt", name))
 	if !ok {

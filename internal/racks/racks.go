@@ -21,6 +21,7 @@ func (e *UnavailableError) Error() string {
 	return fmt.Sprintf("no available formula with the name %q", e.Name)
 }
 
+// Finder finds installed kegs by formula name, alias or old name.
 type Finder struct {
 	Prefix string
 	Kegs   []cellar.Keg // every installed keg

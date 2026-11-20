@@ -9,6 +9,7 @@ import (
 // File is the name of the SBOM in a keg.
 const File = "sbom.spdx.json"
 
+// Params is what Update fills into the SBOM.
 type Params struct {
 	Created    time.Time // when the bottle was poured
 	Creator    string    // who poured it, such as "Tool: https://github.com/jigsmiths/brw@abc1234"

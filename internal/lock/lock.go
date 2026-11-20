@@ -11,11 +11,13 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
+// Errors Acquire returns when it cannot take the lock.
 var (
 	ErrInProgress  = errors.New("another process holds the lock")
 	ErrInvalidName = errors.New("invalid formula name")
 )
 
+// Lock is a held formula lock; Release gives it up.
 type Lock struct {
 	f *os.File
 }

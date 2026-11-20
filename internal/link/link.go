@@ -14,6 +14,7 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
+// Keg is the keg to link or unlink.
 type Keg struct {
 	Name, Version string
 	Aliases       []string // from the receipt
@@ -24,6 +25,7 @@ func (k Keg) rack() string   { return "Cellar/" + k.Name }
 func (k Keg) opt() string    { return "opt/" + k.Name }
 func (k Keg) record() string { return "var/homebrew/linked/" + k.Name }
 
+// Linker links and unlinks kegs in the prefix at Root.
 type Linker struct {
 	Root   *fsx.Root
 	Prefix string // absolute path of Root, to read absolute symlinks into it
@@ -167,7 +169,7 @@ func (l *Linker) makeRelativeSymlink(dst, src string) error {
 	}
 	for range 2 {
 		if err := l.Root.MkdirAll(path.Dir(dst), 0o755); err != nil {
-			return &LinkError{Dst: dst, Src: src, Err: err}
+			return &Error{Dst: dst, Src: src, Err: err}
 		}
 		err := l.Root.Symlink(relPath(path.Dir(dst), src), dst)
 		switch {
@@ -177,18 +179,18 @@ func (l *Linker) makeRelativeSymlink(dst, src string) error {
 			}
 			return nil
 		case !errors.Is(err, fsx.ErrExists):
-			return &LinkError{Dst: dst, Src: src, Err: err}
+			return &Error{Dst: dst, Src: src, Err: err}
 		case l.exists(dst):
 			return &ConflictError{Dst: dst, Src: src, Owner: l.owner(dst)}
 		case l.isSymlink(dst): // dangling
 			if err := l.Root.Remove(dst); err != nil {
-				return &LinkError{Dst: dst, Src: src, Err: err}
+				return &Error{Dst: dst, Src: src, Err: err}
 			}
 		default:
-			return &LinkError{Dst: dst, Src: src, Err: err}
+			return &Error{Dst: dst, Src: src, Err: err}
 		}
 	}
-	return &LinkError{Dst: dst, Src: src, Err: errors.New("could not replace a dangling symlink")}
+	return &Error{Dst: dst, Src: src, Err: errors.New("could not replace a dangling symlink")}
 }
 
 // owner names the keg that a symlink at p belongs to, or "".
@@ -256,7 +258,7 @@ func (l *Linker) Optlink(k Keg) error {
 func (l *Linker) replaceRecord(record, kegPath string) error {
 	if l.isSymlink(record) || l.exists(record) {
 		if err := l.Root.Remove(record); err != nil {
-			return &LinkError{Dst: record, Src: kegPath, Err: err}
+			return &Error{Dst: record, Src: kegPath, Err: err}
 		}
 	}
 	return l.makeRelativeSymlink(record, kegPath)
@@ -429,13 +431,13 @@ func (e *ConflictError) Error() string {
 	return fmt.Sprintf("could not link %s: %s already exists", e.Src, e.Dst)
 }
 
-// LinkError is any other failure to make a link.
-type LinkError struct {
+// Error is any other failure to make a link.
+type Error struct {
 	Dst, Src string
 	Err      error
 }
 
-func (e *LinkError) Error() string {
+func (e *Error) Error() string {
 	return fmt.Sprintf("could not link %s to %s: %v", e.Dst, e.Src, e.Err)
 }
-func (e *LinkError) Unwrap() error { return e.Err }
+func (e *Error) Unwrap() error { return e.Err }

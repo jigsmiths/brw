@@ -10,6 +10,7 @@ import (
 	"slices"
 )
 
+// Errors for files or edits machoedit cannot handle.
 var (
 	ErrNotMachO    = errors.New("not a Mach-O file")
 	ErrUnsupported = errors.New("unsupported Mach-O layout")
@@ -97,6 +98,7 @@ func (f *File) populate() error {
 // Bytes returns the file contents, which edits change in place.
 func (f *File) Bytes() []byte { return f.data }
 
+// IsDylib reports whether the file is a dynamic library, the only kind with an ID.
 func (f *File) IsDylib() bool { return le.Uint32(f.data[12:]) == mhDylib }
 
 // str reads the string a load command points at with its offset field, which
@@ -114,6 +116,7 @@ func (f *File) str(c command) string {
 	return string(s)
 }
 
+// DylibID is the install name of a dylib (LC_ID_DYLIB).
 func (f *File) DylibID() (string, bool) {
 	if !f.IsDylib() {
 		return "", false
@@ -139,6 +142,7 @@ func (f *File) Dylibs() []string {
 	return names
 }
 
+// Rpaths lists the LC_RPATH entries in load order.
 func (f *File) Rpaths() []string {
 	var paths []string
 	for _, c := range f.cmds {
@@ -149,6 +153,7 @@ func (f *File) Rpaths() []string {
 	return paths
 }
 
+// ChangeID sets the install name of a dylib, as install_name_tool -id does.
 func (f *File) ChangeID(name string) error {
 	if !f.IsDylib() {
 		return fmt.Errorf("%w: not a dylib", ErrNotFound)
