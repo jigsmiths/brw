@@ -4,7 +4,7 @@
 
 A Go, Homebrew-compatible package client. It reads Homebrew's metadata and bottles and shares a prefix with `brew`.
 
-**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae. For casks, the queries work and brw installs casks whose artifacts are apps and binaries; it does not remove or upgrade them yet.
+**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae. For casks, the queries work and brw installs and uninstalls casks whose artifacts are apps and binaries; it does not upgrade them yet.
 
 ## Install
 
@@ -36,7 +36,7 @@ just run install jq              # bottle and its dependencies
 just run install --cask slack    # app and binary casks; also --appdir; formulae and casks can be mixed
 just run upgrade                 # all outdated formulae, or name some
 just run reinstall jq
-just run uninstall jq            # also: --force, --ignore-dependencies
+just run uninstall jq            # also: --cask, --force, --ignore-dependencies
 just run autoremove              # drop dependencies nothing needs
 just run link jq                 # also: unlink; link --force, --overwrite
 just run cleanup                 # also: --prune=30, --scrub, --prune-prefix
@@ -63,7 +63,7 @@ just fmt
 just conformance    # compare the read-only commands with the real brew (slow)
 just conformance-install    # install with brew and brw, compare the prefixes
 just conformance-uninstall  # the same for upgrade, reinstall, cleanup, link and uninstall
-just conformance-cask-install  # install casks with brew and brw into scratch app folders, compare
+just conformance-cask-install  # install and uninstall casks with brew and brw in scratch app folders, compare
 just clean
 ```
 

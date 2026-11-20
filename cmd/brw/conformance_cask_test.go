@@ -13,7 +13,8 @@ import (
 
 // This test installs the same casks with brew and with brw into two fresh
 // copies of a brew checkout, each with its own applications folder, and
-// compares them; then brew uninstalls both. It needs a checkout at
+// compares them; then each uninstalls its own and they are compared again.
+// It needs a checkout at
 // $BRW_ORACLE (default ~/.brw-oracle/hb) and BRW_CONFORMANCE_CASK_INSTALL=1.
 
 // Small casks that nobody has running, since brew's uninstall quits them: an
@@ -79,17 +80,22 @@ func TestConformanceCaskInstall(t *testing.T) {
 		}
 	}
 
-	// brew accepts what brw installed, and removes it as it removes its own.
+	// brew accepts what brw installed.
 	if got, want := brewIn(mine, "list", "--cask"), sh(t, "", brwEnv, bin, "list", "--cask", "-prefix", mine); got != want {
 		t.Errorf("brew list --cask on brw's prefix:\n%s\nbrw:\n%s", got, want)
 	}
 	for _, token := range caskInstallSet {
 		brewIn(mine, "info", "--cask", token)
 	}
+
+	// brw uninstalls as brew does.
 	uninstall := append([]string{"uninstall", "--cask"}, caskInstallSet...)
-	brewIn(theirs, uninstall...)
-	brewIn(mine, uninstall...)
-	compareTrees("brew uninstall")
+	a := normal(brewIn(theirs, uninstall...), theirs, theirApps)
+	b := normal(sh(t, "", brwEnv, bin, append([]string{"uninstall", "--cask", "-prefix", mine}, caskInstallSet...)...), mine, myApps)
+	if d := lineDiff(a, b); len(d) > 0 {
+		t.Errorf("uninstall output differs:\n%s", strings.Join(d, "\n"))
+	}
+	compareTrees("uninstall")
 }
 
 // caskMetadata reads a cask's receipt and config, leaving out what differs

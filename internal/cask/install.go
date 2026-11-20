@@ -40,6 +40,7 @@ type Installer struct {
 	Version string // brw's, for the receipt
 	APIPath string // brew's cask listing, which the receipt names as the source
 	Config  Config
+	Exec    Exec // nil runs commands; uninstall's commands go through it
 }
 
 func (in *Installer) logf(format string, args ...any) {

@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/progress"
+	"github.com/jigsmiths/brw/internal/uninstall"
 )
 
 // installCasks installs the casks that are not installed yet. brw does not
@@ -116,6 +119,119 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun bool, casks 
 		}
 		return nil
 	})
+}
+
+// uninstallCasks removes installed casks as brew does. It refuses brw's own
+// cask unless forced, and a cask another installed cask needs.
+func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks []caskroom.Cask, dryRun, force, ignoreDeps bool) error {
+	if !force && slices.ContainsFunc(casks, func(c caskroom.Cask) bool { return c.Token == "brw" }) {
+		return errors.New("refusing to uninstall the brw cask, which is brw itself; use --force to remove it")
+	}
+	if !ignoreDeps {
+		if err := e.checkDependentCasks(prefix, named, casks); err != nil {
+			return err
+		}
+	}
+	var todo []caskroom.Cask
+	var errs []error
+	for _, c := range casks {
+		if _, pinned := caskroom.Pinned(prefix, c.Token); pinned {
+			if !force {
+				errs = append(errs, cask.IsPinned(c.Token))
+				continue
+			}
+			if !dryRun {
+				if err := root.Remove(filepath.Join("var/homebrew/pinned_casks", c.Token)); err != nil {
+					return err
+				}
+			}
+		}
+		todo = append(todo, c)
+	}
+	if dryRun {
+		if len(todo) > 0 {
+			var b strings.Builder
+			fmt.Fprintf(&b, "==> Would uninstall %d cask%s:\n", len(todo), map[bool]string{true: "s", false: ""}[len(todo) != 1])
+			for _, c := range todo {
+				fmt.Fprintf(&b, "%s %s\n", c.Token, c.Version)
+			}
+			if _, err := fmt.Fprint(e.out, b.String()); err != nil {
+				return err
+			}
+		}
+		return errors.Join(errs...)
+	}
+	home, _ := os.UserHomeDir()
+	for _, c := range todo {
+		errs = append(errs, uninstallCask(e, root, prefix, home, c, force))
+	}
+	return errors.Join(errs...)
+}
+
+func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask, force bool) error {
+	appDir := caskroom.AppDir(prefix, c.Token)
+	in := &cask.Installer{
+		Root:  root,
+		Where: cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
+		Log:   e.out, Warn: e.err,
+	}
+	// A missing app folder holds no app to move back.
+	if _, err := os.Stat(appDir); err == nil {
+		apps, err := fsx.Open(appDir, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = apps.Close() }()
+		in.Apps = apps
+	}
+	return in.Uninstall(context.Background(), c.Token, c.Version, force)
+}
+
+// checkDependentCasks refuses to remove a cask that another installed cask
+// depends on. Without the cask listing, there is nothing to check against.
+func (e *env) checkDependentCasks(prefix string, named []string, casks []caskroom.Cask) error {
+	installed, err := caskroom.Installed(prefix)
+	if err != nil {
+		return err
+	}
+	removing := map[string]bool{}
+	for _, c := range casks {
+		removing[c.Token] = true
+	}
+	if len(installed) == len(casks) {
+		return nil
+	}
+	idx, err := e.caskIndex(context.Background())
+	if err != nil {
+		_, _ = fmt.Fprintf(e.err, "brw: warning: not checking for casks that need these: %v\n", err)
+		return nil
+	}
+	var required, dependents []string
+	for _, c := range installed {
+		if removing[c.Token] {
+			continue
+		}
+		def, ok := idx.Lookup(c.Token)
+		if !ok {
+			continue
+		}
+		found := false
+		for _, d := range def.DependsOn.Cask {
+			if removing[d] {
+				found = true
+				if !slices.Contains(required, d) {
+					required = append(required, d)
+				}
+			}
+		}
+		if found {
+			dependents = append(dependents, c.Token)
+		}
+	}
+	if len(dependents) == 0 {
+		return nil
+	}
+	return &uninstall.DependentsError{Kegs: required, Dependents: dependents, Named: named}
 }
 
 // explicit is the app folder to record as given on the command line, or "".
