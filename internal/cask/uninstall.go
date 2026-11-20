@@ -107,12 +107,37 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 // readUninstall reads the receipt's uninstall_artifacts, filled in when the
 // cask was installed, and checks that brw can undo every one.
 func (in *Installer) readUninstall(token, version string) ([]uninstallStep, error) {
-	unsupported := func(what string) error {
-		return fmt.Errorf("%s: %s: %w", token, what, ErrUnsupported)
+	artifacts, err := in.readReceipt(token)
+	if err != nil {
+		return nil, err
 	}
+	var steps []uninstallStep
+	for _, a := range artifacts {
+		for kind, args := range a {
+			if kind == "zap" {
+				continue
+			}
+			s, err := in.readStep(token, version, kind, args)
+			if err != nil {
+				return nil, err
+			}
+			steps = append(steps, s)
+		}
+	}
+	slices.SortStableFunc(steps, func(a, b uninstallStep) int { return stepOrder[a.kind] - stepOrder[b.kind] })
+	return steps, nil
+}
+
+func unsupported(token, what string) error {
+	return fmt.Errorf("%s: %s: %w", token, what, ErrUnsupported)
+}
+
+// readReceipt reads the uninstall artifacts from the cask's install receipt,
+// refusing a receipt brw cannot uninstall from.
+func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, error) {
 	b, err := in.Root.ReadFile(filepath.Join("Caskroom", token, ".metadata", "INSTALL_RECEIPT.json"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, unsupported("no install receipt")
+		return nil, unsupported(token, "no install receipt")
 	}
 	if err != nil {
 		return nil, err
@@ -125,51 +150,48 @@ func (in *Installer) readUninstall(token, version string) ([]uninstallStep, erro
 		return nil, fmt.Errorf("%s: install receipt: %w", token, err)
 	}
 	if receipt.UninstallFlightBlocks {
-		return nil, unsupported("uninstall flight blocks")
+		return nil, unsupported(token, "uninstall flight blocks")
 	}
 	if len(receipt.UninstallArtifacts) == 0 {
-		return nil, unsupported("no uninstall artifacts in the install receipt")
+		return nil, unsupported(token, "no uninstall artifacts in the install receipt")
 	}
-	var steps []uninstallStep
-	for _, a := range receipt.UninstallArtifacts {
-		for kind, args := range a {
-			s := uninstallStep{kind: kind}
-			switch kind {
-			case "zap":
-				continue
-			case "uninstall":
-				if bad := unknownDirectives(args); bad != "" {
-					return nil, unsupported("uninstall " + bad)
-				}
-				if s.directives, err = readDirectives(args); err != nil {
-					return nil, fmt.Errorf("%s: uninstall %s: %w", token, args, err)
-				}
-			case "app", "binary":
-				if s.move, err = readMove(args, kind, in.Where); err != nil {
-					return nil, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
-				}
-				if kind == "app" {
-					_, err = in.appRel(s.move.target)
-				} else {
-					_, err = in.prefixRel(s.move.target)
-				}
-				if err != nil {
-					return nil, fmt.Errorf("%s: %w", token, err)
-				}
-				if kind == "app" {
-					if filepath.IsAbs(s.move.source) {
-						return nil, unsupported("app with an absolute source")
-					}
-					s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
-				}
-			default:
-				return nil, unsupported(kind + " artifacts")
-			}
-			steps = append(steps, s)
+	return receipt.UninstallArtifacts, nil
+}
+
+// readStep reads one uninstall artifact of the given kind, checking that brw
+// can undo it.
+func (in *Installer) readStep(token, version, kind string, args json.RawMessage) (uninstallStep, error) {
+	s := uninstallStep{kind: kind}
+	var err error
+	switch kind {
+	case "uninstall":
+		if bad := unknownDirectives(args); bad != "" {
+			return s, unsupported(token, "uninstall "+bad)
 		}
+		if s.directives, err = readDirectives(args); err != nil {
+			return s, fmt.Errorf("%s: uninstall %s: %w", token, args, err)
+		}
+	case "app", "binary":
+		if s.move, err = readMove(args, kind, in.Where); err != nil {
+			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
+		}
+		if kind == "binary" {
+			if _, err := in.prefixRel(s.move.target); err != nil {
+				return s, fmt.Errorf("%s: %w", token, err)
+			}
+			return s, nil
+		}
+		if _, err := in.appRel(s.move.target); err != nil {
+			return s, fmt.Errorf("%s: %w", token, err)
+		}
+		if filepath.IsAbs(s.move.source) {
+			return s, unsupported(token, "app with an absolute source")
+		}
+		s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
+	default:
+		return s, unsupported(token, kind+" artifacts")
 	}
-	slices.SortStableFunc(steps, func(a, b uninstallStep) int { return stepOrder[a.kind] - stepOrder[b.kind] })
-	return steps, nil
+	return s, nil
 }
 
 // readDirectives reads an uninstall stanza: a list of objects whose values

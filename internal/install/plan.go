@@ -92,84 +92,19 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 		return nil, err
 	}
 
-	plan := &Plan{}
-	var problems []error
-	position := map[string]int{} // formula name to index in plan.Items
-	skipped := map[string]bool{} // installed formulae met on the way
-
-	var visit func(f *api.Formula, requested bool) error
-	visit = func(f *api.Formula, requested bool) error {
-		if _, ok := position[f.Name]; ok {
-			return nil
-		}
-		if installed, err := p.installed(f); err != nil {
-			problems = append(problems, err)
-			return nil
-		} else if installed {
-			if requested && !skipped[f.Name] {
-				plan.AlreadyInstalled = append(plan.AlreadyInstalled, f.Name)
-			}
-			skipped[f.Name] = true
-			return nil
-		}
-		position[f.Name] = -1 // guards against a dependency cycle
-		direct, err := r.Direct(f.Name)
-		if err != nil {
-			return err
-		}
-		for _, d := range direct {
-			df, ok := p.Index.Lookup(d)
-			if !ok {
-				return fmt.Errorf("%s: dependency %s: %w", f.Name, d, deps.ErrNotFound)
-			}
-			if err := visit(df, false); err != nil {
-				return err
-			}
-		}
-		position[f.Name] = len(plan.Items)
-		g, err := f.ForTag(hostTag)
-		if err != nil {
-			return err
-		}
-		runtime, err := p.runtimeDeps(r, f)
-		if err != nil {
-			return err
-		}
-		plan.Items = append(plan.Items, Item{Formula: f, HostTag: hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)})
-		return nil
-	}
-
+	w := &planWalk{p: p, r: r, hostTag: hostTag, plan: &Plan{}, position: map[string]int{}, skipped: map[string]bool{}}
 	for _, name := range names {
 		f, ok := p.Index.Lookup(name)
 		if !ok {
 			return nil, fmt.Errorf("%s: %w", name, deps.ErrNotFound)
 		}
-		if err := visit(f, true); err != nil {
+		if err := w.visit(f, true); err != nil {
 			return nil, err
 		}
 	}
-
-	want := map[string]string{}
-	for i := range plan.Items {
-		it := &plan.Items[i]
-		p.check(it, &problems)
-		if it.Tag != "" {
-			want[it.Formula.Name] = it.Tag
-		}
-	}
-	files, err := p.bottles(want)
-	if err != nil {
+	plan, problems := w.plan, w.problems
+	if err := p.attachBottles(plan, &problems); err != nil {
 		return nil, err
-	}
-	for i := range plan.Items {
-		it := &plan.Items[i]
-		if it.Tag == "" {
-			continue
-		}
-		it.Bottle = files[it.Formula.Name]
-		if err := p.checkCellar(it); err != nil {
-			problems = append(problems, err)
-		}
 	}
 	if err := errors.Join(problems...); err != nil {
 		return nil, err
@@ -178,6 +113,88 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 		return nil, err
 	}
 	return plan, nil
+}
+
+// planWalk adds formulae to a plan, each after the dependencies it needs.
+type planWalk struct {
+	p        *Planner
+	r        *deps.Resolver
+	hostTag  string
+	plan     *Plan
+	problems []error
+	position map[string]int  // formula name to index in plan.Items
+	skipped  map[string]bool // installed formulae met on the way
+}
+
+// visit adds f, unless it is installed, after its dependencies that are not.
+func (w *planWalk) visit(f *api.Formula, requested bool) error {
+	p, r := w.p, w.r
+	if _, ok := w.position[f.Name]; ok {
+		return nil
+	}
+	if installed, err := p.installed(f); err != nil {
+		w.problems = append(w.problems, err)
+		return nil
+	} else if installed {
+		if requested && !w.skipped[f.Name] {
+			w.plan.AlreadyInstalled = append(w.plan.AlreadyInstalled, f.Name)
+		}
+		w.skipped[f.Name] = true
+		return nil
+	}
+	w.position[f.Name] = -1 // guards against a dependency cycle
+	direct, err := r.Direct(f.Name)
+	if err != nil {
+		return err
+	}
+	for _, d := range direct {
+		df, ok := p.Index.Lookup(d)
+		if !ok {
+			return fmt.Errorf("%s: dependency %s: %w", f.Name, d, deps.ErrNotFound)
+		}
+		if err := w.visit(df, false); err != nil {
+			return err
+		}
+	}
+	w.position[f.Name] = len(w.plan.Items)
+	g, err := f.ForTag(w.hostTag)
+	if err != nil {
+		return err
+	}
+	runtime, err := p.runtimeDeps(r, f)
+	if err != nil {
+		return err
+	}
+	w.plan.Items = append(w.plan.Items, Item{Formula: f, HostTag: w.hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)})
+	return nil
+}
+
+// attachBottles checks every item, then gives each one that has a bottle tag
+// its bottle, adding what stops an item to problems.
+func (p *Planner) attachBottles(plan *Plan, problems *[]error) error {
+	want := map[string]string{}
+	for i := range plan.Items {
+		it := &plan.Items[i]
+		p.check(it, problems)
+		if it.Tag != "" {
+			want[it.Formula.Name] = it.Tag
+		}
+	}
+	files, err := p.bottles(want)
+	if err != nil {
+		return err
+	}
+	for i := range plan.Items {
+		it := &plan.Items[i]
+		if it.Tag == "" {
+			continue
+		}
+		it.Bottle = files[it.Formula.Name]
+		if err := p.checkCellar(it); err != nil {
+			*problems = append(*problems, err)
+		}
+	}
+	return nil
 }
 
 // lockNames lists the items and everything they need at run time, sorted. The

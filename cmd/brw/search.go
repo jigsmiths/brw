@@ -41,56 +41,74 @@ func searchCommand(e *env, args []string) error {
 		}
 	}
 
-	var b strings.Builder
+	var out string
 	if *desc {
-		// Brew heads each kind it searched, even when nothing matched.
-		if idx != nil {
-			matches, err := search.Descriptions(idx, query)
-			if err != nil {
-				return err
-			}
-			b.WriteString("==> Formulae\n")
-			for _, m := range matches {
-				b.WriteString(m.Name + ": " + m.Desc + "\n")
-			}
-		}
-		if casks != nil {
-			matches, err := search.CaskDescriptions(casks, query)
-			if err != nil {
-				return err
-			}
-			if idx != nil {
-				b.WriteByte('\n')
-			}
-			b.WriteString("==> Casks\n")
-			for _, m := range matches {
-				b.WriteString(m.Token + ": ")
-				if m.Names != "" {
-					b.WriteString("(" + m.Names + ") ")
-				}
-				b.WriteString(m.Desc + "\n")
-			}
-		}
-		_, err = io.WriteString(e.out, b.String())
+		out, err = searchDescriptions(idx, casks, query)
+	} else {
+		out, err = searchNames(idx, casks, query, e.tty)
+	}
+	if err != nil {
 		return err
 	}
+	_, err = io.WriteString(e.out, out)
+	return err
+}
 
+// searchDescriptions is search --desc. Brew heads each kind it searched, even
+// when nothing matched. A nil index is a kind not searched.
+func searchDescriptions(idx *api.Index, casks *api.CaskIndex, query string) (string, error) {
+	var b strings.Builder
+	if idx != nil {
+		matches, err := search.Descriptions(idx, query)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString("==> Formulae\n")
+		for _, m := range matches {
+			b.WriteString(m.Name + ": " + m.Desc + "\n")
+		}
+	}
+	if casks != nil {
+		matches, err := search.CaskDescriptions(casks, query)
+		if err != nil {
+			return "", err
+		}
+		if idx != nil {
+			b.WriteByte('\n')
+		}
+		b.WriteString("==> Casks\n")
+		for _, m := range matches {
+			b.WriteString(m.Token + ": ")
+			if m.Names != "" {
+				b.WriteString("(" + m.Names + ") ")
+			}
+			b.WriteString(m.Desc + "\n")
+		}
+	}
+	return b.String(), nil
+}
+
+// searchNames is search by name, with headings on a terminal. A nil index is
+// a kind not searched.
+func searchNames(idx *api.Index, casks *api.CaskIndex, query string, headings bool) (string, error) {
 	var names, tokens []string
+	var err error
 	if idx != nil {
 		if names, err = search.Names(idx, query); err != nil {
-			return err
+			return "", err
 		}
 	}
 	if casks != nil {
 		if tokens, err = search.CaskTokens(casks, query); err != nil {
-			return err
+			return "", err
 		}
 	}
 	if len(names)+len(tokens) == 0 {
-		return fmt.Errorf("no formulae or casks found for %q", query)
+		return "", fmt.Errorf("no formulae or casks found for %q", query)
 	}
+	var b strings.Builder
 	if len(names) > 0 {
-		if e.tty {
+		if headings {
 			b.WriteString("==> Formulae\n")
 		}
 		b.WriteString(lines(names))
@@ -99,11 +117,10 @@ func searchCommand(e *env, args []string) error {
 		b.WriteByte('\n')
 	}
 	if len(tokens) > 0 {
-		if e.tty {
+		if headings {
 			b.WriteString("==> Casks\n")
 		}
 		b.WriteString(lines(tokens))
 	}
-	_, err = io.WriteString(e.out, b.String())
-	return err
+	return b.String(), nil
 }

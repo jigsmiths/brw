@@ -40,51 +40,68 @@ func list(e *env, args []string) error {
 
 	// Like brew, a terminal gets a heading over each kind unless one was asked for.
 	headings := e.tty && !formulaOnly && !caskOnly
-	var b strings.Builder
+	var out string
 	if !caskOnly {
-		if *versions {
-			kegs, err := e.kegs(*prefix)
-			if err != nil {
-				return err
-			}
-			b.WriteString(formatVersions(kegs))
-		} else {
-			names, err := cellar.Prefix(*prefix).Names()
-			if err != nil {
-				return err
-			}
-			if len(names) > 0 && headings {
-				b.WriteString("==> Formulae\n" + lines(names) + "\n")
-			} else {
-				b.WriteString(lines(names))
-			}
+		s, err := e.listFormulae(*prefix, *versions, headings)
+		if err != nil {
+			return err
 		}
+		out += s
 	}
 	if !formulaOnly {
-		if *versions {
-			casks, err := caskroom.Installed(*prefix)
-			if err != nil {
-				return err
-			}
-			for _, c := range casks {
-				b.WriteString(c.Token + " " + c.Version + "\n")
-			}
-		} else {
-			names, broken, err := caskroom.Names(*prefix)
-			if err != nil {
-				return err
-			}
-			if len(names) > 0 && headings {
-				b.WriteString("==> Casks\n")
-			}
-			b.WriteString(lines(names))
-			if len(broken) > 0 {
-				_, _ = fmt.Fprintf(e.err, "brw: warning: broken Caskroom symlinks: %s\n", strings.Join(broken, ", "))
-			}
+		s, err := e.listCasks(*prefix, *versions, headings)
+		if err != nil {
+			return err
 		}
+		out += s
 	}
-	_, err = io.WriteString(e.out, b.String())
+	_, err = io.WriteString(e.out, out)
 	return err
+}
+
+// listFormulae is list's formula section: names, or names and versions.
+func (e *env) listFormulae(prefix string, versions, heading bool) (string, error) {
+	if versions {
+		kegs, err := e.kegs(prefix)
+		if err != nil {
+			return "", err
+		}
+		return formatVersions(kegs), nil
+	}
+	names, err := cellar.Prefix(prefix).Names()
+	if err != nil {
+		return "", err
+	}
+	if len(names) > 0 && heading {
+		return "==> Formulae\n" + lines(names) + "\n", nil
+	}
+	return lines(names), nil
+}
+
+// listCasks is list's cask section, warning about broken Caskroom links.
+func (e *env) listCasks(prefix string, versions, heading bool) (string, error) {
+	if versions {
+		casks, err := caskroom.Installed(prefix)
+		if err != nil {
+			return "", err
+		}
+		var b strings.Builder
+		for _, c := range casks {
+			b.WriteString(c.Token + " " + c.Version + "\n")
+		}
+		return b.String(), nil
+	}
+	names, broken, err := caskroom.Names(prefix)
+	if err != nil {
+		return "", err
+	}
+	if len(broken) > 0 {
+		_, _ = fmt.Fprintf(e.err, "brw: warning: broken Caskroom symlinks: %s\n", strings.Join(broken, ", "))
+	}
+	if len(names) > 0 && heading {
+		return "==> Casks\n" + lines(names), nil
+	}
+	return lines(names), nil
 }
 
 // formatVersions matches the output of brew list --versions.
