@@ -144,45 +144,67 @@ func (c *Cleaner) sweep(dir string) {
 // PrunePrefix removes broken symlinks from the standard directories and then the
 // directories that are left empty, as brew cleanup --prune-prefix does.
 func (c *Cleaner) PrunePrefix() error {
-	roots := c.dirs(false)
-	var dirs []string
-	children := map[string]int{}
-	links := 0
-	var walk func(dir string)
-	walk = func(dir string) {
-		entries, err := c.Root.ReadDir(dir)
-		if err != nil {
-			return
+	w := &pruneWalk{c: c, children: map[string]int{}}
+	for _, r := range c.dirs(false) {
+		w.walk(r)
+	}
+	removed := c.removeEmptyDirs(w.dirs, w.children)
+	if !c.DryRun && w.links+removed > 0 {
+		summary := fmt.Sprintf("Pruned %d symbolic links", w.links)
+		if removed > 0 {
+			summary += fmt.Sprintf(" and %d directories", removed)
 		}
-		for _, e := range entries {
-			p := path.Join(dir, e.Name())
-			switch {
-			case e.Type()&fs.ModeSymlink != 0:
-				if _, err := os.Stat(filepath.Join(c.Prefix, p)); err == nil {
-					continue
-				}
-				if c.DryRun {
-					c.printf(c.Out, "Would remove (broken link): %s\n", filepath.Join(c.Prefix, p))
-					if _, ok := children[dir]; ok {
-						children[dir]--
-					}
-				} else if c.Root.Remove(p) == nil {
-					links++
-				}
-			case e.IsDir():
-				dirs = append(dirs, p)
-				if c.DryRun {
-					if inner, err := c.Root.ReadDir(p); err == nil {
-						children[p] = len(inner)
-					}
-				}
-				walk(p)
+		c.printf(c.Out, "%s from %s\n", summary, c.Prefix)
+	}
+	return nil
+}
+
+// pruneWalk removes broken links below a folder and collects the folders it
+// passes, parents first. In a dry run, children counts what each folder would
+// still hold.
+type pruneWalk struct {
+	c        *Cleaner
+	dirs     []string
+	children map[string]int
+	links    int // removed
+}
+
+func (w *pruneWalk) walk(dir string) {
+	c := w.c
+	entries, err := c.Root.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		p := path.Join(dir, e.Name())
+		switch {
+		case e.Type()&fs.ModeSymlink != 0:
+			if _, err := os.Stat(filepath.Join(c.Prefix, p)); err == nil {
+				continue
 			}
+			if c.DryRun {
+				c.printf(c.Out, "Would remove (broken link): %s\n", filepath.Join(c.Prefix, p))
+				if _, ok := w.children[dir]; ok {
+					w.children[dir]--
+				}
+			} else if c.Root.Remove(p) == nil {
+				w.links++
+			}
+		case e.IsDir():
+			w.dirs = append(w.dirs, p)
+			if c.DryRun {
+				if inner, err := c.Root.ReadDir(p); err == nil {
+					w.children[p] = len(inner)
+				}
+			}
+			w.walk(p)
 		}
 	}
-	for _, r := range roots {
-		walk(r)
-	}
+}
+
+// removeEmptyDirs removes the folders that are empty, children first, and
+// says how many went. A dry run only reports them, using children.
+func (c *Cleaner) removeEmptyDirs(dirs []string, children map[string]int) int {
 	removed := 0
 	for _, d := range slices.Backward(dirs) {
 		if c.DryRun {
@@ -198,14 +220,7 @@ func (c *Cleaner) PrunePrefix() error {
 			removed++
 		}
 	}
-	if !c.DryRun && links+removed > 0 {
-		summary := fmt.Sprintf("Pruned %d symbolic links", links)
-		if removed > 0 {
-			summary += fmt.Sprintf(" and %d directories", removed)
-		}
-		c.printf(c.Out, "%s from %s\n", summary, c.Prefix)
-	}
-	return nil
+	return removed
 }
 
 // rmdirIfPossible removes an empty directory, or one that holds only a .DS_Store.

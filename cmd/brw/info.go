@@ -38,102 +38,42 @@ func infoCommand(e *env, args []string) error {
 		return err
 	}
 
-	// Like brew, a name is a formula if there is one, else a cask.
-	var idx *api.Index
-	var client *api.Client
-	if !caskOnly {
-		if idx, client, err = e.indexAndClient(ctx); err != nil {
-			return err
-		}
-	}
-	var casks *api.CaskIndex
-	type item struct {
-		formula *api.Formula
-		cask    *api.Cask
-	}
-	var items []item
-	for _, name := range names {
-		if idx != nil {
-			if f, ok := idx.Lookup(name); ok {
-				items = append(items, item{formula: f})
-				continue
-			}
-		}
-		if !formulaOnly {
-			if casks == nil {
-				if casks, err = e.caskIndex(ctx); err != nil {
-					return err
-				}
-			}
-			if c, ok := casks.Lookup(name); ok {
-				items = append(items, item{cask: c})
-				continue
-			}
-		}
-		switch {
-		case formulaOnly:
-			return fmt.Errorf("no available formula with the name %q", name)
-		case caskOnly:
-			return fmt.Errorf("no available cask with the name %q", name)
-		}
-		return fmt.Errorf("no available formula or cask with the name %q", name)
+	found, err := e.lookupInfoItems(ctx, names, formulaOnly, caskOnly)
+	if err != nil {
+		return err
 	}
 
 	var formulae []*api.Formula
-	for _, it := range items {
+	for _, it := range found.items {
 		if it.formula != nil {
 			formulae = append(formulae, it.formula)
 		}
 	}
 	var env info.Env
 	if len(formulae) > 0 {
-		stale, err := outdated.Check(idx, cellar.Prefix(*prefix), kegs)
+		stale, err := outdated.Check(found.idx, cellar.Prefix(*prefix), kegs)
 		if err != nil {
 			return err
 		}
-		env = info.Env{Index: idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale}
+		env = info.Env{Index: found.idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale}
 	}
 
 	if *asJSON {
-		if len(formulae) < len(items) {
+		if len(formulae) < len(found.items) {
 			return errors.New("info --json for casks is not supported yet")
 		}
-		entries := []json.RawMessage{}
-		for _, f := range formulae {
-			raw, err := client.Raw(f.Name)
-			if err != nil {
-				return err
-			}
-			entry, err := info.JSON(raw, f, env)
-			if err != nil {
-				return err
-			}
-			entries = append(entries, entry)
-		}
-		enc := json.NewEncoder(e.out)
-		enc.SetEscapeHTML(false)
-		enc.SetIndent("", "  ")
-		return enc.Encode(struct {
-			Formulae []json.RawMessage `json:"formulae"`
-			Casks    []struct{}        `json:"casks"`
-		}{entries, []struct{}{}})
+		return writeInfoJSON(e.out, found.client, formulae, env)
 	}
 
 	var caskEnv info.CaskEnv
-	if casks != nil {
-		installed, err := caskroom.Installed(*prefix)
-		if err != nil {
+	if found.casks != nil {
+		if caskEnv, err = e.caskInfoEnv(*prefix, found.casks, kegs); err != nil {
 			return err
 		}
-		caskEnv = info.CaskEnv{Casks: casks, Host: e.host, Prefix: *prefix, Installed: installed, Kegs: kegs}
-		setCaskMachine(&caskEnv.Outdated, *prefix)
-		caskEnv.Home = caskEnv.Outdated.Home
-		_, statErr := os.Stat(rosettaRuntime)
-		caskEnv.Rosetta = statErr == nil
 	}
 
 	var b strings.Builder
-	for i, it := range items {
+	for i, it := range found.items {
 		var text string
 		if it.formula != nil {
 			text, err = info.Text(it.formula, env)
@@ -150,6 +90,96 @@ func infoCommand(e *env, args []string) error {
 	}
 	_, err = io.WriteString(e.out, b.String())
 	return err
+}
+
+// infoItem is a name given to info: a formula or a cask.
+type infoItem struct {
+	formula *api.Formula
+	cask    *api.Cask
+}
+
+// infoLookup is what info found for its names, and the listings it loaded.
+type infoLookup struct {
+	items  []infoItem
+	idx    *api.Index
+	client *api.Client
+	casks  *api.CaskIndex // nil unless a name was looked up as a cask
+}
+
+// lookupInfoItems finds each name, as brew does: a formula if there is one,
+// else a cask. It stops at the first name that is neither.
+func (e *env) lookupInfoItems(ctx context.Context, names []string, formulaOnly, caskOnly bool) (infoLookup, error) {
+	var l infoLookup
+	var err error
+	if !caskOnly {
+		if l.idx, l.client, err = e.indexAndClient(ctx); err != nil {
+			return l, err
+		}
+	}
+	for _, name := range names {
+		if l.idx != nil {
+			if f, ok := l.idx.Lookup(name); ok {
+				l.items = append(l.items, infoItem{formula: f})
+				continue
+			}
+		}
+		if !formulaOnly {
+			if l.casks == nil {
+				if l.casks, err = e.caskIndex(ctx); err != nil {
+					return l, err
+				}
+			}
+			if c, ok := l.casks.Lookup(name); ok {
+				l.items = append(l.items, infoItem{cask: c})
+				continue
+			}
+		}
+		switch {
+		case formulaOnly:
+			return l, fmt.Errorf("no available formula with the name %q", name)
+		case caskOnly:
+			return l, fmt.Errorf("no available cask with the name %q", name)
+		}
+		return l, fmt.Errorf("no available formula or cask with the name %q", name)
+	}
+	return l, nil
+}
+
+// writeInfoJSON is info --json, in brew's shape, for formulae only.
+func writeInfoJSON(w io.Writer, client *api.Client, formulae []*api.Formula, env info.Env) error {
+	entries := []json.RawMessage{}
+	for _, f := range formulae {
+		raw, err := client.Raw(f.Name)
+		if err != nil {
+			return err
+		}
+		entry, err := info.JSON(raw, f, env)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, entry)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	return enc.Encode(struct {
+		Formulae []json.RawMessage `json:"formulae"`
+		Casks    []struct{}        `json:"casks"`
+	}{entries, []struct{}{}})
+}
+
+// caskInfoEnv is what info needs to describe casks on this machine.
+func (e *env) caskInfoEnv(prefix string, casks *api.CaskIndex, kegs []cellar.Keg) (info.CaskEnv, error) {
+	installed, err := caskroom.Installed(prefix)
+	if err != nil {
+		return info.CaskEnv{}, err
+	}
+	env := info.CaskEnv{Casks: casks, Host: e.host, Prefix: prefix, Installed: installed, Kegs: kegs}
+	setCaskMachine(&env.Outdated, prefix)
+	env.Home = env.Outdated.Home
+	_, statErr := os.Stat(rosettaRuntime)
+	env.Rosetta = statErr == nil
+	return env, nil
 }
 
 // rosettaRuntime is there when Rosetta 2 is installed, as brew checks.
