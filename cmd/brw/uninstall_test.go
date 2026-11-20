@@ -208,3 +208,123 @@ func TestAutoremoveKeepsTheBuildDependenciesOfSourceBuiltFormulae(t *testing.T) 
 		t.Errorf("an app built from source needs libb to build: %q, %v", out, err)
 	}
 }
+
+// installedCasks returns a store and prefix with the jq formula and the named
+// app casks installed into apps.
+func installedCasks(t *testing.T, tokens ...string) (*store, *env, string, string) {
+	t.Helper()
+	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "1")
+	s := newStore(t)
+	s.formula(jqBottle(), nil, nil)
+	for _, token := range tokens {
+		s.appCask(token)
+	}
+	e, prefix := s.env()
+	apps := t.TempDir()
+	if out, err := runCmd(t, e, "install", append([]string{"-prefix", prefix, "--appdir", apps, "jq"}, tokens...)...); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return s, e, prefix, apps
+}
+
+func TestUninstallFormulaAndCaskTogether(t *testing.T) {
+	_, e, prefix, apps := installedCasks(t, "app")
+	out, err := runCmd(t, e, "uninstall", "-prefix", prefix, "jq", "app")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, want := range []string{"Uninstalling " + filepath.Join(prefix, "Cellar/jq/1.0"), "==> Uninstalling Cask app\n", "==> Purging files for version 1.0 of Cask app\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output is missing %q:\n%s", want, out)
+		}
+	}
+	for _, p := range []string{"Cellar/jq", "Caskroom/app", "bin/tool"} {
+		if exists(t, prefix, p) {
+			t.Errorf("%s is still there", p)
+		}
+	}
+	if exists(t, apps, "App.app") {
+		t.Error("App.app is still there")
+	}
+}
+
+func TestUninstallCaskDryRunChangesNothing(t *testing.T) {
+	_, e, prefix, apps := installedCasks(t, "app")
+	out, err := runCmd(t, e, "uninstall", "-prefix", prefix, "-n", "--cask", "app")
+	if err != nil || out != "==> Would uninstall 1 cask:\napp 1.0\n" {
+		t.Fatalf("output = %q, err = %v", out, err)
+	}
+	if !exists(t, prefix, "Caskroom/app/1.0") || !exists(t, apps, "App.app") {
+		t.Error("dry run changed something")
+	}
+}
+
+func TestUninstallCaskThatIsNotInstalled(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t)
+	_, err := runCmd(t, e, "uninstall", "-prefix", prefix, "--cask", "nosuch")
+	if err == nil || err.Error() != "Cask 'nosuch' is not installed." {
+		t.Errorf("err = %v", err)
+	}
+	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "--cask", "--force", "nosuch"); err != nil {
+		t.Errorf("--force: %v", err)
+	}
+	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "--cask", "--formula", "jq"); err == nil {
+		t.Error("--cask and --formula together should fail")
+	}
+}
+
+func TestUninstallRefusesTheBrwCask(t *testing.T) {
+	_, e, prefix, apps := installedCasks(t, "brw")
+	_, err := runCmd(t, e, "uninstall", "-prefix", prefix, "--cask", "brw")
+	if err == nil || !strings.Contains(err.Error(), "--force") || !exists(t, prefix, "Caskroom/brw/1.0") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "--cask", "--force", "brw"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(t, prefix, "Caskroom/brw") || exists(t, apps, "App.app") {
+		t.Error("--force should remove it")
+	}
+}
+
+func TestUninstallRefusesAPinnedCask(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t, "app")
+	pins := filepath.Join(prefix, "var/homebrew/pinned_casks")
+	if err := os.MkdirAll(pins, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../../Caskroom/app/1.0", filepath.Join(pins, "app")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runCmd(t, e, "uninstall", "-prefix", prefix, "app")
+	if err == nil || err.Error() != "app is pinned. You must unpin it to uninstall." || !exists(t, prefix, "Caskroom/app/1.0") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "--force", "app"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(t, prefix, "Caskroom/app") || exists(t, prefix, "var/homebrew/pinned_casks/app") {
+		t.Error("--force should unpin and remove it")
+	}
+}
+
+func TestUninstallRefusesACaskAnotherNeeds(t *testing.T) {
+	s, _, prefix, _ := installedCasks(t, "lib")
+	// app needs lib; its install is only the record of one.
+	s.appCask("app")
+	s.casks[1]["depends_on"] = map[string]any{"cask": []string{"lib"}}
+	if err := os.MkdirAll(filepath.Join(prefix, "Caskroom/app/.metadata/1.0/20261119103045.123/Casks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(prefix, "Caskroom/app/.metadata/1.0/20261119103045.123/Casks/app.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e, _ := s.env()
+	_, err := runCmd(t, e, "uninstall", "-prefix", prefix, "lib")
+	if err == nil || !strings.Contains(err.Error(), "because it is required by app, which is currently installed.") || !exists(t, prefix, "Caskroom/lib/1.0") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "--ignore-dependencies", "lib"); err != nil {
+		t.Fatal(err)
+	}
+}

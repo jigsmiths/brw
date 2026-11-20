@@ -5,9 +5,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/cask"
+	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/link"
@@ -25,12 +28,22 @@ func uninstallCommand(e *env, args []string) error {
 	fs.BoolVar(&o.IgnoreDependencies, "ignore-dependencies", false, "remove even if installed formulae need it")
 	fs.BoolVar(&dryRun, "dry-run", false, "show what would be removed")
 	fs.BoolVar(&dryRun, "n", false, "show what would be removed")
+	var formulaOnly, caskOnly bool
+	for _, n := range []string{"formula", "formulae"} {
+		fs.BoolVar(&formulaOnly, n, false, "treat every name as a formula")
+	}
+	for _, n := range []string{"cask", "casks"} {
+		fs.BoolVar(&caskOnly, n, false, "treat every name as a cask")
+	}
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw uninstall [--force] [--ignore-dependencies] [--dry-run] FORMULA [FORMULA ...]")
+		return errors.New("usage: brw uninstall [--formula|--cask] [--force] [--ignore-dependencies] [--dry-run] NAME [NAME ...]")
+	}
+	if formulaOnly && caskOnly {
+		return errors.New("--formula and --cask cannot be used together")
 	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
@@ -40,9 +53,48 @@ func uninstallCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+	installedCasks, err := caskroom.Installed(prefix)
+	if err != nil {
+		return err
+	}
+	// As brew does: an installed formula first, then an installed cask.
+	var formulae []string
+	var casks []caskroom.Cask
+	var notInstalled []error
+	for _, n := range names {
+		i := slices.IndexFunc(installedCasks, func(c caskroom.Cask) bool { return c.Token == n })
+		isKeg := slices.ContainsFunc(kegs, func(k cellar.Keg) bool { return k.Name == n })
+		switch {
+		case formulaOnly, !caskOnly && (isKeg || i < 0):
+			formulae = append(formulae, n) // the remover reports one that is not installed
+		case i >= 0:
+			casks = append(casks, installedCasks[i])
+		case !o.Force:
+			notInstalled = append(notInstalled, cask.NotInstalled(n))
+		}
+	}
 	return withRoot(prefix, *journal, func(root *fsx.Root) error {
 		o.Autoremove = os.Getenv("HOMEBREW_NO_AUTOREMOVE") == ""
-		return newRemover(e, root, prefix, kegs, dryRun).Run(names, o)
+		remover := newRemover(e, root, prefix, kegs, dryRun)
+		if len(casks) == 0 && len(notInstalled) == 0 {
+			return remover.Run(formulae, o)
+		}
+		// brew stops when a formula fails, and autoremoves after the casks.
+		autoremove := o.Autoremove
+		o.Autoremove = false
+		if len(formulae) > 0 {
+			if err := remover.Run(formulae, o); err != nil {
+				return err
+			}
+		}
+		var errs []error
+		if len(casks) > 0 {
+			errs = append(errs, uninstallCasks(e, root, prefix, names, casks, dryRun, o.Force, o.IgnoreDependencies))
+		}
+		if autoremove {
+			errs = append(errs, remover.Autoremove())
+		}
+		return errors.Join(append(errs, notInstalled...)...)
 	})
 }
 

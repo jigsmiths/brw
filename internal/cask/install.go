@@ -40,6 +40,7 @@ type Installer struct {
 	Version string // brw's, for the receipt
 	APIPath string // brew's cask listing, which the receipt names as the source
 	Config  Config
+	Exec    Exec // nil runs commands; uninstall's commands go through it
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -229,13 +230,29 @@ func (in *Installer) moveApp(version string, m move, undo *[]func() error) error
 		return err
 	}
 	in.logf("==> Moving App '%s' to '%s'", filepath.Base(m.source), m.target)
-	if err := in.Apps.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
+	ctx := context.Background()
+	if err := in.mkdirPath(ctx, in.Apps, filepath.Dir(rel)); err != nil {
 		return err
 	}
-	if err := in.Root.MoveTo(in.Apps, staged, rel); err != nil {
-		return err
+	if writable(filepath.Dir(m.target)) {
+		if err := in.Root.MoveTo(in.Apps, staged, rel); err != nil {
+			return err
+		}
+		*undo = append(*undo, func() error { return in.Apps.MoveTo(in.Root, rel, staged) })
+	} else {
+		// brew copies into a folder only sudo can write, then drops the staged app.
+		abs, err := in.Root.Abs(staged)
+		if err != nil {
+			return err
+		}
+		if err := in.sudoIfNeeded(ctx, "/bin/cp", "-pR", abs, m.target); err != nil {
+			return err
+		}
+		*undo = append(*undo, func() error { return in.removePath(ctx, in.Apps, rel) })
+		if err := in.removePath(ctx, in.Root, staged); err != nil {
+			return err
+		}
 	}
-	*undo = append(*undo, func() error { return in.Apps.MoveTo(in.Root, rel, staged) })
 	if err := in.Root.SymlinkTo(in.Apps, m.target, staged); err != nil {
 		return err
 	}
@@ -328,9 +345,10 @@ func (in *Installer) makeExecutable(path string) error {
 // purge_versioned_files does, keeping other versions.
 func (in *Installer) purge(c api.Cask) error {
 	dir := filepath.Join("Caskroom", c.Token)
+	ctx := context.Background()
 	err := errors.Join(
-		removeIfThere(in.Root, filepath.Join(dir, c.Version)),
-		removeIfThere(in.Root, filepath.Join(dir, ".metadata", c.Version)),
+		in.removePath(ctx, in.Root, filepath.Join(dir, c.Version)),
+		in.removePath(ctx, in.Root, filepath.Join(dir, ".metadata", c.Version)),
 	)
 	for _, empty := range []string{filepath.Join(dir, ".metadata"), dir} {
 		if entries, rerr := in.Root.ReadDir(empty); rerr == nil && len(entries) == 0 {
