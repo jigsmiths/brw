@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -373,5 +374,26 @@ func TestInstallRefusesTargetsOutsideItsFolders(t *testing.T) {
 	c := ti.cask(t, `[{"app":["App.app",{"target":"/Users/Shared/App.app"}]}]`)
 	if err := ti.in.Install(context.Background(), c); err == nil || !regexp.MustCompile(`outside`).MatchString(err.Error()) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestInstallIntoALockedAppFolder(t *testing.T) {
+	ti := newTestInstall(t, appTarball)
+	f := &fakeExec{running: map[string]int{}, fail: map[string]bool{}}
+	ti.in.Exec = f.exec
+	lock(t, ti.appDir)
+	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"app":["App.app"]}]`)); err != nil {
+		t.Fatal(err)
+	}
+	app := filepath.Join(ti.appDir, "App.app")
+	if !exists(filepath.Join(app, "Contents/Info.plist")) {
+		t.Error("the app should be in the app folder")
+	}
+	if got := readLink(t, filepath.Join(ti.prefix, "Caskroom/app/1.0/App.app")); got != app {
+		t.Errorf("Caskroom link -> %s", got)
+	}
+	staged := filepath.Join(ti.prefix, "Caskroom/app/1.0/App.app")
+	if got := f.ran("/usr/bin/sudo"); !slices.Equal(got, []string{"/usr/bin/sudo -E -- /bin/cp -pR " + staged + " " + app}) {
+		t.Errorf("sudo calls = %q", got)
 	}
 }

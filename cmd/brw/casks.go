@@ -173,6 +173,7 @@ func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask,
 	in := &cask.Installer{
 		Root:  root,
 		Where: cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
+		Host:  e.host,
 		Log:   e.out, Warn: e.err,
 	}
 	// A missing app folder holds no app to move back.

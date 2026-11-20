@@ -6,17 +6,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 )
 
 // fakeExec records commands. osascript reports apps as running while
-// running says so; rm and rmdir run for real; anything else succeeds.
+// running says so; file commands run for real; anything else succeeds.
+// sudo runs its command with the folder it writes to unlocked for the
+// moment, and its chown makes a path fixable, as owning it would.
 type fakeExec struct {
 	calls   []string
 	running map[string]int // bundle ID: how many more checks find it running
 	fail    map[string]bool
+	noFix   bool // chflags and chmod without sudo change nothing
 }
 
 func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -25,6 +29,26 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 		return nil, errors.New("failed")
 	}
 	switch name {
+	case "/usr/bin/sudo":
+		cmd := args[2:] // after -E --
+		target := cmd[len(cmd)-1]
+		if cmd[0] == "chown" {
+			_ = exec.CommandContext(ctx, "chflags", "-R", "0", target).Run()
+			return exec.CommandContext(ctx, "chmod", "-R", "u+rwx", target).Output()
+		}
+		dir := filepath.Dir(target)
+		if fi, err := os.Stat(dir); err == nil {
+			_ = os.Chmod(dir, 0o755)
+			defer func() { _ = os.Chmod(dir, fi.Mode().Perm()) }()
+		}
+		return exec.CommandContext(ctx, cmd[0], cmd[1:]...).Output()
+	case "/usr/bin/chflags", "/bin/chmod":
+		if f.noFix {
+			return nil, nil
+		}
+		return exec.CommandContext(ctx, name, args...).Output()
+	case "/bin/cp", "/bin/mkdir":
+		return exec.CommandContext(ctx, name, args...).Output()
 	case "osascript":
 		id := args[len(args)-1]
 		if !strings.Contains(args[3], "app.quit()") { // the running check
@@ -268,5 +292,117 @@ func TestUninstallLeavesAFormulasBinary(t *testing.T) {
 	}
 	if !exists(link) {
 		t.Error("the formula's link should stay")
+	}
+}
+
+// lock makes a folder read only for the rest of the test.
+func lock(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+}
+
+func TestUninstallFromALockedAppFolder(t *testing.T) {
+	ti, f := installed(t, `[{"app":["App.app"]}]`)
+	lock(t, ti.appDir)
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	app := filepath.Join(ti.appDir, "App.app")
+	staged := filepath.Join(ti.prefix, "Caskroom/app/1.0/App.app")
+	want := "==> Uninstalling Cask app\n==> Backing up App 'App.app' to '" + staged + "'\n==> Removing App '" + app + "'\n" +
+		"==> Purging files for version 1.0 of Cask app\n"
+	if got := ti.out.String(); got != want {
+		t.Errorf("output:\n%s\nwant:\n%s", got, want)
+	}
+	if exists(app) || exists(filepath.Join(ti.prefix, "Caskroom/app")) {
+		t.Error("the app and the Caskroom entry should be gone")
+	}
+	if got := f.ran("/usr/bin/sudo"); !slices.Equal(got, []string{"/usr/bin/sudo -E -- /bin/rm -R -f -- " + app}) {
+		t.Errorf("sudo calls = %q", got)
+	}
+}
+
+// lockedFile is a file whose user immutable flag stops its removal.
+func lockedFile(t *testing.T, path string) {
+	t.Helper()
+	if runtime.GOOS != "darwin" {
+		t.Skip("chflags is macOS's")
+	}
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("chflags", "uchg", path).Run(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = exec.Command("chflags", "nouchg", path).Run() })
+}
+
+func TestPurgeRemovesFilesItMustUnlockFirst(t *testing.T) {
+	ti, _ := installed(t, `[{"app":["App.app"]}]`)
+	version := filepath.Join(ti.prefix, "Caskroom/app/1.0")
+	lockedFile(t, filepath.Join(version, "locked"))
+	if err := os.MkdirAll(filepath.Join(version, "ro/sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lock(t, filepath.Join(version, "ro"))
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if exists(filepath.Join(ti.prefix, "Caskroom/app")) {
+		t.Error("the Caskroom entry should be gone")
+	}
+	if strings.Contains(ti.out.String(), "sudo") {
+		t.Errorf("no sudo needed: %s", ti.out.String())
+	}
+}
+
+func TestPurgeTakesOwnershipWithSudo(t *testing.T) {
+	ti, f := installed(t, `[{"app":["App.app"]}]`)
+	version := filepath.Join(ti.prefix, "Caskroom/app/1.0")
+	lockedFile(t, filepath.Join(version, "locked"))
+	f.noFix = true // as if someone else owned it
+	ownedByOther = func(string, bool) bool { return true }
+	t.Cleanup(func() { ownedByOther = ownedByAnother })
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ti.out.String(), "==> Using sudo to gain ownership of path '"+version+"'\n") {
+		t.Errorf("output:\n%s", ti.out.String())
+	}
+	if got := f.ran("/usr/bin/sudo -E -- chown"); len(got) != 1 || !strings.HasSuffix(got[0], " -- "+currentUser()+" "+version) {
+		t.Errorf("chown calls = %q", got)
+	}
+	if exists(filepath.Join(ti.prefix, "Caskroom/app")) {
+		t.Error("the Caskroom entry should be gone")
+	}
+}
+
+func TestUninstallDeletesWhatOnlySudoCanAndLeavesSystemFolders(t *testing.T) {
+	home := t.TempDir()
+	ti, f := installed(t, `[{"uninstall":[{"delete":["~/locked/file","~/Library"]}]},{"app":["App.app"]}]`)
+	ti.in.Where.Home = home
+	for _, d := range []string{"locked", "Library"} {
+		if err := os.Mkdir(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(home, "locked/file"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lock(t, filepath.Join(home, "locked"))
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if exists(filepath.Join(home, "locked/file")) || !exists(filepath.Join(home, "Library")) {
+		t.Error("the locked file should go and ~/Library stay")
+	}
+	if got, want := ti.warn.String(), "Warning: Skipping delete for undeletable path '"+filepath.Join(home, "Library")+"'.\n"; got != want {
+		t.Errorf("warnings = %q, want %q", got, want)
+	}
+	if got := f.ran("/usr/bin/sudo"); len(got) != 1 {
+		t.Errorf("sudo calls = %q", got)
 	}
 }

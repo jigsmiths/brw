@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -78,7 +79,7 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		case "app":
-			if err := in.moveBack(token, version, s.move, force); err != nil {
+			if err := in.moveBack(ctx, s.move, force); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		case "binary":
@@ -98,7 +99,7 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 		return err
 	}
 	if force {
-		return removeIfThere(in.Root, filepath.Join("Caskroom", token))
+		return in.removePath(ctx, in.Root, filepath.Join("Caskroom", token))
 	}
 	return nil
 }
@@ -369,7 +370,7 @@ func (in *Installer) running(ctx context.Context, id string) bool {
 }
 
 // resolvePaths expands ~ and globs a directive's paths, skipping, with
-// brew's warnings, relative paths and those whose folder brw cannot write.
+// brew's warnings, relative paths and system and home folders.
 func (in *Installer) resolvePaths(action string, paths []string, each func(path string, resolved []string)) {
 	for _, p := range paths {
 		r := p
@@ -387,7 +388,7 @@ func (in *Installer) resolvePaths(action string, paths []string, each func(path 
 		matches, _ := filepath.Glob(r)
 		var resolved []string
 		for _, m := range matches {
-			if !writable(filepath.Dir(m)) {
+			if undeletable(m, in.Where.Home) {
 				in.warnf("Skipping %s for undeletable path '%s'.", action, m)
 				continue
 			}
@@ -504,7 +505,7 @@ func tildeHome(path, home string) string {
 
 // moveBack is brew's move_back: the app goes back to the Caskroom, which the
 // purge then removes. brew copies and deletes; brw moves, to the same end.
-func (in *Installer) moveBack(token, version string, m move, force bool) error {
+func (in *Installer) moveBack(ctx context.Context, m move, force bool) error {
 	rel, err := in.appRel(m.target)
 	if err != nil {
 		return err
@@ -538,8 +539,38 @@ func (in *Installer) moveBack(token, version string, m move, force bool) error {
 	if err := in.Root.MkdirAll(filepath.Dir(staged), 0o755); err != nil {
 		return err
 	}
+	if writable(filepath.Dir(m.target)) {
+		in.logf("==> Removing App '%s'", m.target)
+		return in.Apps.MoveTo(in.Root, rel, staged)
+	}
+	// A folder only sudo can write: brew's copy, then its delete.
+	if err := in.sudoIfNeeded(ctx, "/bin/cp", in.backupArgs(m.target, abs)...); err != nil {
+		return err
+	}
 	in.logf("==> Removing App '%s'", m.target)
-	return in.Apps.MoveTo(in.Root, rel, staged)
+	return in.removePath(ctx, in.Apps, rel)
+}
+
+// backupArgs are brew's: on Sonoma and later, cp clones within a volume.
+func (in *Installer) backupArgs(target, dest string) []string {
+	args := []string{"-pR", target, dest}
+	if runtime.GOOS != "darwin" {
+		return args
+	}
+	if major, err := versionMajor(in.Host.MacVersion); err != nil || major < 14 {
+		return args
+	}
+	a, errA := os.Stat(target)
+	b, errB := os.Stat(filepath.Dir(dest))
+	if errA != nil || errB != nil {
+		return args
+	}
+	sa, okA := a.Sys().(*syscall.Stat_t)
+	sb, okB := b.Sys().(*syscall.Stat_t)
+	if !okA || !okB || sa.Dev != sb.Dev {
+		return args
+	}
+	return append([]string{"-c"}, args...)
 }
 
 // unlinkBinary removes the binary's link, leaving one a formula linked.
