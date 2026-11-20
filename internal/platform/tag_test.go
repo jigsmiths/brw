@@ -85,6 +85,17 @@ func TestReleaseMajor(t *testing.T) {
 	}
 }
 
+func TestReleaseName(t *testing.T) {
+	for major, want := range map[int]string{27: "golden_gate", 26: "tahoe", 11: "big_sur"} {
+		if got, ok := ReleaseName(major); !ok || got != want {
+			t.Errorf("ReleaseName(%d) = %q, %v; want %q", major, got, ok, want)
+		}
+	}
+	if _, ok := ReleaseName(10); ok {
+		t.Error("10 is not supported")
+	}
+}
+
 func TestMacMajor(t *testing.T) {
 	if got, err := MacMajor("27.0.1"); err != nil || got != 27 {
 		t.Errorf("MacMajor(27.0.1) = %d, %v", got, err)

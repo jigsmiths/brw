@@ -45,6 +45,10 @@ clean:
 conformance-install:
     BRW_CONFORMANCE_INSTALL=1 go test ./cmd/brw -run TestConformanceInstall -count=1 -v -timeout 20m
 
+# Install the same casks with brew and brw into scratch prefixes and app folders, then compare (needs ~/.brw-oracle/hb)
+conformance-cask-install:
+    BRW_CONFORMANCE_CASK_INSTALL=1 go test ./cmd/brw -run TestConformanceCaskInstall -count=1 -v -timeout 20m
+
 # Remove formulae with brew and with brw and compare the prefixes (needs ~/.brw-oracle/hb)
 conformance-uninstall:
     BRW_CONFORMANCE_UNINSTALL=1 go test ./cmd/brw -run TestConformanceUninstall -count=1 -v -timeout 20m

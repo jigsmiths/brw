@@ -53,6 +53,21 @@ type Installer struct {
 // standardDirs are the directories every prefix has, which linking relies on.
 var standardDirs = []string{"Cellar", "bin", "etc", "include", "lib", "sbin", "share", "opt", "var/homebrew/linked"}
 
+// MakeStandardDirs creates the prefix's standard directories, as brew does
+// before installing a formula or a cask.
+func MakeStandardDirs(root *fsx.Root, goos string) error {
+	dirs := standardDirs
+	if goos == "darwin" {
+		dirs = append(slices.Clone(dirs), "Frameworks")
+	}
+	for _, d := range dirs {
+		if err := root.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Result is what happened to one formula.
 type Result struct {
 	Name, Version string
@@ -90,14 +105,8 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, unlock()) }()
-	dirs := standardDirs
-	if cmp.Or(in.OS, runtime.GOOS) == "darwin" {
-		dirs = append(slices.Clone(dirs), "Frameworks")
-	}
-	for _, d := range dirs {
-		if err := in.Root.MkdirAll(d, 0o755); err != nil {
-			return nil, err
-		}
+	if err := MakeStandardDirs(in.Root, cmp.Or(in.OS, runtime.GOOS)); err != nil {
+		return nil, err
 	}
 
 	reqs := make([]bottle.Request, len(plan.Items))

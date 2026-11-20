@@ -12,16 +12,17 @@ const DefaultCaskURL = "https://formulae.brew.sh/api/cask.jws.json"
 // Cask is an entry of the cask listing. Artifacts stay as the API has them,
 // since each kind of artifact has its own shape.
 type Cask struct {
-	Token     string   `json:"token"`
-	FullToken string   `json:"full_token"`
-	OldTokens []string `json:"old_tokens"`
-	Tap       string   `json:"tap"`
-	Names     []string `json:"name"`
-	Desc      string   `json:"desc"`
-	Homepage  string   `json:"homepage"`
-	Version   string   `json:"version"` // "latest" for a cask without versions
-	URL       string   `json:"url"`
-	SHA256    string   `json:"sha256"` // "no_check" when the download is not checked
+	Token      string   `json:"token"`
+	FullToken  string   `json:"full_token"`
+	OldTokens  []string `json:"old_tokens"`
+	Tap        string   `json:"tap"`
+	TapGitHead string   `json:"tap_git_head"`
+	Names      []string `json:"name"`
+	Desc       string   `json:"desc"`
+	Homepage   string   `json:"homepage"`
+	Version    string   `json:"version"` // "latest" for a cask without versions
+	URL        string   `json:"url"`
+	SHA256     string   `json:"sha256"` // "no_check" when the download is not checked
 	// URLSpecs are options for fetching the URL, such as user_agent.
 	URLSpecs map[string]json.RawMessage `json:"url_specs"`
 	// Container says how to open the download, such as {"type":"naked"}; null by default.
@@ -46,6 +47,7 @@ type Cask struct {
 	DependsOn     CaskDependsOn              `json:"depends_on"`
 	ConflictsWith struct{ Cask []string }    `json:"conflicts_with"`
 	Artifacts     []json.RawMessage          `json:"artifacts"`
+	Rename        []json.RawMessage          `json:"rename"` // files to rename after unpacking
 	Variations    map[string]json.RawMessage `json:"variations"`
 }
 

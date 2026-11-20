@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/bottle"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/info"
@@ -25,21 +26,96 @@ func installCommand(e *env, args []string) error {
 	var dryRun bool
 	fs.BoolVar(&dryRun, "dry-run", false, "show what would be installed")
 	fs.BoolVar(&dryRun, "n", false, "show what would be installed")
+	var formulaOnly, caskOnly bool
+	fs.BoolVar(&formulaOnly, "formula", false, "only formulae")
+	fs.BoolVar(&formulaOnly, "formulae", false, "only formulae")
+	fs.BoolVar(&caskOnly, "cask", false, "only casks")
+	fs.BoolVar(&caskOnly, "casks", false, "only casks")
+	appDir := fs.String("appdir", "", "move apps into this folder instead of /Applications")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw install [--dry-run] FORMULA [FORMULA ...]")
+		return errors.New("usage: brw install [--formula|--cask] [--appdir DIR] [--dry-run] NAME [NAME ...]")
+	}
+	if formulaOnly && caskOnly {
+		return errors.New("--formula and --cask are mutually exclusive")
 	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
 		return err
 	}
-	idx, client, err := e.indexAndClient(context.Background())
+	r, err := e.resolve(context.Background(), names, formulaOnly, caskOnly)
 	if err != nil {
 		return err
 	}
+	failures := r.failures
+	if len(r.formulae) > 0 {
+		failures = append(failures, installFormulae(e, prefix, *journal, dryRun, r))
+	}
+	if len(r.casks) > 0 {
+		failures = append(failures, installCasks(e, prefix, *journal, *appDir, dryRun, r.casks))
+	}
+	return errors.Join(failures...)
+}
+
+// resolved is the names given to a command, as brew reads them: a formula if
+// there is one, else a cask.
+type resolved struct {
+	formulae []string
+	casks    []api.Cask
+	idx      *api.Index
+	client   *api.Client
+	failures []error // names that are neither, already reported
+}
+
+func (e *env) resolve(ctx context.Context, names []string, formulaOnly, caskOnly bool) (resolved, error) {
+	var r resolved
+	var err error
+	if !caskOnly {
+		if r.idx, r.client, err = e.indexAndClient(ctx); err != nil {
+			return r, err
+		}
+	}
+	var casks *api.CaskIndex
+	unknown := 0
+	for _, name := range names {
+		if r.idx != nil {
+			if _, ok := r.idx.Lookup(name); ok {
+				r.formulae = append(r.formulae, name)
+				continue
+			}
+		}
+		if !formulaOnly {
+			if casks == nil {
+				if casks, err = e.caskIndex(ctx); err != nil {
+					return r, err
+				}
+			}
+			if c, ok := casks.Lookup(name); ok {
+				r.casks = append(r.casks, *c)
+				continue
+			}
+		}
+		kind := "formula or cask"
+		switch {
+		case formulaOnly:
+			kind = "formula"
+		case caskOnly:
+			kind = "cask"
+		}
+		_, _ = fmt.Fprintf(e.err, "brw: no available %s with the name %q\n", kind, name)
+		unknown++
+	}
+	if unknown > 0 {
+		r.failures = append(r.failures, fmt.Errorf("%d of %d names are neither a formula nor a cask", unknown, len(names)))
+	}
+	return r, nil
+}
+
+func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) error {
+	idx, client, names := r.idx, r.client, r.formulae
 	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
@@ -78,7 +154,7 @@ func installCommand(e *env, args []string) error {
 		_, err := fmt.Fprint(e.out, b.String())
 		return errors.Join(append(failures, err)...)
 	}
-	err = withRoot(prefix, *journal, func(root *fsx.Root) error {
+	err = withRoot(prefix, journal, func(root *fsx.Root) error {
 		return runInstall(e, root, prefix, filepath.Join(client.CacheDir, "downloads"), plan)
 	})
 	return errors.Join(append(failures, err)...)
