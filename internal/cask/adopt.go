@@ -36,7 +36,7 @@ func (in *Installer) bundleVersion(ctx context.Context, plist string) (short, ve
 		return "", "", false
 	}
 	key := func(k string) string {
-		out, err := in.exec(ctx, "plutil", "-extract", k, "raw", "-o", "-", plist)
+		out, err := in.exec(ctx, "/usr/bin/plutil", "-extract", k, "raw", "-o", "-", plist)
 		if err != nil {
 			return ""
 		}

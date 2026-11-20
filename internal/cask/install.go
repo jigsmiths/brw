@@ -133,11 +133,14 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 		if err != nil {
 			return err
 		}
-		if action == alreadyLinked {
+		switch action {
+		case alreadyLinked:
 			in.logf("==> Binary '%s' is already linked to '%s'", filepath.Base(m.source), m.target)
 			continue
+		case skipLink: // a formula linked it since checkTargets
+			continue
 		}
-		if err := in.linkBinary(staged, m, action, &undo); err != nil {
+		if err := in.linkBinary(ctx, staged, m, action, &undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
@@ -220,15 +223,12 @@ func (in *Installer) binaryAction(c api.Cask, m move) (linkAction, string, error
 		if err != nil { // brew's ln --force replaces a broken link
 			return newLink, "", nil
 		}
-		// Compared with a resolved path, so resolved too.
-		caskroom := filepath.Join(in.Where.Prefix, "Caskroom", c.Token)
-		if r, err := filepath.EvalSymlinks(caskroom); err == nil {
-			caskroom = r
-		}
+		caskroom := resolved(filepath.Join(in.Where.Prefix, "Caskroom", c.Token))
+		toSource := in.linksToSource(c, m, real)
 		switch {
-		case in.Adopt && (strings.HasPrefix(real, caskroom+string(filepath.Separator)) || in.linksToSource(c, m, real)):
+		case in.Adopt && (toSource || real != caskroom && in.inside(caskroom, real)):
 			return overwrite, "", nil
-		case in.linksToSource(c, m, real):
+		case toSource:
 			return alreadyLinked, "", nil
 		}
 		if formula, ok := in.formulaLink(m.target); ok {
@@ -258,17 +258,22 @@ func (in *Installer) formulaLink(path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	// Compared with a resolved path, so resolved too.
-	cellar := filepath.Join(in.Where.Prefix, "Cellar")
-	if r, err := filepath.EvalSymlinks(cellar); err == nil {
-		cellar = r
-	}
+	cellar := resolved(filepath.Join(in.Where.Prefix, "Cellar"))
 	rel, err := filepath.Rel(cellar, real)
 	if err != nil || rel == "." || !in.inside(cellar, real) {
 		return "", false
 	}
 	formula, _, _ := strings.Cut(rel, string(filepath.Separator))
 	return formula, true
+}
+
+// resolved is dir with its links resolved, to compare with resolved paths;
+// dir itself when it cannot be resolved.
+func resolved(dir string) string {
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
+		return r
+	}
+	return dir
 }
 
 func (in *Installer) inside(dir, path string) bool {
@@ -384,7 +389,7 @@ func caskroomGroup() string {
 
 // linkBinary links the binary from the prefix's bin, as brew does: through
 // the staged version for a relative source, and makes it executable.
-func (in *Installer) linkBinary(staged string, m move, action linkAction, undo *[]func() error) error {
+func (in *Installer) linkBinary(ctx context.Context, staged string, m move, action linkAction, undo *[]func() error) error {
 	source := m.source
 	if !filepath.IsAbs(source) {
 		source = filepath.Join(staged, source)
@@ -399,7 +404,7 @@ func (in *Installer) linkBinary(staged string, m move, action linkAction, undo *
 	}
 	if action == overwrite {
 		in.warnf("It seems there is already a Binary at '%s'; overwriting.", m.target)
-		if err := in.removePath(context.Background(), in.Root, rel); err != nil {
+		if err := in.removePath(ctx, in.Root, rel); err != nil {
 			return err
 		}
 	}
