@@ -57,7 +57,7 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 	}
 	if dryRun {
 		var b strings.Builder
-		fmt.Fprintf(&b, "==> Would install %d cask%s:\n", len(todo), map[bool]string{true: "s", false: ""}[len(todo) != 1])
+		fmt.Fprintf(&b, "==> Would install %d %s:\n", len(todo), plural(len(todo), "cask", "casks"))
 		for _, c := range todo {
 			fmt.Fprintf(&b, "%s %s\n", c.Token, c.Version)
 		}
@@ -124,12 +124,12 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 
 // uninstallCasks removes installed casks as brew does. It refuses brw's own
 // cask unless forced, and a cask another installed cask needs.
-func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks []caskroom.Cask, dryRun, force, ignoreDeps bool) error {
+func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks, installed []caskroom.Cask, dryRun, force, ignoreDeps bool) error {
 	if !force && slices.ContainsFunc(casks, func(c caskroom.Cask) bool { return c.Token == "brw" }) {
 		return errors.New("refusing to uninstall the brw cask, which is brw itself; use --force to remove it")
 	}
 	if !ignoreDeps {
-		if err := e.checkDependentCasks(prefix, named, casks); err != nil {
+		if err := e.checkDependentCasks(named, casks, installed); err != nil {
 			return err
 		}
 	}
@@ -152,7 +152,7 @@ func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks
 	if dryRun {
 		if len(todo) > 0 {
 			var b strings.Builder
-			fmt.Fprintf(&b, "==> Would uninstall %d cask%s:\n", len(todo), map[bool]string{true: "s", false: ""}[len(todo) != 1])
+			fmt.Fprintf(&b, "==> Would uninstall %d %s:\n", len(todo), plural(len(todo), "cask", "casks"))
 			for _, c := range todo {
 				fmt.Fprintf(&b, "%s %s\n", c.Token, c.Version)
 			}
@@ -191,11 +191,7 @@ func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask,
 
 // checkDependentCasks refuses to remove a cask that another installed cask
 // depends on. Without the cask listing, there is nothing to check against.
-func (e *env) checkDependentCasks(prefix string, named []string, casks []caskroom.Cask) error {
-	installed, err := caskroom.Installed(prefix)
-	if err != nil {
-		return err
-	}
+func (e *env) checkDependentCasks(named []string, casks, installed []caskroom.Cask) error {
 	removing := map[string]bool{}
 	for _, c := range casks {
 		removing[c.Token] = true

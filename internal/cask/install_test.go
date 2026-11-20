@@ -52,6 +52,7 @@ func newTestInstall(t *testing.T, body []byte) *testInstall {
 		Fetcher: &Fetcher{Dir: t.TempDir()},
 		Log:     out,
 		Now:     func() time.Time { return time.Date(2026, 11, 19, 10, 30, 45, 123e6, time.UTC) },
+		Sleep:   func(time.Duration) {},
 		Version: "0.9.0",
 		APIPath: "/cache/api/internal/packages.arm64_tahoe.jws.json",
 		Config:  Config{Languages: []string{"en-ZA"}, ExplicitAppDir: appDir},

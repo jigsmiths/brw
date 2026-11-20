@@ -26,11 +26,7 @@ func installCommand(e *env, args []string) error {
 	var dryRun bool
 	fs.BoolVar(&dryRun, "dry-run", false, "show what would be installed")
 	fs.BoolVar(&dryRun, "n", false, "show what would be installed")
-	var formulaOnly, caskOnly bool
-	fs.BoolVar(&formulaOnly, "formula", false, "only formulae")
-	fs.BoolVar(&formulaOnly, "formulae", false, "only formulae")
-	fs.BoolVar(&caskOnly, "cask", false, "only casks")
-	fs.BoolVar(&caskOnly, "casks", false, "only casks")
+	kinds := kindFlags(fs)
 	appDir := fs.String("appdir", "", "move apps into this folder instead of /Applications")
 	adopt := fs.Bool("adopt", false, "take over apps already in the app folder")
 	names, err := parse(fs, args)
@@ -40,8 +36,9 @@ func installCommand(e *env, args []string) error {
 	if len(names) == 0 {
 		return errors.New("usage: brw install [--formula|--cask] [--appdir DIR] [--adopt] [--dry-run] NAME [NAME ...]")
 	}
-	if formulaOnly && caskOnly {
-		return errors.New("--formula and --cask are mutually exclusive")
+	formulaOnly, caskOnly, err := kinds()
+	if err != nil {
+		return err
 	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
@@ -148,7 +145,7 @@ func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) er
 	}
 	if dryRun {
 		var b strings.Builder
-		fmt.Fprintf(&b, "==> Would install %d formula%s:\n", len(plan.Items), map[bool]string{true: "e", false: ""}[len(plan.Items) != 1])
+		fmt.Fprintf(&b, "==> Would install %d %s:\n", len(plan.Items), plural(len(plan.Items), "formula", "formulae"))
 		for _, it := range plan.Items {
 			fmt.Fprintf(&b, "%s %s\n", it.Formula.Name, it.PkgVersion)
 		}

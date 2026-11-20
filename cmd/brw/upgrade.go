@@ -88,7 +88,7 @@ func upgradeCommand(e *env, args []string) error {
 	}
 	var failures []error
 	if len(pinned) > 0 {
-		msg := fmt.Sprintf("not upgrading %d pinned %s:", len(pinned), map[bool]string{true: "package", false: "packages"}[len(pinned) == 1])
+		msg := fmt.Sprintf("not upgrading %d pinned %s:", len(pinned), plural(len(pinned), "package", "packages"))
 		for _, r := range pinned {
 			msg += fmt.Sprintf("\n%s %s", r.Name, r.PinnedVersion)
 		}

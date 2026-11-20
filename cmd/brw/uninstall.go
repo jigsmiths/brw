@@ -28,13 +28,7 @@ func uninstallCommand(e *env, args []string) error {
 	fs.BoolVar(&o.IgnoreDependencies, "ignore-dependencies", false, "remove even if installed formulae need it")
 	fs.BoolVar(&dryRun, "dry-run", false, "show what would be removed")
 	fs.BoolVar(&dryRun, "n", false, "show what would be removed")
-	var formulaOnly, caskOnly bool
-	for _, n := range []string{"formula", "formulae"} {
-		fs.BoolVar(&formulaOnly, n, false, "treat every name as a formula")
-	}
-	for _, n := range []string{"cask", "casks"} {
-		fs.BoolVar(&caskOnly, n, false, "treat every name as a cask")
-	}
+	kinds := kindFlags(fs)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -42,8 +36,9 @@ func uninstallCommand(e *env, args []string) error {
 	if len(names) == 0 {
 		return errors.New("usage: brw uninstall [--formula|--cask] [--force] [--ignore-dependencies] [--dry-run] NAME [NAME ...]")
 	}
-	if formulaOnly && caskOnly {
-		return errors.New("--formula and --cask cannot be used together")
+	formulaOnly, caskOnly, err := kinds()
+	if err != nil {
+		return err
 	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
@@ -89,7 +84,7 @@ func uninstallCommand(e *env, args []string) error {
 		}
 		var errs []error
 		if len(casks) > 0 {
-			errs = append(errs, uninstallCasks(e, root, prefix, names, casks, dryRun, o.Force, o.IgnoreDependencies))
+			errs = append(errs, uninstallCasks(e, root, prefix, names, casks, installedCasks, dryRun, o.Force, o.IgnoreDependencies))
 		}
 		if autoremove {
 			errs = append(errs, remover.Autoremove())
