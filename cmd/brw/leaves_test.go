@@ -59,7 +59,7 @@ func TestCommandsWarnAboutAnUnreadableReceiptAndCarryOn(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, cmd := range []string{"leaves", "outdated"} {
-		e := &env{host: mac}
+		e := &env{host: mac, client: apiServer(t)}
 		if _, err := runCmd(t, e, cmd, "-prefix", prefix); err != nil && strings.Contains(err.Error(), "age 1.0") {
 			t.Errorf("%s failed on the bad receipt: %v", cmd, err)
 		}

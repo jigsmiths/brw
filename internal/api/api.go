@@ -217,7 +217,7 @@ const freshFor = 10 * time.Minute
 // different, or the index itself changes shape, so an index written by an older
 // brw is not trusted. Changes to the Formula or Cask type are caught by their
 // fingerprints.
-const indexVersion = "2"
+const indexVersion = "3"
 
 // Client fetches the formula and cask listings and caches each in CacheDir by
 // ETag. It also keeps an index of each parsed listing, which is much faster to
@@ -232,6 +232,8 @@ type Client struct {
 	HTTP *http.Client
 	Warn func(msg string)
 	Now  func() time.Time // defaults to time.Now
+
+	entries map[string]span // formula name to its entry in the cached listing, after Formulae
 }
 
 func (c *Client) now() time.Time {
@@ -300,8 +302,24 @@ func nameDiff[T any](old, next []T, name func(T) string) (added, removed []strin
 	return added, removed
 }
 
+// Formulae loads the formula listing. It also learns where each entry is in
+// the cached listing, so Raw and Bottles can read one without a scan.
 func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
-	return load(ctx, c, c.formulaListing(), false)
+	var spans []span
+	l := c.formulaListing()
+	l.spans = &spans
+	items, err := load(ctx, c, l, false)
+	if err != nil {
+		return nil, err
+	}
+	c.entries = nil
+	if len(spans) == len(items) {
+		c.entries = make(map[string]span, len(items))
+		for i := range items {
+			c.entries[items[i].Name] = spans[i]
+		}
+	}
+	return items, nil
 }
 
 // listing is one of the signed listings the client caches, in the files
@@ -310,7 +328,8 @@ type listing[T any] struct {
 	stem        string
 	url         string
 	parse       func([]byte) ([]T, error)
-	fingerprint string // of the index, see indexFingerprint
+	fingerprint string  // of the index, see indexFingerprint
+	spans       *[]span // set to the entries' spans when known, if not nil
 }
 
 func (l listing[T]) file(dir, ext string) string { return filepath.Join(dir, l.stem+ext) }
@@ -393,7 +412,7 @@ func load[T any](ctx context.Context, c *Client, l listing[T], force bool) ([]T,
 	if tag != "" {
 		err = writeAtomic(etagFile, []byte(tag))
 		c.touch(etagFile)
-		storeIndex(c, l, tag, items)
+		storeIndex(c, l, tag, items, data)
 	} else {
 		err = os.Remove(etagFile) //fsx:allow cache file
 		if errors.Is(err, fs.ErrNotExist) {
@@ -433,7 +452,7 @@ func fromCache[T any](c *Client, l listing[T], etag string) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	storeIndex(c, l, etag, items)
+	storeIndex(c, l, etag, items, data)
 	return items, nil
 }
 
@@ -442,6 +461,28 @@ type listingIndex[T any] struct {
 	Fingerprint string
 	ETag        string
 	Items       []T
+	Spans       []span // where each item's entry is in the listing; nil if unknown
+}
+
+// span is where one entry is in a cached listing, in bytes.
+type span struct{ Off, Len int64 }
+
+// entrySpans finds every entry of a listing, in order.
+func entrySpans(data []byte) ([]span, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if _, err := dec.Token(); err != nil { // the opening bracket
+		return nil, err
+	}
+	var spans []span
+	for dec.More() {
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return nil, err
+		}
+		n := int64(len(raw))
+		spans = append(spans, span{dec.InputOffset() - n, n})
+	}
+	return spans, nil
 }
 
 var (
@@ -467,16 +508,27 @@ func loadIndex[T any](c *Client, l listing[T], etag string) ([]T, bool) {
 	if idx.Fingerprint != l.fingerprint || idx.ETag != etag {
 		return nil, false
 	}
+	if l.spans != nil {
+		*l.spans = idx.Spans
+	}
 	return idx.Items, true
 }
 
 // storeIndex is best effort: without an index the listing is parsed each time.
-func storeIndex[T any](c *Client, l listing[T], etag string, items []T) {
+// data is the listing as cached, which the spans point into.
+func storeIndex[T any](c *Client, l listing[T], etag string, items []T, data []byte) {
 	if etag == "" {
 		return
 	}
+	spans, err := entrySpans(data)
+	if err != nil || len(spans) != len(items) {
+		spans = nil
+	}
+	if l.spans != nil {
+		*l.spans = spans
+	}
 	var b bytes.Buffer
-	if err := gob.NewEncoder(&b).Encode(listingIndex[T]{l.fingerprint, etag, items}); err != nil {
+	if err := gob.NewEncoder(&b).Encode(listingIndex[T]{l.fingerprint, etag, items, spans}); err != nil {
 		return
 	}
 	_ = writeAtomic(l.file(c.CacheDir, ".index"), b.Bytes())
@@ -547,9 +599,35 @@ func (c *Client) each(fn func(name string, raw json.RawMessage) (done bool, err 
 	return nil
 }
 
+// entry reads one formula's entry where Formulae found it. ok is false when
+// it is not known, or the listing changed since, so the caller scans instead.
+func (c *Client) entry(name string) (json.RawMessage, bool) {
+	s, ok := c.entries[name]
+	if !ok {
+		return nil, false
+	}
+	f, err := os.Open(filepath.Join(c.CacheDir, "formula.json"))
+	if err != nil {
+		return nil, false
+	}
+	defer func() { _ = f.Close() }()
+	raw := make([]byte, s.Len)
+	if _, err := f.ReadAt(raw, s.Off); err != nil {
+		return nil, false
+	}
+	var probe struct{ Name string }
+	if json.Unmarshal(raw, &probe) != nil || probe.Name != name {
+		return nil, false
+	}
+	return raw, true
+}
+
 // Raw returns the cached JSON entry for the formula with this exact name,
 // exactly as the API served it. Call Formulae first to fill the cache.
 func (c *Client) Raw(name string) (json.RawMessage, error) {
+	if raw, ok := c.entry(name); ok {
+		return raw, nil
+	}
 	var found json.RawMessage
 	err := c.each(func(n string, raw json.RawMessage) (bool, error) {
 		if n == name {
@@ -573,37 +651,42 @@ type BottleFile struct {
 	SHA256 string `json:"sha256"`
 }
 
-// Bottles looks up the bottle of each formula for its tag, in one pass over the
-// cached listing. want maps a formula name to a bottle tag.
+// Bottles looks up the bottle of each formula for its tag: where Formulae
+// found its entry, else in one pass over the cached listing. want maps a
+// formula name to a bottle tag.
 func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) {
 	out := make(map[string]BottleFile, len(want))
-	if len(want) == 0 {
-		return out, nil
-	}
-	err := c.each(func(name string, raw json.RawMessage) (bool, error) {
-		tag, ok := want[name]
+	rest := map[string]string{} // not found by entry
+	for _, name := range slices.Sorted(maps.Keys(want)) {
+		raw, ok := c.entry(name)
 		if !ok {
-			return false, nil
+			rest[name] = want[name]
+			continue
 		}
-		var e struct {
-			Bottle struct {
-				Stable struct {
-					Files map[string]BottleFile `json:"files"`
-				} `json:"stable"`
-			} `json:"bottle"`
-		}
-		if err := json.Unmarshal(raw, &e); err != nil {
-			return false, fmt.Errorf("%s: %w", name, err)
-		}
-		file, ok := e.Bottle.Stable.Files[tag]
-		if !ok {
-			return false, fmt.Errorf("%s has no bottle for %s", name, tag)
+		file, err := bottleFile(name, want[name], raw)
+		if err != nil {
+			return nil, err
 		}
 		out[name] = file
-		return len(out) == len(want), nil
-	})
-	if err != nil {
-		return nil, err
+	}
+	if len(rest) > 0 {
+		found := 0
+		err := c.each(func(name string, raw json.RawMessage) (bool, error) {
+			tag, ok := rest[name]
+			if !ok {
+				return false, nil
+			}
+			file, err := bottleFile(name, tag, raw)
+			if err != nil {
+				return false, err
+			}
+			out[name] = file
+			found++
+			return found == len(rest), nil
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	for name := range want {
 		if _, ok := out[name]; !ok {
@@ -611,6 +694,25 @@ func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) 
 		}
 	}
 	return out, nil
+}
+
+// bottleFile reads the bottle for tag from a formula's entry.
+func bottleFile(name, tag string, raw json.RawMessage) (BottleFile, error) {
+	var e struct {
+		Bottle struct {
+			Stable struct {
+				Files map[string]BottleFile `json:"files"`
+			} `json:"stable"`
+		} `json:"bottle"`
+	}
+	if err := json.Unmarshal(raw, &e); err != nil {
+		return BottleFile{}, fmt.Errorf("%s: %w", name, err)
+	}
+	file, ok := e.Bottle.Stable.Files[tag]
+	if !ok {
+		return BottleFile{}, fmt.Errorf("%s has no bottle for %s", name, tag)
+	}
+	return file, nil
 }
 
 // stale returns the cached listing after a failed fetch, or the fetch error if there is none.

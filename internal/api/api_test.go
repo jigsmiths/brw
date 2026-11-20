@@ -428,6 +428,66 @@ func TestRaw(t *testing.T) {
 	}
 }
 
+func TestEntriesMatchTheScan(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	defer ts.Close()
+	dir := t.TempDir()
+	fetched := &Client{Key: testKey(), URL: ts.URL, CacheDir: dir}
+	if _, err := fetched.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// A second client finds the spans in the index rather than computing them.
+	indexed := &Client{Key: testKey(), URL: ts.URL, CacheDir: dir}
+	if _, err := indexed.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []*Client{fetched, indexed} {
+		if len(c.entries) != fixtureSize {
+			t.Fatalf("entries = %d, want %d", len(c.entries), fixtureSize)
+		}
+		err := c.each(func(name string, raw json.RawMessage) (bool, error) {
+			got, ok := c.entry(name)
+			if !ok || !bytes.Equal(got, raw) {
+				t.Errorf("entry(%s) = %.80s, %v; want %.80s", name, got, ok, raw)
+			}
+			return false, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRawScansWhenTheListingMoved(t *testing.T) {
+	ts := httptest.NewServer(&server{body: fixture(t)})
+	defer ts.Close()
+	dir := t.TempDir()
+	c := &Client{Key: testKey(), URL: ts.URL, CacheDir: dir}
+	if _, err := c.Formulae(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Another brw rewrote the listing: every entry is now somewhere else.
+	path := filepath.Join(dir, "formula.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append([]byte("    "), body...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.entry("jq"); ok {
+		t.Error("entry should notice that the listing moved")
+	}
+	raw, err := c.Raw("jq")
+	var got struct{ Name string }
+	if err != nil || json.Unmarshal(raw, &got) != nil || got.Name != "jq" {
+		t.Errorf("Raw(jq) = %.80s, %v", raw, err)
+	}
+	if b, err := c.Bottles(map[string]string{"jq": "arm64_tahoe"}); err != nil || b["jq"].SHA256 == "" {
+		t.Errorf("Bottles = %v, %v", b, err)
+	}
+}
+
 func TestConflictReasonsNullBecomesEmpty(t *testing.T) {
 	fs, err := Parse([]byte(`[{"name":"x","conflicts_with":["a","b"],"conflicts_with_reasons":["both install x",null]}]`))
 	if err != nil {
