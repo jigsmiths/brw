@@ -37,8 +37,9 @@ type Installer struct {
 	Log     io.Writer
 	Warn    io.Writer // brew's warnings
 	Now     func() time.Time
-	Version string // brw's, for the receipt
-	APIPath string // brew's cask listing, which the receipt names as the source
+	Sleep   func(time.Duration) // brew's pauses; nil is time.Sleep
+	Version string              // brw's, for the receipt
+	APIPath string              // brew's cask listing, which the receipt names as the source
 	Config  Config
 	Exec    Exec // nil runs commands; uninstall's commands go through it
 }
@@ -103,7 +104,7 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 		for i := len(undo) - 1; i >= 0; i-- {
 			err = errors.Join(err, undo[i]())
 		}
-		err = errors.Join(err, in.purge(c))
+		err = errors.Join(err, in.purge(context.WithoutCancel(ctx), c))
 	}()
 	if err := in.Root.MkdirAll(version, 0o755); err != nil {
 		return err
@@ -119,7 +120,7 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 		return err
 	}
 	for _, m := range p.apps {
-		if err := in.moveApp(version, m, &undo); err != nil {
+		if err := in.moveApp(ctx, version, m, &undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
@@ -165,12 +166,6 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan) ([]bool, error) {
 		}
 	}
 	links := make([]bool, len(p.binaries))
-	// Compared with resolved links, so resolved too.
-	cellar := filepath.Join(in.Where.Prefix, "Cellar")
-	if real, err := filepath.EvalSymlinks(cellar); err == nil {
-		cellar = real
-	}
-	cellar += string(filepath.Separator)
 	for i, m := range p.binaries {
 		if _, err := in.prefixRel(m.target); err != nil {
 			return nil, fmt.Errorf("%s: %w", c.Token, err)
@@ -187,8 +182,7 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan) ([]bool, error) {
 			return nil, err
 		}
 		if fi.Mode()&fs.ModeSymlink != 0 {
-			if real, err := filepath.EvalSymlinks(m.target); err == nil && strings.HasPrefix(real, cellar) {
-				formula, _, _ := strings.Cut(strings.TrimPrefix(real, cellar), string(filepath.Separator))
+			if formula, ok := in.formulaLink(m.target); ok {
 				in.warnf("It seems there is already a Binary at '%s' from formula %s; skipping link.", m.target, formula)
 				continue
 			}
@@ -196,6 +190,25 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan) ([]bool, error) {
 		return nil, brewError("%s: It seems there is already a Binary at '%s'.", c.Token, m.target)
 	}
 	return links, nil
+}
+
+// formulaLink names the formula whose keg the link at path resolves into.
+func (in *Installer) formulaLink(path string) (string, bool) {
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", false
+	}
+	// Compared with a resolved path, so resolved too.
+	cellar := filepath.Join(in.Where.Prefix, "Cellar")
+	if r, err := filepath.EvalSymlinks(cellar); err == nil {
+		cellar = r
+	}
+	rel, err := filepath.Rel(cellar, real)
+	if err != nil || rel == "." || !in.inside(cellar, real) {
+		return "", false
+	}
+	formula, _, _ := strings.Cut(rel, string(filepath.Separator))
+	return formula, true
 }
 
 func (in *Installer) inside(dir, path string) bool {
@@ -219,7 +232,7 @@ func (in *Installer) prefixRel(target string) (string, error) {
 
 // moveApp moves the staged app to its target, leaves a link to it in its
 // place, as brew does, and sets brew's permissions.
-func (in *Installer) moveApp(version string, m move, undo *[]func() error) error {
+func (in *Installer) moveApp(ctx context.Context, version string, m move, undo *[]func() error) error {
 	staged := filepath.Join(version, m.source)
 	if _, err := in.Root.Lstat(staged); err != nil {
 		abs, _ := in.Root.Abs(staged)
@@ -230,7 +243,6 @@ func (in *Installer) moveApp(version string, m move, undo *[]func() error) error
 		return err
 	}
 	in.logf("==> Moving App '%s' to '%s'", filepath.Base(m.source), m.target)
-	ctx := context.Background()
 	if err := in.mkdirPath(ctx, in.Apps, filepath.Dir(rel)); err != nil {
 		return err
 	}
@@ -248,7 +260,8 @@ func (in *Installer) moveApp(version string, m move, undo *[]func() error) error
 		if err := in.sudoIfNeeded(ctx, "/bin/cp", "-pR", abs, m.target); err != nil {
 			return err
 		}
-		*undo = append(*undo, func() error { return in.removePath(ctx, in.Apps, rel) })
+		// Undo runs after a failure, which may be the context's cancellation.
+		*undo = append(*undo, func() error { return in.removePath(context.WithoutCancel(ctx), in.Apps, rel) })
 		if err := in.removePath(ctx, in.Root, staged); err != nil {
 			return err
 		}
@@ -257,13 +270,13 @@ func (in *Installer) moveApp(version string, m move, undo *[]func() error) error
 		return err
 	}
 	*undo = append(*undo, func() error { return in.Root.Remove(staged) })
-	if err := run(context.Background(), "chmod", "-R", "a+rX,go-w", m.target); err != nil {
+	if err := run(ctx, "chmod", "-R", "a+rX,go-w", m.target); err != nil {
 		return err
 	}
 	// brew needs this to succeed in /Applications and lets it fail elsewhere;
 	// without sudo, brw lets it fail everywhere.
 	if group := caskroomGroup(); group != "" {
-		_ = run(context.Background(), "chgrp", "-hR", group, m.target)
+		_ = run(ctx, "chgrp", "-hR", group, m.target)
 	}
 	return nil
 }
@@ -343,9 +356,8 @@ func (in *Installer) makeExecutable(path string) error {
 
 // purge removes what the cask left in the Caskroom, as brew's
 // purge_versioned_files does, keeping other versions.
-func (in *Installer) purge(c api.Cask) error {
+func (in *Installer) purge(ctx context.Context, c api.Cask) error {
 	dir := filepath.Join("Caskroom", c.Token)
-	ctx := context.Background()
 	err := errors.Join(
 		in.removePath(ctx, in.Root, filepath.Join(dir, c.Version)),
 		in.removePath(ctx, in.Root, filepath.Join(dir, ".metadata", c.Version)),
