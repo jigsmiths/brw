@@ -146,7 +146,7 @@ func (c *Cleaner) sweep(dir string) {
 func (c *Cleaner) PrunePrefix() error {
 	w := &pruneWalk{c: c, children: map[string]int{}}
 	for _, r := range c.dirs(false) {
-		w.walk(r)
+		_ = c.Root.WalkDir(r, w.visit)
 	}
 	removed := c.removeEmptyDirs(w.dirs, w.children)
 	if !c.DryRun && w.links+removed > 0 {
@@ -160,8 +160,8 @@ func (c *Cleaner) PrunePrefix() error {
 }
 
 // pruneWalk removes broken links below a folder and collects the folders it
-// passes, parents first. In a dry run, children counts what each folder would
-// still hold.
+// passes, parents first. children counts what each folder still holds, which
+// a dry run uses in place of looking.
 type pruneWalk struct {
 	c        *Cleaner
 	dirs     []string
@@ -169,37 +169,22 @@ type pruneWalk struct {
 	links    int // removed
 }
 
-func (w *pruneWalk) walk(dir string) {
+func (w *pruneWalk) visit(p string, e fs.DirEntry) {
 	c := w.c
-	entries, err := c.Root.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		p := path.Join(dir, e.Name())
-		switch {
-		case e.Type()&fs.ModeSymlink != 0:
-			if _, err := os.Stat(filepath.Join(c.Prefix, p)); err == nil {
-				continue
-			}
+	if e.Type()&fs.ModeSymlink != 0 {
+		if _, err := os.Stat(filepath.Join(c.Prefix, p)); err != nil {
 			if c.DryRun {
 				c.printf(c.Out, "Would remove (broken link): %s\n", filepath.Join(c.Prefix, p))
-				if _, ok := w.children[dir]; ok {
-					w.children[dir]--
-				}
 			} else if c.Root.Remove(p) == nil {
 				w.links++
 			}
-		case e.IsDir():
-			w.dirs = append(w.dirs, p)
-			if c.DryRun {
-				if inner, err := c.Root.ReadDir(p); err == nil {
-					w.children[p] = len(inner)
-				}
-			}
-			w.walk(p)
+			return
 		}
 	}
+	if e.IsDir() {
+		w.dirs = append(w.dirs, p)
+	}
+	w.children[path.Dir(p)]++
 }
 
 // removeEmptyDirs removes the folders that are empty, children first, and

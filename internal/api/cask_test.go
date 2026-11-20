@@ -203,7 +203,7 @@ func TestCasksAreCachedApartFromFormulae(t *testing.T) {
 	if fs, err := c.Formulae(context.Background()); err != nil || len(fs) != fixtureSize {
 		t.Fatalf("got %d formulae, %v", len(fs), err)
 	}
-	if cs, err := c.Casks(context.Background()); err != nil || len(cs) != caskFixtureSize {
+	if cs, err := casksOf(c); err != nil || len(cs) != caskFixtureSize {
 		t.Fatalf("got %d casks, %v", len(cs), err)
 	}
 	for _, name := range []string{"cask.json", "cask.etag", "cask.index", "formula.json", "formula.etag", "formula.index"} {
@@ -217,7 +217,7 @@ func TestCasksAreCachedApartFromFormulae(t *testing.T) {
 		t.Fatal(err)
 	}
 	clk.offset = time.Minute
-	if cs, err := c.Casks(context.Background()); err != nil || len(cs) != caskFixtureSize {
+	if cs, err := casksOf(c); err != nil || len(cs) != caskFixtureSize {
 		t.Fatalf("from the index: got %d casks, %v", len(cs), err)
 	}
 	if formulae.hits.Load() != 1 || casks.hits.Load() != 1 {
@@ -228,12 +228,12 @@ func TestCasksAreCachedApartFromFormulae(t *testing.T) {
 func TestCasksStaleCacheWarnsAboutCasks(t *testing.T) {
 	ts, _, _ := listings(t)
 	dir := t.TempDir()
-	if _, err := (&Client{Key: testKey(), CaskURL: ts.URL + "/cask", CacheDir: dir}).Casks(context.Background()); err != nil {
+	if _, err := casksOf(&Client{Key: testKey(), CaskURL: ts.URL + "/cask", CacheDir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	var warnings []string
 	c := &Client{Key: testKey(), CaskURL: "http://127.0.0.1:1", CacheDir: dir, Now: afterFresh, Warn: func(m string) { warnings = append(warnings, m) }}
-	if cs, err := c.Casks(context.Background()); err != nil || len(cs) != caskFixtureSize {
+	if cs, err := casksOf(c); err != nil || len(cs) != caskFixtureSize {
 		t.Fatalf("got %d casks, %v; want the stale cache", len(cs), err)
 	}
 	if len(warnings) != 1 || !strings.HasPrefix(warnings[0], "using the cached cask list") {
@@ -245,7 +245,7 @@ func TestCasksRejectAnUnsignedListing(t *testing.T) {
 	ts := httptest.NewServer(&server{body: caskFixture(t), raw: true})
 	defer ts.Close()
 	dir := t.TempDir()
-	_, err := (&Client{Key: testKey(), CaskURL: ts.URL, CacheDir: dir}).Casks(context.Background())
+	_, err := casksOf(&Client{Key: testKey(), CaskURL: ts.URL, CacheDir: dir})
 	if err == nil || !strings.Contains(err.Error(), "the cask listing") {
 		t.Errorf("err = %v", err)
 	}
@@ -254,36 +254,85 @@ func TestCasksRejectAnUnsignedListing(t *testing.T) {
 	}
 }
 
-func TestCaskIndexMatchesAFreshParse(t *testing.T) {
+// casksOf loads the cask listing and returns the casks in it.
+func casksOf(c *Client) ([]*Cask, error) {
+	idx, err := c.CaskIndex(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return idx.Casks(), nil
+}
+
+// indexedCasks fetches the cask listing, then loads it again from the index.
+func indexedCasks(t *testing.T) (*Client, *CaskIndex) {
 	ts, _, _ := listings(t)
 	clk := &clock{}
 	c := &Client{Key: testKey(), CaskURL: ts.URL + "/cask", CacheDir: t.TempDir(), Now: clk.now}
-	parsed, err := c.Casks(context.Background())
-	if err != nil {
+	if _, err := c.CaskIndex(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	clk.offset = time.Minute
-	loaded, err := c.Casks(context.Background()) // from the index
+	idx, err := c.CaskIndex(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	return c, idx
+}
+
+func TestCaskIndexMatchesAFreshParse(t *testing.T) {
+	_, idx := indexedCasks(t)
+	parsed, err := ParseCasks(caskFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded := idx.Casks()
 	if len(parsed) != len(loaded) {
 		t.Fatalf("%d casks parsed, %d loaded", len(parsed), len(loaded))
 	}
+	if slack := loaded[slices.IndexFunc(loaded, func(c *Cask) bool { return c.Token == "slack" })]; slack.Artifacts != nil || slack.Variations != nil {
+		t.Error("the index holds artifacts and variations, which Lookup reads from the listing")
+	}
 	for i := range parsed {
-		p, l := parsed[i], loaded[i]
+		p := &parsed[i]
+		l, ok := idx.Lookup(p.Token)
+		if !ok {
+			t.Errorf("%s: not found", p.Token)
+			continue
+		}
 		// %+v prints the pointer, not what it points to.
 		if !reflect.DeepEqual(p.DependsOn.MacOS, l.DependsOn.MacOS) {
 			t.Errorf("%s macos differs after the round trip: %+v, %+v", p.Token, p.DependsOn.MacOS, l.DependsOn.MacOS)
 		}
-		p.DependsOn.MacOS, l.DependsOn.MacOS = nil, nil
-		if a, b := fmt.Sprintf("%+v", p), fmt.Sprintf("%+v", l); a != b {
+		pc, lc := *p, *l
+		pc.DependsOn.MacOS, lc.DependsOn.MacOS = nil, nil
+		if a, b := fmt.Sprintf("%+v", pc), fmt.Sprintf("%+v", lc); a != b {
 			t.Errorf("%s differs after the round trip\nparsed: %s\nloaded: %s", p.Token, a, b)
 		}
 	}
-	slack, ok := NewCaskIndex(loaded).Lookup("slack")
+	slack, ok := idx.Lookup("slack")
 	if !ok || len(slack.Artifacts) == 0 || len(slack.Variations) == 0 {
 		t.Errorf("slack lost data: %+v", slack)
+	}
+}
+
+func TestCaskLookupParsesTheListingWhenItMoved(t *testing.T) {
+	c, idx := indexedCasks(t)
+	file := filepath.Join(c.CacheDir, "cask.json")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, append([]byte("    "), data...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if slack, ok := idx.Lookup("slack"); !ok || len(slack.Artifacts) == 0 {
+		t.Errorf("Lookup(slack) = %+v, %v; want it whole from a parse", slack, ok)
+	}
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := idx.Lookup("gcloud-cli"); ok {
+		t.Error("Lookup found a cask it could not complete")
 	}
 }
 

@@ -92,8 +92,8 @@ func (c *Cleaner) cleanPath(abs string, remove func() error) error {
 		return nil
 	}
 	c.seen[abs] = true
-	_, size, _ := cellar.Keg{Path: abs}.Usage()
-	abv, _ := cellar.Keg{Path: abs}.Abv()
+	files, size, _ := cellar.Keg{Path: abs}.Usage()
+	abv := cellar.FormatAbv(files, size)
 	c.freed += size
 	if c.DryRun {
 		c.printf(c.Out, "Would remove: %s (%s)\n", abs, abv)

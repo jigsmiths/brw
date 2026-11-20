@@ -786,6 +786,35 @@ func TestReadlinkAndReadDir(t *testing.T) {
 	}
 }
 
+func TestWalkDir(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	for _, f := range []string{"d/z", "d/b/c/file", "d/a"} {
+		if err := r.WriteFile(f, []byte("1"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.Symlink("b", "d/linked"); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	if err := r.WalkDir("d", func(name string, _ fs.DirEntry) { got = append(got, name) }); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"d/a", "d/b", "d/b/c", "d/b/c/file", "d/linked", "d/z"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("WalkDir = %v, want %v: depth first, sorted, symlinks not followed", got, want)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "evil")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"../x", outside, "evil"} {
+		if err := r.WalkDir(p, func(string, fs.DirEntry) {}); err == nil {
+			t.Errorf("WalkDir(%q) read outside the root", p)
+		}
+	}
+}
+
 func TestRemoveKeg(t *testing.T) {
 	r, dir, journal := newRoot(t)
 	outside := t.TempDir()

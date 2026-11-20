@@ -76,8 +76,8 @@ func TestFormatAbv(t *testing.T) {
 		{1234567, 2_500_000_000, "1,234,567 files, 2.5GB"},
 	}
 	for _, tt := range tests {
-		if got := formatAbv(tt.files, tt.size); got != tt.want {
-			t.Errorf("formatAbv(%d, %d) = %q, want %q", tt.files, tt.size, got, tt.want)
+		if got := FormatAbv(tt.files, tt.size); got != tt.want {
+			t.Errorf("FormatAbv(%d, %d) = %q, want %q", tt.files, tt.size, got, tt.want)
 		}
 	}
 }
