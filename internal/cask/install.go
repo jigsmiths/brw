@@ -43,6 +43,9 @@ type Installer struct {
 	Config  Config
 	Exec    Exec // nil runs commands; uninstall's commands go through it
 	Adopt   bool // take over an app already at the target, as brew's --adopt
+
+	upgrading bool     // quit records what it quit, to reopen
+	reopen    []string // bundle IDs quit during this upgrade
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -70,27 +73,10 @@ func (in *Installer) warnf(format string, args ...any) {
 // Install downloads the cask, stages it in the Caskroom, moves its apps and
 // links its binaries. A failure undoes what was done.
 func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
-	if msg := deprecation(c, in.Now()); c.Disabled {
-		return brewError("Cask '%s' has been %s", c.Token, msg)
-	} else if msg != "" {
-		in.warnf("%s has been %s", c.Token, msg)
-	}
-	if err := checkRequirements(c, in.Host); err != nil {
-		return err
-	}
-	p, err := plan(c, in.Where)
+	p, links, file, err := in.prepare(ctx, c, nil)
 	if err != nil {
 		return err
 	}
-	links, err := in.checkTargets(c, p)
-	if err != nil {
-		return err
-	}
-	file, err := in.Fetcher.Fetch(ctx, c)
-	if err != nil {
-		return err
-	}
-
 	in.logf("==> Installing Cask %s", c.Token)
 	version := filepath.Join("Caskroom", c.Token, c.Version)
 	if _, err := in.Root.Lstat(version); err == nil {
@@ -98,15 +84,50 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 	}
 	var undo []func() error
 	defer func() {
-		if err == nil {
-			return
+		if err != nil {
+			err = errors.Join(err, in.discard(ctx, c, undo))
 		}
-		in.logf("==> Purging files for version %s of Cask %s", c.Version, c.Token)
-		for _, u := range slices.Backward(undo) {
-			err = errors.Join(err, u())
-		}
-		err = errors.Join(err, in.purge(context.WithoutCancel(ctx), c))
 	}()
+	if err := in.installArtifacts(ctx, c, p, links, file, &undo); err != nil {
+		return err
+	}
+	if err := in.writeReceipt(c, p, true); err != nil {
+		return err
+	}
+	in.logf("%s was successfully installed!", badge()+c.Token)
+	return nil
+}
+
+// prepare checks that the cask can be installed here and downloads it. owned
+// are the targets of the version being upgraded, which it will clear first.
+func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]bool) (installPlan, []linkAction, string, error) {
+	if msg := deprecation(c, in.Now()); c.Disabled {
+		return installPlan{}, nil, "", brewError("Cask '%s' has been %s", c.Token, msg)
+	} else if msg != "" {
+		in.warnf("%s has been %s", c.Token, msg)
+	}
+	if err := checkRequirements(c, in.Host); err != nil {
+		return installPlan{}, nil, "", err
+	}
+	p, err := plan(c, in.Where)
+	if err != nil {
+		return installPlan{}, nil, "", err
+	}
+	links, err := in.checkTargets(c, p, owned)
+	if err != nil {
+		return installPlan{}, nil, "", err
+	}
+	file, err := in.Fetcher.Fetch(ctx, c)
+	if err != nil {
+		return installPlan{}, nil, "", err
+	}
+	return p, links, file, nil
+}
+
+// installArtifacts stages the download in the Caskroom, moves the apps, links
+// the binaries and writes the config, adding to undo what reverses each step.
+func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p installPlan, links []linkAction, file string, undo *[]func() error) error {
+	version := filepath.Join("Caskroom", c.Token, c.Version)
 	if err := in.Root.MkdirAll(version, 0o755); err != nil {
 		return err
 	}
@@ -121,7 +142,7 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 		return err
 	}
 	for _, m := range p.apps {
-		if err := in.moveApp(ctx, version, m, c.AutoUpdates, &undo); err != nil {
+		if err := in.moveApp(ctx, version, m, c.AutoUpdates, undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
@@ -140,18 +161,22 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 		case skipLink: // a formula linked it since checkTargets
 			continue
 		}
-		if err := in.linkBinary(ctx, staged, m, action, &undo); err != nil {
+		if err := in.linkBinary(ctx, staged, m, action, undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
-	if err := in.writeConfig(c); err != nil {
-		return err
+	return in.writeConfig(c)
+}
+
+// discard reverses a failed install of c and removes its files, as brew's
+// purge_versioned_files.
+func (in *Installer) discard(ctx context.Context, c api.Cask, undo []func() error) error {
+	in.logf("==> Purging files for version %s of Cask %s", c.Version, c.Token)
+	var err error
+	for _, u := range slices.Backward(undo) {
+		err = errors.Join(err, u())
 	}
-	if err := in.writeReceipt(c, p); err != nil {
-		return err
-	}
-	in.logf("%s was successfully installed!", badge()+c.Token)
-	return nil
+	return errors.Join(err, in.purge(context.WithoutCancel(ctx), c))
 }
 
 // badge is brew's install badge with its two spaces, or nothing.
@@ -176,12 +201,16 @@ const (
 )
 
 // checkTargets fails before anything is downloaded when an app or binary
-// would land on something already there. It says what to do with each
-// binary: one whose target a formula has linked is skipped with brew's warning.
-func (in *Installer) checkTargets(c api.Cask, p installPlan) ([]linkAction, error) {
+// would land on something already there, other than the owned targets of the
+// version it replaces. It says what to do with each binary: one whose target a
+// formula has linked is skipped with brew's warning.
+func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bool) ([]linkAction, error) {
 	for _, m := range p.apps {
 		if _, err := in.appRel(m.target); err != nil {
 			return nil, fmt.Errorf("%s: %w", c.Token, err)
+		}
+		if owned[m.target] {
+			continue
 		}
 		if _, err := os.Lstat(m.target); err == nil && !in.Adopt {
 			return nil, brewError("%s: It seems there is already an App at '%s'.", c.Token, m.target)
@@ -194,6 +223,9 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan) ([]linkAction, erro
 		}
 		if filepath.IsAbs(m.source) && !in.inside(in.Where.AppDir, m.source) && !in.inside(in.Where.Prefix, m.source) {
 			return nil, fmt.Errorf("%s: binary source %s: outside %s and %s: %w", c.Token, m.source, in.Where.AppDir, in.Where.Prefix, ErrUnsupported)
+		}
+		if owned[m.target] {
+			continue // newLink: linking looks again once the old link is gone
 		}
 		action, formula, err := in.binaryAction(c, m)
 		if err != nil {
@@ -542,7 +574,7 @@ func (in *Installer) writeConfig(c api.Cask) error {
 }
 
 // writeReceipt writes INSTALL_RECEIPT.json with brew's keys, in brew's order.
-func (in *Installer) writeReceipt(c api.Cask, p installPlan) error {
+func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) error {
 	type source struct {
 		Tap        string  `json:"tap"`
 		TapGitHead *string `json:"tap_git_head"`
@@ -571,7 +603,7 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan) error {
 		BuiltOn               map[string]string            `json:"built_on"`
 	}{
 		HomebrewVersion: in.Version, LoadedFromAPI: true, LoadedFromInternalAPI: true,
-		InstalledOnRequest: true, Time: in.Now().Unix(),
+		InstalledOnRequest: onRequest, Time: in.Now().Unix(),
 		Source: source{Tap: c.Tap, TapGitHead: head, Version: c.Version, Path: in.APIPath},
 		Arch:   arch, UninstallArtifacts: p.uninstall,
 		BuiltOn: map[string]string{"os": "Macintosh", "os_version": "macOS " + in.Host.MacVersion},

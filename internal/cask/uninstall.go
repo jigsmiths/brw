@@ -72,6 +72,27 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 		return err
 	}
 	in.logf("==> Uninstalling Cask %s", token)
+	if err := in.removeArtifacts(ctx, token, steps, force); err != nil {
+		return err
+	}
+	meta := filepath.Join("Caskroom", token, ".metadata")
+	for _, name := range []string{"INSTALL_RECEIPT.json", "LATEST_DOWNLOAD_SHA256", "config.json"} {
+		if err := removeIfThere(in.Root, filepath.Join(meta, name)); err != nil {
+			return err
+		}
+	}
+	in.logf("==> Purging files for version %s of Cask %s", version, token)
+	if err := in.purge(ctx, api.Cask{Token: token, Version: version}); err != nil {
+		return err
+	}
+	if force {
+		return in.removePath(ctx, in.Root, filepath.Join("Caskroom", token))
+	}
+	return nil
+}
+
+// removeArtifacts carries out the steps: brew's uninstall_artifacts.
+func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []uninstallStep, force bool) error {
 	for _, s := range steps {
 		switch s.kind {
 		case "uninstall":
@@ -87,19 +108,6 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		}
-	}
-	meta := filepath.Join("Caskroom", token, ".metadata")
-	for _, name := range []string{"INSTALL_RECEIPT.json", "LATEST_DOWNLOAD_SHA256", "config.json"} {
-		if err := removeIfThere(in.Root, filepath.Join(meta, name)); err != nil {
-			return err
-		}
-	}
-	in.logf("==> Purging files for version %s of Cask %s", version, token)
-	if err := in.purge(ctx, api.Cask{Token: token, Version: version}); err != nil {
-		return err
-	}
-	if force {
-		return in.removePath(ctx, in.Root, filepath.Join("Caskroom", token))
 	}
 	return nil
 }
@@ -376,6 +384,9 @@ func (in *Installer) quit(ctx context.Context, ids []string) {
 			if _, err := in.exec(ctx, "osascript", "-l", "JavaScript", "-e", quitScript, id); err == nil && !in.running(ctx, id) {
 				in.logf("Application '%s' quit successfully.", id)
 				quit = true
+				if in.upgrading {
+					in.reopen = append(in.reopen, id)
+				}
 				break
 			}
 			in.sleep(100 * time.Millisecond)
