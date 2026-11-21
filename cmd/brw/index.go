@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/tap"
 	"github.com/jigsmiths/brw/internal/trust"
 )
@@ -77,7 +78,12 @@ func (e *env) caskIndex(ctx context.Context, prefix string) (*api.CaskIndex, err
 // trusted tap, or trusted one by one. A tap with none trusted is skipped with
 // brew's warning.
 func (e *env) addTapCasks(idx *api.CaskIndex, t tap.Tap, store *trust.Store) {
-	casks, err := t.Casks()
+	tag, err := platform.Tag(e.host)
+	if err != nil {
+		_, _ = fmt.Fprintln(e.err, "brw: warning:", err)
+		return
+	}
+	casks, err := t.Casks(tag)
 	if err != nil {
 		_, _ = fmt.Fprintln(e.err, "brw: warning:", err)
 		return

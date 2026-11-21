@@ -1,0 +1,1114 @@
+{
+ "token": "miniconda",
+ "full_token": "miniconda",
+ "old_tokens": [],
+ "tap": "homebrew/cask",
+ "name": [
+  "Miniconda"
+ ],
+ "desc": "Minimal installer for conda",
+ "homepage": "https://www.anaconda.com/docs/getting-started/miniconda/main",
+ "url": "https://repo.anaconda.com/miniconda/Miniconda3-py314_26.9.4-1-MacOSX-arm64.sh",
+ "url_specs": {},
+ "version": "py314_26.9.4-1",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": null,
+ "bundle_short_version": null,
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "205be72fe8a81c95e92504fa22d7e19a3411ec09939196100457ba77e66cd761",
+ "artifacts": [
+  {
+   "uninstall_preflight_steps": [
+    {
+     "steps": [
+      {
+       "source": {
+        "base": "caskroom_path",
+        "path": "base/envs"
+       },
+       "target": {
+        "path": "{{temp}}/{{token}}-envs"
+       },
+       "guards": [
+        {
+         "path": "{{caskroom_path}}/base/envs",
+         "condition": "if_exists",
+         "id": "1"
+        }
+       ],
+       "type": "move",
+       "overwrite": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "uninstall": [
+    {
+     "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+    }
+   ]
+  },
+  {
+   "installer": [
+    {
+     "script": {
+      "executable": "Miniconda3-py314_26.9.4-1-MacOSX-arm64.sh",
+      "args": [
+       "-b",
+       "-p",
+       "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/conda"
+  },
+  {
+   "postflight_steps": [
+    {
+     "steps": [
+      {
+       "paths": [
+        {
+         "base": "caskroom_path",
+         "path": "base/envs"
+        }
+       ],
+       "recursive": true,
+       "guards": [
+        {
+         "path": "{{temp}}/{{token}}-envs",
+         "condition": "if_exists",
+         "id": "1"
+        }
+       ],
+       "type": "remove"
+      },
+      {
+       "source": {
+        "path": "{{temp}}/{{token}}-envs"
+       },
+       "target": {
+        "base": "caskroom_path",
+        "path": "base/envs"
+       },
+       "guards": [
+        {
+         "path": "{{temp}}/{{token}}-envs",
+         "condition": "if_exists",
+         "id": "1"
+        }
+       ],
+       "type": "move",
+       "overwrite": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zap": [
+    {
+     "trash": [
+      "/private/tmp/miniconda-envs",
+      "~/.conda",
+      "~/.condarc",
+      "~/.continuum"
+     ]
+    }
+   ]
+  }
+ ],
+ "caveats": "Please run the following to setup your shell:\n  conda init \"$(basename \"${SHELL}\")\"\n\nAlternatively, manually add the following to your shell init:\n  eval \"$(conda \"shell.$(basename \"${SHELL}\")\" hook)\"\n",
+ "caveats_rosetta": null,
+ "depends_on": {
+  "macos": {}
+ },
+ "conflicts_with": {
+  "cask": [
+   "miniforge"
+  ]
+ },
+ "container": {
+  "type": "naked"
+ },
+ "rename": [],
+ "auto_updates": true,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": false,
+ "disable_date": null,
+ "disable_reason": null,
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": null,
+ "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
+ "languages": [],
+ "ruby_source_path": "Casks/m/miniconda.rb",
+ "ruby_source_checksum": {
+  "sha256": "8a81d58e6a67acf47f8700e94474f2f8e49db54ba417e8d9878ba2047922185f"
+ },
+ "variations": {
+  "golden_gate": {
+   "url": "https://repo.anaconda.com/miniconda/Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+   "version": "py313_25.7.0-2",
+   "skip_livecheck": true,
+   "sha256": "9c88674b1a839eeb4cff006df397a05ea7d896472318fd84b7070278f9653dc6",
+   "artifacts": [
+    {
+     "uninstall_preflight_steps": [
+      {
+       "steps": [
+        {
+         "source": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "target": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "guards": [
+          {
+           "path": "{{caskroom_path}}/base/envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "uninstall": [
+      {
+       "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      }
+     ]
+    },
+    {
+     "installer": [
+      {
+       "script": {
+        "executable": "Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+        "args": [
+         "-b",
+         "-p",
+         "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "binary": [
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+     ],
+     "target": "$HOMEBREW_PREFIX/bin/conda"
+    },
+    {
+     "postflight_steps": [
+      {
+       "steps": [
+        {
+         "paths": [
+          {
+           "base": "caskroom_path",
+           "path": "base/envs"
+          }
+         ],
+         "recursive": true,
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "remove"
+        },
+        {
+         "source": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "target": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "zap": [
+      {
+       "trash": [
+        "/private/tmp/miniconda-envs",
+        "~/.conda",
+        "~/.condarc",
+        "~/.continuum"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "tahoe": {
+   "url": "https://repo.anaconda.com/miniconda/Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+   "version": "py313_25.7.0-2",
+   "skip_livecheck": true,
+   "sha256": "9c88674b1a839eeb4cff006df397a05ea7d896472318fd84b7070278f9653dc6",
+   "artifacts": [
+    {
+     "uninstall_preflight_steps": [
+      {
+       "steps": [
+        {
+         "source": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "target": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "guards": [
+          {
+           "path": "{{caskroom_path}}/base/envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "uninstall": [
+      {
+       "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      }
+     ]
+    },
+    {
+     "installer": [
+      {
+       "script": {
+        "executable": "Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+        "args": [
+         "-b",
+         "-p",
+         "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "binary": [
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+     ],
+     "target": "$HOMEBREW_PREFIX/bin/conda"
+    },
+    {
+     "postflight_steps": [
+      {
+       "steps": [
+        {
+         "paths": [
+          {
+           "base": "caskroom_path",
+           "path": "base/envs"
+          }
+         ],
+         "recursive": true,
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "remove"
+        },
+        {
+         "source": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "target": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "zap": [
+      {
+       "trash": [
+        "/private/tmp/miniconda-envs",
+        "~/.conda",
+        "~/.condarc",
+        "~/.continuum"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "sequoia": {
+   "url": "https://repo.anaconda.com/miniconda/Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+   "version": "py313_25.7.0-2",
+   "skip_livecheck": true,
+   "sha256": "9c88674b1a839eeb4cff006df397a05ea7d896472318fd84b7070278f9653dc6",
+   "artifacts": [
+    {
+     "uninstall_preflight_steps": [
+      {
+       "steps": [
+        {
+         "source": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "target": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "guards": [
+          {
+           "path": "{{caskroom_path}}/base/envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "uninstall": [
+      {
+       "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      }
+     ]
+    },
+    {
+     "installer": [
+      {
+       "script": {
+        "executable": "Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+        "args": [
+         "-b",
+         "-p",
+         "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "binary": [
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+     ],
+     "target": "$HOMEBREW_PREFIX/bin/conda"
+    },
+    {
+     "postflight_steps": [
+      {
+       "steps": [
+        {
+         "paths": [
+          {
+           "base": "caskroom_path",
+           "path": "base/envs"
+          }
+         ],
+         "recursive": true,
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "remove"
+        },
+        {
+         "source": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "target": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "zap": [
+      {
+       "trash": [
+        "/private/tmp/miniconda-envs",
+        "~/.conda",
+        "~/.condarc",
+        "~/.continuum"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "sonoma": {
+   "url": "https://repo.anaconda.com/miniconda/Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+   "version": "py313_25.7.0-2",
+   "skip_livecheck": true,
+   "sha256": "9c88674b1a839eeb4cff006df397a05ea7d896472318fd84b7070278f9653dc6",
+   "artifacts": [
+    {
+     "uninstall_preflight_steps": [
+      {
+       "steps": [
+        {
+         "source": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "target": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "guards": [
+          {
+           "path": "{{caskroom_path}}/base/envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "uninstall": [
+      {
+       "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      }
+     ]
+    },
+    {
+     "installer": [
+      {
+       "script": {
+        "executable": "Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+        "args": [
+         "-b",
+         "-p",
+         "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "binary": [
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+     ],
+     "target": "$HOMEBREW_PREFIX/bin/conda"
+    },
+    {
+     "postflight_steps": [
+      {
+       "steps": [
+        {
+         "paths": [
+          {
+           "base": "caskroom_path",
+           "path": "base/envs"
+          }
+         ],
+         "recursive": true,
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "remove"
+        },
+        {
+         "source": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "target": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "zap": [
+      {
+       "trash": [
+        "/private/tmp/miniconda-envs",
+        "~/.conda",
+        "~/.condarc",
+        "~/.continuum"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "ventura": {
+   "url": "https://repo.anaconda.com/miniconda/Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+   "version": "py313_25.7.0-2",
+   "skip_livecheck": true,
+   "sha256": "9c88674b1a839eeb4cff006df397a05ea7d896472318fd84b7070278f9653dc6",
+   "artifacts": [
+    {
+     "uninstall_preflight_steps": [
+      {
+       "steps": [
+        {
+         "source": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "target": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "guards": [
+          {
+           "path": "{{caskroom_path}}/base/envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "uninstall": [
+      {
+       "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      }
+     ]
+    },
+    {
+     "installer": [
+      {
+       "script": {
+        "executable": "Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+        "args": [
+         "-b",
+         "-p",
+         "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "binary": [
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+     ],
+     "target": "$HOMEBREW_PREFIX/bin/conda"
+    },
+    {
+     "postflight_steps": [
+      {
+       "steps": [
+        {
+         "paths": [
+          {
+           "base": "caskroom_path",
+           "path": "base/envs"
+          }
+         ],
+         "recursive": true,
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "remove"
+        },
+        {
+         "source": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "target": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "zap": [
+      {
+       "trash": [
+        "/private/tmp/miniconda-envs",
+        "~/.conda",
+        "~/.condarc",
+        "~/.continuum"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "monterey": {
+   "url": "https://repo.anaconda.com/miniconda/Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+   "version": "py313_25.7.0-2",
+   "skip_livecheck": true,
+   "sha256": "9c88674b1a839eeb4cff006df397a05ea7d896472318fd84b7070278f9653dc6",
+   "artifacts": [
+    {
+     "uninstall_preflight_steps": [
+      {
+       "steps": [
+        {
+         "source": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "target": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "guards": [
+          {
+           "path": "{{caskroom_path}}/base/envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "uninstall": [
+      {
+       "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      }
+     ]
+    },
+    {
+     "installer": [
+      {
+       "script": {
+        "executable": "Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+        "args": [
+         "-b",
+         "-p",
+         "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "binary": [
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+     ],
+     "target": "$HOMEBREW_PREFIX/bin/conda"
+    },
+    {
+     "postflight_steps": [
+      {
+       "steps": [
+        {
+         "paths": [
+          {
+           "base": "caskroom_path",
+           "path": "base/envs"
+          }
+         ],
+         "recursive": true,
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "remove"
+        },
+        {
+         "source": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "target": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "zap": [
+      {
+       "trash": [
+        "/private/tmp/miniconda-envs",
+        "~/.conda",
+        "~/.condarc",
+        "~/.continuum"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "big_sur": {
+   "url": "https://repo.anaconda.com/miniconda/Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+   "version": "py313_25.7.0-2",
+   "skip_livecheck": true,
+   "sha256": "9c88674b1a839eeb4cff006df397a05ea7d896472318fd84b7070278f9653dc6",
+   "artifacts": [
+    {
+     "uninstall_preflight_steps": [
+      {
+       "steps": [
+        {
+         "source": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "target": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "guards": [
+          {
+           "path": "{{caskroom_path}}/base/envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "uninstall": [
+      {
+       "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      }
+     ]
+    },
+    {
+     "installer": [
+      {
+       "script": {
+        "executable": "Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+        "args": [
+         "-b",
+         "-p",
+         "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "binary": [
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+     ],
+     "target": "$HOMEBREW_PREFIX/bin/conda"
+    },
+    {
+     "postflight_steps": [
+      {
+       "steps": [
+        {
+         "paths": [
+          {
+           "base": "caskroom_path",
+           "path": "base/envs"
+          }
+         ],
+         "recursive": true,
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "remove"
+        },
+        {
+         "source": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "target": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "zap": [
+      {
+       "trash": [
+        "/private/tmp/miniconda-envs",
+        "~/.conda",
+        "~/.condarc",
+        "~/.continuum"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "x86_64_linux": {
+   "url": "https://repo.anaconda.com/miniconda/Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+   "version": "py313_25.7.0-2",
+   "skip_livecheck": true,
+   "sha256": "9c88674b1a839eeb4cff006df397a05ea7d896472318fd84b7070278f9653dc6",
+   "artifacts": [
+    {
+     "uninstall_preflight_steps": [
+      {
+       "steps": [
+        {
+         "source": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "target": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "guards": [
+          {
+           "path": "{{caskroom_path}}/base/envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "uninstall": [
+      {
+       "delete": "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+      }
+     ]
+    },
+    {
+     "installer": [
+      {
+       "script": {
+        "executable": "Miniconda3-py313_25.7.0-2-MacOSX-x86_64.sh",
+        "args": [
+         "-b",
+         "-p",
+         "$HOMEBREW_PREFIX/Caskroom/miniconda/base"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "binary": [
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base/condabin/conda"
+     ],
+     "target": "$HOMEBREW_PREFIX/bin/conda"
+    },
+    {
+     "postflight_steps": [
+      {
+       "steps": [
+        {
+         "paths": [
+          {
+           "base": "caskroom_path",
+           "path": "base/envs"
+          }
+         ],
+         "recursive": true,
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "remove"
+        },
+        {
+         "source": {
+          "path": "{{temp}}/{{token}}-envs"
+         },
+         "target": {
+          "base": "caskroom_path",
+          "path": "base/envs"
+         },
+         "guards": [
+          {
+           "path": "{{temp}}/{{token}}-envs",
+           "condition": "if_exists",
+           "id": "1"
+          }
+         ],
+         "type": "move",
+         "overwrite": true
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "zap": [
+      {
+       "trash": [
+        "/private/tmp/miniconda-envs",
+        "~/.conda",
+        "~/.condarc",
+        "~/.continuum"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey",
+  "big_sur",
+  "arm64_big_sur"
+ ]
+}

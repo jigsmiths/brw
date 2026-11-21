@@ -1,0 +1,1155 @@
+{
+ "token": "firefox",
+ "full_token": "firefox",
+ "old_tokens": [],
+ "tap": "homebrew/cask",
+ "name": [
+  "Mozilla Firefox"
+ ],
+ "desc": "Web browser",
+ "homepage": "https://www.mozilla.org/firefox/",
+ "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/en-US/Firefox%20160.0.1.dmg",
+ "url_specs": {},
+ "version": "160.0.1",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": "15926.10.22",
+ "bundle_short_version": "159.0",
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "db9a522291d82cbe9a2b2922822def4db0a79d4fa3e614979039d705b13b1c25",
+ "artifacts": [
+  {
+   "uninstall": [
+    {
+     "quit": "org.mozilla.firefox"
+    }
+   ]
+  },
+  {
+   "app": [
+    "Firefox.app"
+   ],
+   "target": "/Applications/Firefox.app"
+  },
+  {
+   "command_wrapper": [
+    "firefox",
+    {
+     "executable": "$APPDIR/Firefox.app/Contents/MacOS/firefox"
+    }
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/firefox"
+  },
+  {
+   "zap": [
+    {
+     "trash": [
+      "/Library/Logs/DiagnosticReports/firefox_*",
+      "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/org.mozilla.firefox.sfl*",
+      "~/Library/Application Support/CrashReporter/firefox_*",
+      "~/Library/Application Support/Firefox",
+      "~/Library/Caches/Firefox",
+      "~/Library/Caches/Mozilla/updates/Applications/Firefox",
+      "~/Library/Caches/org.mozilla.crashreporter",
+      "~/Library/Caches/org.mozilla.firefox",
+      "~/Library/Preferences/org.mozilla.crashreporter.plist",
+      "~/Library/Preferences/org.mozilla.firefox.plist",
+      "~/Library/Saved Application State/org.mozilla.firefox.savedState",
+      "~/Library/WebKit/org.mozilla.firefox"
+     ],
+     "rmdir": [
+      "~/Library/Application Support/Mozilla",
+      "~/Library/Caches/Mozilla",
+      "~/Library/Caches/Mozilla/updates",
+      "~/Library/Caches/Mozilla/updates/Applications"
+     ]
+    }
+   ]
+  }
+ ],
+ "caveats": null,
+ "caveats_rosetta": null,
+ "depends_on": {
+  "macos": {}
+ },
+ "conflicts_with": {
+  "cask": [
+   "firefox@beta",
+   "firefox@esr"
+  ]
+ },
+ "container": null,
+ "rename": [],
+ "auto_updates": true,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": false,
+ "disable_date": null,
+ "disable_reason": null,
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": null,
+ "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
+ "languages": [
+  "ach",
+  "af",
+  "an",
+  "ar",
+  "ast",
+  "az",
+  "be",
+  "bg",
+  "bn",
+  "br",
+  "bs",
+  "ca",
+  "cak",
+  "cs",
+  "cy",
+  "da",
+  "de",
+  "dsb",
+  "el",
+  "en-CA",
+  "en-GB",
+  "en",
+  "eo",
+  "es-AR",
+  "es-CL",
+  "es-ES",
+  "es-MX",
+  "et",
+  "eu",
+  "fa",
+  "ff",
+  "fi",
+  "fr",
+  "fur",
+  "fy",
+  "ga",
+  "gd",
+  "gl",
+  "gn",
+  "gu",
+  "he",
+  "hi",
+  "hr",
+  "hsb",
+  "hu",
+  "hy",
+  "ia",
+  "id",
+  "in",
+  "is",
+  "it",
+  "ja",
+  "ka",
+  "kab",
+  "kk",
+  "km",
+  "kn",
+  "ko",
+  "lij",
+  "lt",
+  "lv",
+  "mk",
+  "mr",
+  "ms",
+  "my",
+  "nb",
+  "ne",
+  "nl",
+  "nn",
+  "oc",
+  "pa-IN",
+  "pl",
+  "pt-BR",
+  "pt",
+  "rm",
+  "ro",
+  "ru",
+  "sat",
+  "sc",
+  "sco",
+  "si",
+  "sk",
+  "skr",
+  "sl",
+  "son",
+  "sq",
+  "sr",
+  "sv",
+  "szl",
+  "ta",
+  "te",
+  "tg",
+  "th",
+  "tl",
+  "tr",
+  "trs",
+  "uk",
+  "ur",
+  "uz",
+  "vi",
+  "xh",
+  "zh-TW",
+  "zh"
+ ],
+ "ruby_source_path": "Casks/f/firefox.rb",
+ "ruby_source_checksum": {
+  "sha256": "f99f5301b412cf281993a79233b3469bfe7772b6303c139bb55e2c9098354702"
+ },
+ "language_variations": [
+  {
+   "languages": [
+    "ach"
+   ],
+   "default": false,
+   "value": "ach",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ach/Firefox%20160.0.1.dmg",
+   "sha256": "86d97243c68d881bc80192821261973db6ae08076d4afaa25c459b42aa20646f"
+  },
+  {
+   "languages": [
+    "af"
+   ],
+   "default": false,
+   "value": "af",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/af/Firefox%20160.0.1.dmg",
+   "sha256": "207d82b05455a56f425c9ff17ae4e07c9dc95d9754dff7844ddfcbf5c1605e77"
+  },
+  {
+   "languages": [
+    "an"
+   ],
+   "default": false,
+   "value": "an",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/an/Firefox%20160.0.1.dmg",
+   "sha256": "49bd3775ab75f15d3a0584ae7acea2b6d6c7adea4b74e6e0732bd49222db0d56"
+  },
+  {
+   "languages": [
+    "ar"
+   ],
+   "default": false,
+   "value": "ar",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ar/Firefox%20160.0.1.dmg",
+   "sha256": "613c79cbdba3d3929b735fcdadacfc25d2681d0d383df81ce0d3b6f4cde6303d"
+  },
+  {
+   "languages": [
+    "ast"
+   ],
+   "default": false,
+   "value": "ast",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ast/Firefox%20160.0.1.dmg",
+   "sha256": "2bd83e36b8f165e0ffe35b713039ef611898c50baa1397f9e88a6803e6646ce4"
+  },
+  {
+   "languages": [
+    "az"
+   ],
+   "default": false,
+   "value": "az",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/az/Firefox%20160.0.1.dmg",
+   "sha256": "6cec9db5755fa7f16768d597d221fcdfa509f7f3f530e2c3e84d9ca5cd4aa22e"
+  },
+  {
+   "languages": [
+    "be"
+   ],
+   "default": false,
+   "value": "be",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/be/Firefox%20160.0.1.dmg",
+   "sha256": "55181e65ed1812aceaa94a752864119b14d762a2b152aff062fd282f8eceebb3"
+  },
+  {
+   "languages": [
+    "bg"
+   ],
+   "default": false,
+   "value": "bg",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/bg/Firefox%20160.0.1.dmg",
+   "sha256": "d96291c93ba4b948a112d2bdc0fe89e87136642e35ab3e359cd665754df7b8ba"
+  },
+  {
+   "languages": [
+    "bn"
+   ],
+   "default": false,
+   "value": "bn",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/bn/Firefox%20160.0.1.dmg",
+   "sha256": "f121062a6659059464ae036386374c4377d177c8519c3c2265ac69adc32df6e2"
+  },
+  {
+   "languages": [
+    "br"
+   ],
+   "default": false,
+   "value": "br",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/br/Firefox%20160.0.1.dmg",
+   "sha256": "ca9cb4dbd5ca70e98b6f30f984cb55e9866941c234411f2a42c4860441dd9e57"
+  },
+  {
+   "languages": [
+    "bs"
+   ],
+   "default": false,
+   "value": "bs",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/bs/Firefox%20160.0.1.dmg",
+   "sha256": "40c6af799c8e3a54d78eef565d13ce6ce442bb6c5d0d3649393ea79e9c4e924f"
+  },
+  {
+   "languages": [
+    "ca"
+   ],
+   "default": false,
+   "value": "ca",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ca/Firefox%20160.0.1.dmg",
+   "sha256": "f87839865725f6c766500f0b0bc5f8c7b2f034e588a8960fc0aceb117557652e"
+  },
+  {
+   "languages": [
+    "cak"
+   ],
+   "default": false,
+   "value": "cak",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/cak/Firefox%20160.0.1.dmg",
+   "sha256": "5725ceb3fb867ee11f5892c9b066b7803b76889dcadac43059abdbc14fabb0e1"
+  },
+  {
+   "languages": [
+    "cs"
+   ],
+   "default": false,
+   "value": "cs",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/cs/Firefox%20160.0.1.dmg",
+   "sha256": "39bb76a1f0c995e356b286ef2ebf00ce966b977a46e062a0bd0ac736559f2739"
+  },
+  {
+   "languages": [
+    "cy"
+   ],
+   "default": false,
+   "value": "cy",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/cy/Firefox%20160.0.1.dmg",
+   "sha256": "014af17e2fdc40b93304376ecbcc25077b938e22b5143badcab1bd03a1e1bce2"
+  },
+  {
+   "languages": [
+    "da"
+   ],
+   "default": false,
+   "value": "da",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/da/Firefox%20160.0.1.dmg",
+   "sha256": "f8bda2b549c413fe870be6e70866d2ba450645f7378d8f14adeddfcda34d3fe1"
+  },
+  {
+   "languages": [
+    "de"
+   ],
+   "default": false,
+   "value": "de",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/de/Firefox%20160.0.1.dmg",
+   "sha256": "4118c7c8f12bad5eb4fd84334e36837d9948515c62e9064133d345177967e681"
+  },
+  {
+   "languages": [
+    "dsb"
+   ],
+   "default": false,
+   "value": "dsb",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/dsb/Firefox%20160.0.1.dmg",
+   "sha256": "6b2564f3c6a9e81c1766b9a541aea1551fbb3344bcdf9fa779794d02fa1256cb"
+  },
+  {
+   "languages": [
+    "el"
+   ],
+   "default": false,
+   "value": "el",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/el/Firefox%20160.0.1.dmg",
+   "sha256": "8929310f58f9b7fdae9e8b7a004547dd2c7f8f8677c21d5d1afb112514f5cdb9"
+  },
+  {
+   "languages": [
+    "en-CA"
+   ],
+   "default": false,
+   "value": "en-CA",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/en-CA/Firefox%20160.0.1.dmg",
+   "sha256": "aa7da12327b8ad534c292989b30cab08f199dde04068d775c2136742c9792773"
+  },
+  {
+   "languages": [
+    "en-GB"
+   ],
+   "default": false,
+   "value": "en-GB",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/en-GB/Firefox%20160.0.1.dmg",
+   "sha256": "061429235e2a003791941a8eb8546f268539d24f216e39662bdf1aef72c85d35"
+  },
+  {
+   "languages": [
+    "en"
+   ],
+   "default": true,
+   "value": "en-US"
+  },
+  {
+   "languages": [
+    "eo"
+   ],
+   "default": false,
+   "value": "eo",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/eo/Firefox%20160.0.1.dmg",
+   "sha256": "8cfaa38bdb7a960245e94f8f3da90b6477abedaa8fa32fdc0a1239dc1ba135f1"
+  },
+  {
+   "languages": [
+    "es-AR"
+   ],
+   "default": false,
+   "value": "es-AR",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/es-AR/Firefox%20160.0.1.dmg",
+   "sha256": "9543921ee7e46ccf85f1db92eaccf579cd2162fbe5515bd1a4b5e2f870ecd218"
+  },
+  {
+   "languages": [
+    "es-CL"
+   ],
+   "default": false,
+   "value": "es-CL",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/es-CL/Firefox%20160.0.1.dmg",
+   "sha256": "215780516ac2f8a0e36df6b8b1b704271a677d3d9e8bfe85f8f37c93d1ea81a4"
+  },
+  {
+   "languages": [
+    "es-ES"
+   ],
+   "default": false,
+   "value": "es-ES",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/es-ES/Firefox%20160.0.1.dmg",
+   "sha256": "494f5ba34039a7abc0a5e55edd2e7ed73f215fbe0d098207c129dc49873adc4e"
+  },
+  {
+   "languages": [
+    "es-MX"
+   ],
+   "default": false,
+   "value": "es-MX",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/es-MX/Firefox%20160.0.1.dmg",
+   "sha256": "14679bc72dc0bf155257bbdbf0afc2c69331577ed3b7694792f4d7c0bdeb7989"
+  },
+  {
+   "languages": [
+    "et"
+   ],
+   "default": false,
+   "value": "et",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/et/Firefox%20160.0.1.dmg",
+   "sha256": "8819b2abc0b3db10c332052da7a30dfb29e8b7a68c9a574a49f233336661ff0d"
+  },
+  {
+   "languages": [
+    "eu"
+   ],
+   "default": false,
+   "value": "eu",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/eu/Firefox%20160.0.1.dmg",
+   "sha256": "4042a6cceed2634f8718a0837bd40a15b3390c3c08aa610210100435326843fb"
+  },
+  {
+   "languages": [
+    "fa"
+   ],
+   "default": false,
+   "value": "fa",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fa/Firefox%20160.0.1.dmg",
+   "sha256": "8deddd52aea3f95c183a7406fbda5cc226be9aaefcfedb3b6e5f2156adb564b7"
+  },
+  {
+   "languages": [
+    "ff"
+   ],
+   "default": false,
+   "value": "ff",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ff/Firefox%20160.0.1.dmg",
+   "sha256": "2aad0e1bac321215d69a7276f14a91c37e9744a79390992ef4f302a7ad474055"
+  },
+  {
+   "languages": [
+    "fi"
+   ],
+   "default": false,
+   "value": "fi",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fi/Firefox%20160.0.1.dmg",
+   "sha256": "2588ac3daf724262f029e37e513eb524da9348cb5dde4d72d6bbbd505e00c7cc"
+  },
+  {
+   "languages": [
+    "fr"
+   ],
+   "default": false,
+   "value": "fr",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fr/Firefox%20160.0.1.dmg",
+   "sha256": "efeec7784fc37f91eebdf8c371fb0ca3b7fd79c14e6b9574efa2e6173c8ced93"
+  },
+  {
+   "languages": [
+    "fur"
+   ],
+   "default": false,
+   "value": "fur",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fur/Firefox%20160.0.1.dmg",
+   "sha256": "2f87908f326ca9c3e99c75886029ac705d338bf27a5afc8721ffb3ef96078c90"
+  },
+  {
+   "languages": [
+    "fy"
+   ],
+   "default": false,
+   "value": "fy-NL",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/fy-NL/Firefox%20160.0.1.dmg",
+   "sha256": "cca8ca2e9ce4f5f8c8de8e26209494401d0d0c0f6b134422319ad86a2f185fd6"
+  },
+  {
+   "languages": [
+    "ga"
+   ],
+   "default": false,
+   "value": "ga-IE",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ga-IE/Firefox%20160.0.1.dmg",
+   "sha256": "855aa6e23e771d2a5d8afcd3678b8a9a31290a1e4da88b2b18ec8e156befd159"
+  },
+  {
+   "languages": [
+    "gd"
+   ],
+   "default": false,
+   "value": "gd",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/gd/Firefox%20160.0.1.dmg",
+   "sha256": "87063fcecef6eb04c7de732b14bef64c138445b9537f2e03d85ffaf0f4926e11"
+  },
+  {
+   "languages": [
+    "gl"
+   ],
+   "default": false,
+   "value": "gl",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/gl/Firefox%20160.0.1.dmg",
+   "sha256": "88565903027c74725e530dc5aaeec8324db8564f4e09a2c2d7fb5bb539b66b21"
+  },
+  {
+   "languages": [
+    "gn"
+   ],
+   "default": false,
+   "value": "gn",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/gn/Firefox%20160.0.1.dmg",
+   "sha256": "599f70d265645352f8ff8bcef9afafdbfc9004007b86cd5255fc3863febe7573"
+  },
+  {
+   "languages": [
+    "gu"
+   ],
+   "default": false,
+   "value": "gu-IN",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/gu-IN/Firefox%20160.0.1.dmg",
+   "sha256": "0a0d203de83068dc1e4cef3fcd1537b7755a5bcd5a1680d83b00cd11dbb48b03"
+  },
+  {
+   "languages": [
+    "he"
+   ],
+   "default": false,
+   "value": "he",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/he/Firefox%20160.0.1.dmg",
+   "sha256": "042b12bbde0abd2b2088b77c288b383026352b72c6c35422760949c87133ab15"
+  },
+  {
+   "languages": [
+    "hi"
+   ],
+   "default": false,
+   "value": "hi-IN",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hi-IN/Firefox%20160.0.1.dmg",
+   "sha256": "9c042564a49a5a191ce74f2c209f01c20ee1763e7118c69c66f8086fa03109dc"
+  },
+  {
+   "languages": [
+    "hr"
+   ],
+   "default": false,
+   "value": "hr",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hr/Firefox%20160.0.1.dmg",
+   "sha256": "91c6a9854bb137d3d6b763bbe5832a7f1d984016ab521618fe30cc6f75750dca"
+  },
+  {
+   "languages": [
+    "hsb"
+   ],
+   "default": false,
+   "value": "hsb",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hsb/Firefox%20160.0.1.dmg",
+   "sha256": "72ba1cdfd71d147933531469d04af77e2442d199f3a95879eb276b61d924714d"
+  },
+  {
+   "languages": [
+    "hu"
+   ],
+   "default": false,
+   "value": "hu",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hu/Firefox%20160.0.1.dmg",
+   "sha256": "edeb216471bc1aa7381f7d2a24f262ff7accade1932a17a40aed58928ee5244e"
+  },
+  {
+   "languages": [
+    "hy"
+   ],
+   "default": false,
+   "value": "hy-AM",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hy-AM/Firefox%20160.0.1.dmg",
+   "sha256": "6df7cfd2f71c5c3e562b88e11116c22a9f3f71a7f0527e0f5cf9ca6eacc3a122"
+  },
+  {
+   "languages": [
+    "ia"
+   ],
+   "default": false,
+   "value": "ia",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ia/Firefox%20160.0.1.dmg",
+   "sha256": "026d64fb9c516d270a481473b7a3c7a69a59fab52565262fa2a3634d36c24f96"
+  },
+  {
+   "languages": [
+    "id"
+   ],
+   "default": false,
+   "value": "id",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/id/Firefox%20160.0.1.dmg",
+   "sha256": "b788c9c8744f308acef1f3f022ea0c565e35be5ed6e9e3270bb7354827623408"
+  },
+  {
+   "languages": [
+    "in"
+   ],
+   "default": false,
+   "value": "hi-IN",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/hi-IN/Firefox%20160.0.1.dmg",
+   "sha256": "9c042564a49a5a191ce74f2c209f01c20ee1763e7118c69c66f8086fa03109dc"
+  },
+  {
+   "languages": [
+    "is"
+   ],
+   "default": false,
+   "value": "is",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/is/Firefox%20160.0.1.dmg",
+   "sha256": "8cc9a1e50e6a6601599ec707a98c004d7843c698346df540a75e2cccd9529b5d"
+  },
+  {
+   "languages": [
+    "it"
+   ],
+   "default": false,
+   "value": "it",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/it/Firefox%20160.0.1.dmg",
+   "sha256": "18e89951fc77049896e83c31186d48da31cd8e9fbc6b0e51a4f469bb00467db3"
+  },
+  {
+   "languages": [
+    "ja"
+   ],
+   "default": false,
+   "value": "ja-JP-mac",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ja-JP-mac/Firefox%20160.0.1.dmg",
+   "sha256": "8d1da50294583a654f6b44af70936b6f058c862040956f76cd93588531bb61da"
+  },
+  {
+   "languages": [
+    "ka"
+   ],
+   "default": false,
+   "value": "ka",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ka/Firefox%20160.0.1.dmg",
+   "sha256": "3d83e630352a29db17308cd3713ea8b324bbd21c9eb6d6242e571657cf6ca747"
+  },
+  {
+   "languages": [
+    "kab"
+   ],
+   "default": false,
+   "value": "kab",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/kab/Firefox%20160.0.1.dmg",
+   "sha256": "aa7918de610a22c5a2b959df3b77080967b3a3f73d7bf0ff7801cedb11c6f39f"
+  },
+  {
+   "languages": [
+    "kk"
+   ],
+   "default": false,
+   "value": "kk",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/kk/Firefox%20160.0.1.dmg",
+   "sha256": "d289cbfd973ccb526103854a0cf311a65cf878ae2d4071a3e8b10d06a33544a7"
+  },
+  {
+   "languages": [
+    "km"
+   ],
+   "default": false,
+   "value": "km",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/km/Firefox%20160.0.1.dmg",
+   "sha256": "a4a64ce91ee2c1d2913e28bf34fd1d6a9edb39655dbc5023fff23b7f6366d9e2"
+  },
+  {
+   "languages": [
+    "kn"
+   ],
+   "default": false,
+   "value": "kn",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/kn/Firefox%20160.0.1.dmg",
+   "sha256": "40678fc6986215544feddd98faf08c665e13d184d7763e2dddd8fd521b22ae74"
+  },
+  {
+   "languages": [
+    "ko"
+   ],
+   "default": false,
+   "value": "ko",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ko/Firefox%20160.0.1.dmg",
+   "sha256": "04c1f194e5c0eb4fe435285ce7a5afba1c3f126c7c0145859b74b6bda9220c59"
+  },
+  {
+   "languages": [
+    "lij"
+   ],
+   "default": false,
+   "value": "lij",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/lij/Firefox%20160.0.1.dmg",
+   "sha256": "a7e1afefc9ff95529ef9497d14051d447ba69d454858ff9af17adbdb95db3afd"
+  },
+  {
+   "languages": [
+    "lt"
+   ],
+   "default": false,
+   "value": "lt",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/lt/Firefox%20160.0.1.dmg",
+   "sha256": "2f6e3aa2757255d83f03617194e9e6f12879ea0b5fbe16f6a513e0066a0c1dd8"
+  },
+  {
+   "languages": [
+    "lv"
+   ],
+   "default": false,
+   "value": "lv",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/lv/Firefox%20160.0.1.dmg",
+   "sha256": "092d649b510786ac22765bbaa67df53e4378063930ddbfd71c517a6d8dd1c10b"
+  },
+  {
+   "languages": [
+    "mk"
+   ],
+   "default": false,
+   "value": "mk",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/mk/Firefox%20160.0.1.dmg",
+   "sha256": "6b8cc0415ac37584cc508f49c478f458a85c86f66c372d2609e41761f7a9d2fa"
+  },
+  {
+   "languages": [
+    "mr"
+   ],
+   "default": false,
+   "value": "mr",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/mr/Firefox%20160.0.1.dmg",
+   "sha256": "9be6efc95a5e7b25950cb4abea431bb45bae91e45ffbd627b9134baf8b19b36f"
+  },
+  {
+   "languages": [
+    "ms"
+   ],
+   "default": false,
+   "value": "ms",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ms/Firefox%20160.0.1.dmg",
+   "sha256": "c1e2fde190255956a48a3a5698ba63ae0ebb730112d498eb47657ec91fb42751"
+  },
+  {
+   "languages": [
+    "my"
+   ],
+   "default": false,
+   "value": "my",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/my/Firefox%20160.0.1.dmg",
+   "sha256": "141d32dd4138cf03601bef9ce2bca058c7f1893e1ebfc72488cdd0f03ed7d9c1"
+  },
+  {
+   "languages": [
+    "nb"
+   ],
+   "default": false,
+   "value": "nb-NO",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/nb-NO/Firefox%20160.0.1.dmg",
+   "sha256": "c7b43a347e69bbffe28f77edea38f209a9b2e48508a9cc51e578804316d638b3"
+  },
+  {
+   "languages": [
+    "ne"
+   ],
+   "default": false,
+   "value": "ne-NP",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ne-NP/Firefox%20160.0.1.dmg",
+   "sha256": "0bf056bc5723e4fff3b3bd99a664964e16a3ce5ddacf9cdb9d8e24c094138944"
+  },
+  {
+   "languages": [
+    "nl"
+   ],
+   "default": false,
+   "value": "nl",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/nl/Firefox%20160.0.1.dmg",
+   "sha256": "31041845bf5b25367bb7a7f74b40965856a033d4063ed693297721d1b75eb8ab"
+  },
+  {
+   "languages": [
+    "nn"
+   ],
+   "default": false,
+   "value": "nn-NO",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/nn-NO/Firefox%20160.0.1.dmg",
+   "sha256": "a5dd7f94a923f76566cf98ca6e31c5bcff22a394853ef93b17e0eaaa3dee2a5b"
+  },
+  {
+   "languages": [
+    "oc"
+   ],
+   "default": false,
+   "value": "oc",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/oc/Firefox%20160.0.1.dmg",
+   "sha256": "687cc8d86ca12713c8fbf38715dd6cb66482fc8cf26ab6ac24a22763d961f111"
+  },
+  {
+   "languages": [
+    "pa-IN"
+   ],
+   "default": false,
+   "value": "pa-IN",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/pa-IN/Firefox%20160.0.1.dmg",
+   "sha256": "06d107a88cad89e2018105099ee539a4a4617d3ccc4414de63b704698afd9642"
+  },
+  {
+   "languages": [
+    "pl"
+   ],
+   "default": false,
+   "value": "pl",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/pl/Firefox%20160.0.1.dmg",
+   "sha256": "89ff37bb2184b08369eeb0af1da4c9cf7cde0a14f8d306f81772aec32d887cee"
+  },
+  {
+   "languages": [
+    "pt-BR"
+   ],
+   "default": false,
+   "value": "pt-BR",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/pt-BR/Firefox%20160.0.1.dmg",
+   "sha256": "9e591d23c5e99569d89380c4707531e01c18fd539a3e521baa94c96f11e1d108"
+  },
+  {
+   "languages": [
+    "pt"
+   ],
+   "default": false,
+   "value": "pt-PT",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/pt-PT/Firefox%20160.0.1.dmg",
+   "sha256": "60c4d8771c6b6985f5c3c3772e6f081b0966108b7a47b6c60a5945b90ab5322b"
+  },
+  {
+   "languages": [
+    "rm"
+   ],
+   "default": false,
+   "value": "rm",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/rm/Firefox%20160.0.1.dmg",
+   "sha256": "b9b9914a288f36951df26c806ec62becdaf7a42e3091fe03093fd92f20290bf7"
+  },
+  {
+   "languages": [
+    "ro"
+   ],
+   "default": false,
+   "value": "ro",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ro/Firefox%20160.0.1.dmg",
+   "sha256": "24007f5b016522159e10cb962291c37fdc9ee586a64c48905b9f2b0f0fe88fa8"
+  },
+  {
+   "languages": [
+    "ru"
+   ],
+   "default": false,
+   "value": "ru",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ru/Firefox%20160.0.1.dmg",
+   "sha256": "cadac498687fd78a21d92767dccaba9a486b25c77c67510b52e87f926b6ebe87"
+  },
+  {
+   "languages": [
+    "sat"
+   ],
+   "default": false,
+   "value": "sat",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sat/Firefox%20160.0.1.dmg",
+   "sha256": "58ed14e0933fd6e2fe0ccb976d6553d3c11c9c105e6ba7fd8f986532e0ddb042"
+  },
+  {
+   "languages": [
+    "sc"
+   ],
+   "default": false,
+   "value": "sc",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sc/Firefox%20160.0.1.dmg",
+   "sha256": "d1a919b40eb05b0e5a097207d678e15583325dd8656d288b315b1207a9175d97"
+  },
+  {
+   "languages": [
+    "sco"
+   ],
+   "default": false,
+   "value": "sco",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sco/Firefox%20160.0.1.dmg",
+   "sha256": "68f331ddebc30db0db479d69bb4a3bb180c4ad3c026a4d75111dd521f9810731"
+  },
+  {
+   "languages": [
+    "si"
+   ],
+   "default": false,
+   "value": "si",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/si/Firefox%20160.0.1.dmg",
+   "sha256": "cb67e2fa40c23ea764d3524add656739cd1ff0af66a1f5ea476ed6b96dd061c9"
+  },
+  {
+   "languages": [
+    "sk"
+   ],
+   "default": false,
+   "value": "sk",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sk/Firefox%20160.0.1.dmg",
+   "sha256": "d97403c646e247e0b898ec6ddc3b154fb659947e32a66619c8023961bb66bbbc"
+  },
+  {
+   "languages": [
+    "skr"
+   ],
+   "default": false,
+   "value": "skr",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/skr/Firefox%20160.0.1.dmg",
+   "sha256": "011896ced3a44ed8120090222f328ca80ee4605d7150606dcfbc7bde95d59e3e"
+  },
+  {
+   "languages": [
+    "sl"
+   ],
+   "default": false,
+   "value": "sl",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sl/Firefox%20160.0.1.dmg",
+   "sha256": "62d4a8996a2bb9b8c40cb850ab6b5ef1a98d103ee49ac539f406fb534a58dca0"
+  },
+  {
+   "languages": [
+    "son"
+   ],
+   "default": false,
+   "value": "son",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/son/Firefox%20160.0.1.dmg",
+   "sha256": "b8104a018cbab738b54ab4042e6e3cafada3ab29ada32c62b81e1c1d7ec673f2"
+  },
+  {
+   "languages": [
+    "sq"
+   ],
+   "default": false,
+   "value": "sq",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sq/Firefox%20160.0.1.dmg",
+   "sha256": "cc1d1f059131bef8bf611b00f15f5fcb507c1d224a0e5e1deb696eeaa8e1f2ff"
+  },
+  {
+   "languages": [
+    "sr"
+   ],
+   "default": false,
+   "value": "sr",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sr/Firefox%20160.0.1.dmg",
+   "sha256": "0a7bdf4bb9504ab51b86eeaff9282f77eac764c2c5a8da395dd5f0429e8dfac0"
+  },
+  {
+   "languages": [
+    "sv"
+   ],
+   "default": false,
+   "value": "sv-SE",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/sv-SE/Firefox%20160.0.1.dmg",
+   "sha256": "9554bc3ae90eb11a4f914153fafc7001da21cf25c5913acadd6535be52bed1f4"
+  },
+  {
+   "languages": [
+    "szl"
+   ],
+   "default": false,
+   "value": "szl",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/szl/Firefox%20160.0.1.dmg",
+   "sha256": "9a3c45a1dd8708037c6bbf0221b5288206d375764489f162dd079ee70f235d68"
+  },
+  {
+   "languages": [
+    "ta"
+   ],
+   "default": false,
+   "value": "ta",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ta/Firefox%20160.0.1.dmg",
+   "sha256": "a85783a5e2bc8bac5e5ec90e0c22bd9b0e6af1d8fbff75cf4801e14c997f820c"
+  },
+  {
+   "languages": [
+    "te"
+   ],
+   "default": false,
+   "value": "te",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/te/Firefox%20160.0.1.dmg",
+   "sha256": "46911cb62075f8f381d378cf3d4802a694b3aadf7024d457212ab9a4732d4046"
+  },
+  {
+   "languages": [
+    "tg"
+   ],
+   "default": false,
+   "value": "tg",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/tg/Firefox%20160.0.1.dmg",
+   "sha256": "483885e0dae3bfbefd900da6f97fdc0028229b1d8b31bae7701ca5ba3c251995"
+  },
+  {
+   "languages": [
+    "th"
+   ],
+   "default": false,
+   "value": "th",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/th/Firefox%20160.0.1.dmg",
+   "sha256": "db0f380ac3bedf619468c987299e02437cee5ed7663d7643aa84821650866ebb"
+  },
+  {
+   "languages": [
+    "tl"
+   ],
+   "default": false,
+   "value": "tl",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/tl/Firefox%20160.0.1.dmg",
+   "sha256": "f18c8bb4c4ca82e11aa9f894bafeb0ef0e668976c2447aadf9605917ee7586f2"
+  },
+  {
+   "languages": [
+    "tr"
+   ],
+   "default": false,
+   "value": "tr",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/tr/Firefox%20160.0.1.dmg",
+   "sha256": "48198af6edaa38c67f5cd97637917aeba48f080a3f3c77ae42e7aa7ac0fc5abc"
+  },
+  {
+   "languages": [
+    "trs"
+   ],
+   "default": false,
+   "value": "trs",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/trs/Firefox%20160.0.1.dmg",
+   "sha256": "d2cac190b6bfbdf7172ec4eee517b944c3343e127f9cbc32d4900cf0ddf99327"
+  },
+  {
+   "languages": [
+    "uk"
+   ],
+   "default": false,
+   "value": "uk",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/uk/Firefox%20160.0.1.dmg",
+   "sha256": "5d4c4360900ef6f4acc667c529f4308afbd57135fbf501f707790af263d93ffb"
+  },
+  {
+   "languages": [
+    "ur"
+   ],
+   "default": false,
+   "value": "ur",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/ur/Firefox%20160.0.1.dmg",
+   "sha256": "6a62d3168bb69b9da86137500de9faf4a7440546150cdc23b9030a4249330779"
+  },
+  {
+   "languages": [
+    "uz"
+   ],
+   "default": false,
+   "value": "uz",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/uz/Firefox%20160.0.1.dmg",
+   "sha256": "ccf83a8ae894f8bc7aff379c84ba29c00177cf00c50571a7fc73d1b081b9b37b"
+  },
+  {
+   "languages": [
+    "vi"
+   ],
+   "default": false,
+   "value": "vi",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/vi/Firefox%20160.0.1.dmg",
+   "sha256": "1855821dd90d3ff92b013b9254c32a350ce35667118299f5b953b27bb60ad908"
+  },
+  {
+   "languages": [
+    "xh"
+   ],
+   "default": false,
+   "value": "xh",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/xh/Firefox%20160.0.1.dmg",
+   "sha256": "e77a64cabc0fd0538328e924911cad83da952954b54fe534912130e276b94d05"
+  },
+  {
+   "languages": [
+    "zh-TW"
+   ],
+   "default": false,
+   "value": "zh-TW",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/zh-TW/Firefox%20160.0.1.dmg",
+   "sha256": "acdee899ce1723431c8e5020491dd602c10b0abd305f7ed2ddc1cd7547fea8b6"
+  },
+  {
+   "languages": [
+    "zh"
+   ],
+   "default": false,
+   "value": "zh-CN",
+   "url": "https://download-installer.cdn.mozilla.net/pub/firefox/releases/160.0.1/mac/zh-CN/Firefox%20160.0.1.dmg",
+   "sha256": "b11def29e27c792bcdaed85b43dce55384c0f67045c5674b76619bf6d139e9f6"
+  }
+ ],
+ "variations": {},
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey",
+  "big_sur",
+  "arm64_big_sur"
+ ]
+}

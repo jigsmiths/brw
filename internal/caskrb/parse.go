@@ -1,0 +1,618 @@
+package caskrb
+
+import (
+	"fmt"
+	"strconv"
+)
+
+// node is an expression or statement of the syntax tree; the types below are all of them.
+type node interface{ node() }
+
+func (*litN) node()    {}
+func (*strN) node()    {}
+func (*symN) node()    {}
+func (*regexN) node()  {}
+func (*arrN) node()    {}
+func (*hashN) node()   {}
+func (*constN) node()  {}
+func (*callN) node()   {}
+func (*indexN) node()  {}
+func (*binN) node()    {}
+func (*notN) node()    {}
+func (*negN) node()    {}
+func (*ifN) node()     {}
+func (*assignN) node() {}
+
+type (
+	litN   struct{ v value }
+	strN   struct{ parts []node } // litN strings and expressions
+	symN   struct{ s string }
+	regexN struct{ src string }
+	arrN   struct{ elems []node }
+	pair   struct{ k, v node }
+	hashN  struct{ pairs []pair }
+	constN struct{ path []string }
+	callN  struct {
+		recv  node
+		name  string
+		args  []node // a trailing hashN holds keyword arguments
+		block *blockN
+		safe  bool
+		bare  bool // a plain identifier: no receiver, arguments or parentheses
+	}
+	blockN struct {
+		params []string
+		body   []node
+	}
+	indexN struct {
+		recv node
+		args []node
+	}
+	binN struct {
+		op   string
+		l, r node
+	}
+	notN struct{ x node }
+	negN struct{ x node }
+	ifN  struct {
+		cond      node
+		then, els []node
+	}
+	assignN struct {
+		name string
+		op   string
+		v    node
+	}
+)
+
+type parser struct {
+	t []token
+	i int
+}
+
+type parseErr struct{ msg string }
+
+func (p *parser) fail(f string, a ...any) {
+	panic(parseErr{fmt.Sprintf("line %d: ", p.cur().line) + fmt.Sprintf(f, a...)})
+}
+
+func parse(toks []token) (prog []node, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if pe, ok := r.(parseErr); ok {
+				err = fmt.Errorf("parse: %s", pe.msg)
+				return
+			}
+			panic(r)
+		}
+	}()
+	p := &parser{t: toks}
+	prog = p.stmts("")
+	if p.cur().k != tEOF {
+		p.fail("unexpected %v %q", p.cur().k, p.cur().s)
+	}
+	return prog, nil
+}
+
+func (p *parser) cur() token         { return p.t[p.i] }
+func (p *parser) at(o int) token     { return p.t[min(p.i+o, len(p.t)-1)] }
+func (p *parser) next() token        { t := p.t[p.i]; p.i++; return t }
+func (p *parser) isOp(s string) bool { return p.cur().k == tOp && p.cur().s == s }
+func (p *parser) isKw(s string) bool { return p.cur().k == tKw && p.cur().s == s }
+func (p *parser) skipNL() {
+	for p.cur().k == tNL {
+		p.i++
+	}
+}
+func (p *parser) expectOp(s string) {
+	if !p.isOp(s) {
+		p.fail("expected %q, got %q", s, p.cur().s)
+	}
+	p.i++
+}
+
+// stmts parses statements up to one of the given keywords (or "}" for brace blocks).
+func (p *parser) stmts(end ...string) []node {
+	var out []node
+	for {
+		p.skipNL()
+		c := p.cur()
+		if c.k == tEOF {
+			return out
+		}
+		for _, e := range end {
+			if (c.k == tKw && c.s == e) || (c.k == tOp && c.s == e) {
+				return out
+			}
+		}
+		out = append(out, p.stmt())
+	}
+}
+
+func (p *parser) stmt() node {
+	n := p.expr()
+	for {
+		switch {
+		case p.isKw("if"):
+			p.i++
+			n = &ifN{cond: p.expr(), then: []node{n}}
+		case p.isKw("unless"):
+			p.i++
+			n = &ifN{cond: &notN{p.expr()}, then: []node{n}}
+		default:
+			return n
+		}
+	}
+}
+
+func (p *parser) expr() node {
+	if p.cur().k == tIdent && p.at(1).k == tOp {
+		switch op := p.at(1).s; op {
+		case "=", "||=", "+=", "-=", "&&=":
+			name := p.next().s
+			p.next()
+			p.skipNL()
+			return &assignN{name: name, op: op, v: p.expr()}
+		}
+	}
+	if p.isKw("not") {
+		p.i++
+		return &notN{p.expr()}
+	}
+	n := p.ternary()
+	for p.isKw("and") || p.isKw("or") {
+		op := map[string]string{"and": "&&", "or": "||"}[p.next().s]
+		p.skipNL()
+		n = &binN{op, n, p.ternary()}
+	}
+	return n
+}
+
+func (p *parser) ternary() node {
+	c := p.binary(0)
+	if p.isOp("?") {
+		p.i++
+		p.skipNL()
+		a := p.ternary()
+		p.skipNL()
+		if p.cur().k == tLabel { // `x ? y : z` lexed y: as a label
+			p.fail("ternary label")
+		}
+		p.expectOp(":")
+		p.skipNL()
+		b := p.ternary()
+		return &ifN{cond: c, then: []node{a}, els: []node{b}}
+	}
+	return c
+}
+
+var precedence = []map[string]bool{
+	{"||": true},
+	{"&&": true},
+	{"==": true, "!=": true, "=~": true, "!~": true, "<=>": true},
+	{"<": true, ">": true, "<=": true, ">=": true},
+	{"..": true, "...": true},
+	{"|": true, "^": true},
+	{"&": true},
+	{"<<": true},
+	{"+": true, "-": true},
+	{"*": true, "/": true, "%": true},
+	{"**": true},
+}
+
+func (p *parser) binary(level int) node {
+	if level == len(precedence) {
+		return p.unary()
+	}
+	l := p.binary(level + 1)
+	for p.cur().k == tOp && precedence[level][p.cur().s] {
+		op := p.next().s
+		if (op == ".." || op == "...") && (p.isOp("]") || p.isOp(")") || p.cur().k == tNL) {
+			l = &binN{op, l, &litN{rint(-1)}} // endless range
+			if op == "..." {
+				p.fail("endless exclusive range")
+			}
+			continue
+		}
+		p.skipNL()
+		l = &binN{op, l, p.binary(level + 1)}
+	}
+	return l
+}
+
+func (p *parser) unary() node {
+	switch {
+	case p.isOp("!"):
+		p.i++
+		return &notN{p.unary()}
+	case p.isOp("-"):
+		p.i++
+		return &negN{p.unary()}
+	}
+	return p.postfix(p.primary())
+}
+
+func (p *parser) postfix(n node) node {
+	for {
+		switch {
+		case p.isOp(".") || p.isOp("&."):
+			safe := p.next().s == "&."
+			t := p.next()
+			if t.k != tIdent && t.k != tConst && t.k != tKw && t.k != tLabel {
+				if t.k == tOp && t.s == "(" { // .() call
+					p.fail("unsupported .()")
+				}
+				p.fail("expected method name, got %q", t.s)
+			}
+			c := &callN{recv: n, name: t.s, safe: safe}
+			if t.k == tLabel { // `foo.bar key: v` lexed bar: as a label
+				p.i--
+				p.t[p.i] = token{k: tLabel, s: "", line: t.line}
+				p.fail("method label")
+			}
+			p.callArgs(c, true)
+			n = c
+		case p.isOp("::"):
+			p.i++
+			t := p.next()
+			if cn, ok := n.(*constN); ok && t.k == tConst {
+				n = &constN{append(append([]string{}, cn.path...), t.s)}
+				continue
+			}
+			c := &callN{recv: n, name: t.s}
+			p.callArgs(c, true)
+			n = c
+		case p.isOp("[") && !p.cur().spaceBef:
+			p.i++
+			args := p.argList("]")
+			p.expectOp("]")
+			n = &indexN{n, args}
+		default:
+			return n
+		}
+	}
+}
+
+// startsArg reports whether the current token can start a command argument.
+func (p *parser) startsArg() bool {
+	c := p.cur()
+	if !c.spaceBef {
+		return false
+	}
+	switch c.k {
+	case tStr, tSym, tInt, tFloat, tIdent, tConst, tLabel, tWords, tSyms, tRegex:
+		return true
+	case tKw:
+		return c.s == "nil" || c.s == "true" || c.s == "false" || c.s == "self" || c.s == "not"
+	case tOp:
+		switch c.s {
+		case "[", "->", "::", "!":
+			return true
+		case "-", "*", "&", ":":
+			return !p.at(1).spaceBef
+		}
+	}
+	return false
+}
+
+// callArgs parses arguments and a block after a method name.
+func (p *parser) callArgs(c *callN, allowCommand bool) {
+	switch {
+	case p.isOp("(") && !p.cur().spaceBef:
+		p.i++
+		c.args = p.argList(")")
+		p.expectOp(")")
+	case allowCommand && p.startsArg():
+		c.args = p.argList("")
+	default:
+		if c.recv == nil {
+			c.bare = true
+		}
+	}
+	switch {
+	case p.isKw("do") && c.recv == nil && c.name == "livecheck":
+		// brw never runs livecheck, so its Ruby only has to be skipped
+		p.i++
+		p.skipBlock()
+		c.block = &blockN{}
+		c.bare = false
+	case p.isKw("do"):
+		p.i++
+		c.block = p.block("end")
+		c.bare = false
+	case p.isOp("{"):
+		p.i++
+		c.block = p.block("}")
+		c.bare = false
+	}
+}
+
+// skipBlock skips to the end that closes a do block, counting Ruby's openers.
+func (p *parser) skipBlock() {
+	depth := 1
+	for depth > 0 {
+		t := p.next()
+		if t.k == tEOF {
+			p.fail("unterminated block")
+		}
+		if t.k != tKw {
+			continue
+		}
+		switch t.s {
+		case "do", "case", "begin", "def":
+			depth++
+		case "if", "unless", "while", "until":
+			prev := p.t[p.i-2]
+			if prev.k == tNL || (prev.k == tOp && (prev.s == "=" || prev.s == "(" || prev.s == "||=" || prev.s == "|")) || (prev.k == tKw && (prev.s == "then" || prev.s == "else" || prev.s == "do")) {
+				depth++
+			}
+		case "end":
+			depth--
+		}
+	}
+}
+
+func (p *parser) block(end string) *blockN {
+	b := &blockN{}
+	p.skipNL()
+	if p.isOp("|") {
+		p.i++
+		for !p.isOp("|") {
+			t := p.next()
+			if t.k == tIdent {
+				b.params = append(b.params, t.s)
+			}
+		}
+		p.i++
+	}
+	b.body = p.stmts(end)
+	if end == "end" {
+		if !p.isKw("end") {
+			p.fail("expected end")
+		}
+	} else {
+		p.expectOp(end)
+		return b
+	}
+	p.i++
+	return b
+}
+
+// argList parses comma-separated arguments; label/=> pairs collect into a trailing hash.
+func (p *parser) argList(close string) []node {
+	var args []node
+	var h *hashN
+	bracketed := close != ""
+	for {
+		if bracketed {
+			p.skipNL()
+			if p.isOp(close) {
+				break
+			}
+		}
+		if p.cur().k == tLabel {
+			if h == nil {
+				h = &hashN{}
+			}
+			k := p.next().s
+			if bracketed {
+				p.skipNL()
+			}
+			if p.isOp(",") || (bracketed && p.isOp(close)) { // shorthand `key:`
+				h.pairs = append(h.pairs, pair{&symN{k}, &callN{name: k, bare: true}})
+			} else {
+				h.pairs = append(h.pairs, pair{&symN{k}, p.argExpr()})
+			}
+		} else if p.isOp("&") || p.isOp("*") || p.isOp("**") {
+			p.fail("unsupported splat or block argument")
+		} else {
+			e := p.argExpr()
+			if p.isOp("=>") {
+				p.i++
+				p.skipNL()
+				if h == nil {
+					h = &hashN{}
+				}
+				h.pairs = append(h.pairs, pair{e, p.argExpr()})
+			} else {
+				args = append(args, e)
+			}
+		}
+		if bracketed {
+			p.skipNL()
+		}
+		if !p.isOp(",") {
+			break
+		}
+		p.i++
+		p.skipNL()
+	}
+	if h != nil {
+		args = append(args, h)
+	}
+	return args
+}
+
+func (p *parser) argExpr() node {
+	n := p.expr()
+	// `foo x if y` inside an argument list is not valid; leave modifiers to stmt
+	return n
+}
+
+func (p *parser) primary() node {
+	t := p.cur()
+	switch t.k {
+	case tInt:
+		p.i++
+		v, err := strconv.ParseInt(t.s, 10, 64)
+		if err != nil {
+			p.fail("integer %s", t.s)
+		}
+		return &litN{rint(v)}
+	case tFloat:
+		p.i++
+		v, err := strconv.ParseFloat(t.s, 64)
+		if err != nil {
+			p.fail("float %s", t.s)
+		}
+		return &litN{rfloat(v)}
+	case tStr:
+		p.i++
+		n := p.strNode(t.parts)
+		// adjacent string literals concatenate
+		for p.cur().k == tStr && p.cur().spaceBef {
+			n.parts = append(n.parts, p.strNode(p.next().parts).parts...)
+		}
+		return n
+	case tSym:
+		p.i++
+		return &symN{t.s}
+	case tRegex:
+		p.i++
+		return &regexN{t.s}
+	case tWords:
+		p.i++
+		a := &arrN{}
+		for _, w := range t.words {
+			a.elems = append(a.elems, &litN{rstr(w)})
+		}
+		return a
+	case tSyms:
+		p.i++
+		a := &arrN{}
+		for _, w := range t.words {
+			a.elems = append(a.elems, &symN{w})
+		}
+		return a
+	case tConst:
+		p.i++
+		if p.isOp("(") && !p.cur().spaceBef {
+			c := &callN{name: t.s}
+			p.callArgs(c, false)
+			return c
+		}
+		return &constN{[]string{t.s}}
+	case tIdent:
+		p.i++
+		c := &callN{name: t.s}
+		p.callArgs(c, true)
+		return c
+	case tLabel:
+		// a bare hash in a position where only arguments are expected
+		args := p.argList("")
+		if len(args) == 1 {
+			return args[0]
+		}
+		p.fail("unexpected label")
+	case tKw:
+		switch t.s {
+		case "nil":
+			p.i++
+			return &litN{nil}
+		case "true":
+			p.i++
+			return &litN{rbool(true)}
+		case "false":
+			p.i++
+			return &litN{rbool(false)}
+		case "self":
+			p.i++
+			return &callN{name: "self", bare: true}
+		case "if", "unless":
+			p.i++
+			return p.ifExpr(t.s == "unless")
+		case "next", "return", "break":
+			p.i++
+			var v node
+			if p.cur().k != tNL && !p.isKw("if") && !p.isKw("unless") && !p.isKw("end") && !p.isOp("}") {
+				v = p.expr()
+			}
+			return &callN{name: "__" + t.s, args: nilOr(v)}
+		default:
+			p.fail("unsupported %s", t.s)
+		}
+	case tOp:
+		switch t.s {
+		case "(":
+			p.i++
+			body := p.stmts(")")
+			p.expectOp(")")
+			if len(body) == 1 {
+				return body[0]
+			}
+			return &callN{name: "__seq", args: body}
+		case "[":
+			p.i++
+			elems := p.argList("]")
+			p.expectOp("]")
+			return &arrN{elems}
+		case "{":
+			p.i++
+			args := p.argList("}")
+			p.expectOp("}")
+			if len(args) == 0 {
+				return &hashN{}
+			}
+			if h, ok := args[len(args)-1].(*hashN); ok && len(args) == 1 {
+				return h
+			}
+			p.fail("bad hash literal")
+		case "->":
+			p.fail("unsupported lambda")
+		case "::":
+			p.i++
+			return &constN{[]string{p.next().s}}
+		}
+	}
+	p.fail("unexpected %q", t.s)
+	return nil
+}
+
+func nilOr(n node) []node {
+	if n == nil {
+		return nil
+	}
+	return []node{n}
+}
+
+func (p *parser) ifExpr(negate bool) node {
+	cond := p.expr()
+	if negate {
+		cond = &notN{cond}
+	}
+	if p.isKw("then") {
+		p.i++
+	}
+	n := &ifN{cond: cond, then: p.stmts("elsif", "else", "end")}
+	switch {
+	case p.isKw("elsif"):
+		p.i++
+		n.els = []node{p.ifExpr(false)}
+		return n
+	case p.isKw("else"):
+		p.i++
+		n.els = p.stmts("end")
+	}
+	if !p.isKw("end") {
+		p.fail("expected end of if")
+	}
+	p.i++
+	return n
+}
+
+func (p *parser) strNode(parts []strPart) *strN {
+	s := &strN{}
+	for _, pt := range parts {
+		if !pt.isExpr {
+			s.parts = append(s.parts, &litN{rstr(pt.lit)})
+			continue
+		}
+		sub := &parser{t: pt.interp}
+		body := sub.stmts()
+		if len(body) != 1 {
+			p.fail("interpolation with %d statements", len(body))
+		}
+		s.parts = append(s.parts, body[0])
+	}
+	return s
+}

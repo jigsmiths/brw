@@ -1,0 +1,104 @@
+{
+ "token": "alt-tab",
+ "full_token": "alt-tab",
+ "old_tokens": [],
+ "tap": "homebrew/cask",
+ "name": [
+  "AltTab"
+ ],
+ "desc": "Enable Windows-like alt-tab",
+ "homepage": "https://alt-tab.app/",
+ "url": "https://github.com/lwouis/alt-tab-macos/releases/download/v11.10.2/AltTab-11.10.2.zip",
+ "url_specs": {},
+ "version": "11.10.2",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": null,
+ "bundle_short_version": null,
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "5a2a821a83be1092df0f63d2403359ef2f7d52ad39cec36d930e4c7554cc045b",
+ "artifacts": [
+  {
+   "uninstall": [
+    {
+     "quit": "com.lwouis.alt-tab-macos"
+    }
+   ]
+  },
+  {
+   "app": [
+    "AltTab.app"
+   ],
+   "target": "/Applications/AltTab.app"
+  },
+  {
+   "zap": [
+    {
+     "trash": [
+      "~/Library/Application Support/com.lwouis.alt-tab-macos",
+      "~/Library/Caches/com.lwouis.alt-tab-macos",
+      "~/Library/Caches/com.plausiblelabs.crashreporter.data/com.lwouis.alt-tab-macos",
+      "~/Library/Cookies/com.lwouis.alt-tab-macos.binarycookies",
+      "~/Library/HTTPStorages/com.lwouis.alt-tab-macos",
+      "~/Library/HTTPStorages/com.lwouis.alt-tab-macos.binarycookies",
+      "~/Library/LaunchAgents/com.lwouis.alt-tab-macos.plist",
+      "~/Library/Preferences/com.lwouis.alt-tab-macos.license.plist",
+      "~/Library/Preferences/com.lwouis.alt-tab-macos.plist",
+      "~/Library/Preferences/com.lwouis.alt-tab-macos.usage.plist"
+     ]
+    }
+   ]
+  }
+ ],
+ "caveats": null,
+ "caveats_rosetta": null,
+ "depends_on": {
+  "macos": {
+   ">=": [
+    "12"
+   ]
+  }
+ },
+ "conflicts_with": null,
+ "container": null,
+ "rename": [],
+ "auto_updates": true,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": false,
+ "disable_date": null,
+ "disable_reason": null,
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": null,
+ "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
+ "languages": [],
+ "ruby_source_path": "Casks/a/alt-tab.rb",
+ "ruby_source_checksum": {
+  "sha256": "471a692dc6e14d3a03565a3a82593cca5d8f21833122c40cf69b72ff734e18ed"
+ },
+ "variations": {},
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey"
+ ]
+}
