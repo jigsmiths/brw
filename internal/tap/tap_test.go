@@ -156,6 +156,12 @@ func TestCloneAndPull(t *testing.T) {
 	if remote := git(t, tp.Dir, "remote"); remote != "origin\n" {
 		t.Errorf("remote = %q", remote)
 	}
+	if got := tp.Remote(); got != src {
+		t.Errorf("Remote = %q, want %q", got, src)
+	}
+	if got := (Tap{Dir: t.TempDir()}).Remote(); got != "" {
+		t.Errorf("Remote of a folder that is no clone = %q", got)
+	}
 	if _, err := Clone(context.Background(), prefix, "jigsmiths/tap", src); err == nil {
 		t.Error("cloning a tap that is there should fail")
 	}

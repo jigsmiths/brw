@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -42,8 +43,12 @@ func TestConformanceTapCask(t *testing.T) {
 	for _, p := range []string{theirs, mine} {
 		sh(t, "", nil, "git", "clone", "-q", oracle, p)
 	}
-	env := []string{"HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_CACHE=" + cache}
-	brwEnv := append(slices.Clone(env), "HOME="+filepath.Join(work, "home"))
+	// Each tool keeps its trust store in a scratch config folder, not the user's.
+	theirConfig, myConfig := filepath.Join(work, "config-brew"), filepath.Join(work, "config-brw")
+	common := []string{"HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_CACHE=" + cache,
+		"HOMEBREW_NO_REQUIRE_TAP_TRUST="}
+	env := append(slices.Clone(common), "XDG_CONFIG_HOME="+theirConfig)
+	brwEnv := append(slices.Clone(common), "HOME="+filepath.Join(work, "home"), "XDG_CONFIG_HOME="+myConfig)
 	// brew sets up its own Ruby the first time it needs it, whatever the command.
 	rubySetup := regexp.MustCompile(`(?m)^(==> Downloading \S+/portable-ruby/|Already downloaded: \S+/portable-ruby-|==> Pouring portable-ruby-).*\n`)
 	brewIn := func(prefix string, args ...string) string {
@@ -75,9 +80,16 @@ func TestConformanceTapCask(t *testing.T) {
 		writeTapFile(t, origin, "Casks/brw.rb", fetchTapFile(t, commitID, "Casks/brw.rb"))
 		commit("brw " + version)
 		follow()
+		// The tap's workflow trusts the tap; here that would also trust it for
+		// the comparison, so the listing is made without asking for trust.
+		cmd := osexec.Command(filepath.Join(theirs, "bin", "brew"), "info", "--json=v2", "--variations", "--cask", "jigsmiths/tap/brw")
+		cmd.Env = append(append(os.Environ(), env...), "HOMEBREW_NO_REQUIRE_TAP_TRUST=1")
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		gen, err := cmd.Output()
 		var info struct{ Casks []json.RawMessage }
-		if err := json.Unmarshal([]byte(brewIn(theirs, "info", "--json=v2", "--variations", "--cask", "jigsmiths/tap/brw")), &info); err != nil {
-			t.Fatal(err)
+		if err != nil || json.Unmarshal(gen, &info) != nil {
+			t.Fatalf("brew info: %v\n%s\n%s", err, gen, stderr.String())
 		}
 		listing, err := json.Marshal(info.Casks)
 		if err != nil {
@@ -96,6 +108,12 @@ func TestConformanceTapCask(t *testing.T) {
 	}
 	brewIn(theirs, "install", "--cask", "--appdir", theirApps, "jigsmiths/tap/brw")
 	brwIn("install", "--cask", "--appdir", myApps, "jigsmiths/tap/brw")
+	// Naming the cask trusted it, and both stores say so the same way.
+	a, errA := os.ReadFile(filepath.Join(theirConfig, "homebrew", "trust.json"))
+	b, errB := os.ReadFile(filepath.Join(myConfig, "homebrew", "trust.json"))
+	if errA != nil || errB != nil || string(a) != string(b) {
+		t.Errorf("trust stores differ:\nbrew (%v):\n%s\nbrw (%v):\n%s", errA, a, errB, b)
+	}
 
 	stamp := regexp.MustCompile(`(?m)/\d{14}\.\d{3}(/|$)`)
 	normal := func(s, prefix, apps string) string {

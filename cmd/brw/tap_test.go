@@ -56,6 +56,9 @@ func publishTapCask(t *testing.T, repo string, c map[string]any, version string)
 // tapStore serves an app cask from a tap repository rather than the API.
 func tapStore(t *testing.T) (e *env, prefix, origin string, app map[string]any) {
 	t.Helper()
+	// brew's trust store goes here, never the user's.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOMEBREW_NO_REQUIRE_TAP_TRUST", "")
 	s := newStore(t)
 	s.appCask("app")
 	app, s.casks = s.casks[0], nil
@@ -84,8 +87,12 @@ func TestInstallUpdateAndUpgradeACaskFromATap(t *testing.T) {
 	if !strings.Contains(out, "app was successfully installed!\n") {
 		t.Errorf("install output:\n%s", out)
 	}
-	if w := e.err.(*bytes.Buffer).String(); !strings.HasPrefix(w, "==> Tapping jigsmiths/tap\n") {
+	if w := e.err.(*bytes.Buffer).String(); !strings.HasPrefix(w, "==> Tapping jigsmiths/tap\n==> Trusted cask jigsmiths/tap/app\n") {
 		t.Errorf("stderr = %q", w)
+	}
+	// Tapped from elsewhere than GitHub, the tap is named by its remote, as brew does.
+	if got := trustFile(t); !strings.Contains(got, `"`+strings.ToLower(origin)+`/app"`) {
+		t.Errorf("trust.json:\n%s", got)
 	}
 	receipt, err := os.ReadFile(filepath.Join(prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json"))
 	if err != nil {
@@ -113,6 +120,73 @@ func TestInstallUpdateAndUpgradeACaskFromATap(t *testing.T) {
 	}
 	if out, err := runCmd(t, e, "update", "-prefix", prefix); err != nil || strings.Contains(out, "tap") {
 		t.Errorf("update with nothing new = %q, %v", out, err)
+	}
+}
+
+func trustFile(t *testing.T) string {
+	t.Helper()
+	b, _ := os.ReadFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "homebrew", "trust.json"))
+	return string(b)
+}
+
+func TestCasksOfAnUntrustedTapAreSkipped(t *testing.T) {
+	e, prefix, origin, _ := tapStore(t)
+	if _, err := tap.Clone(t.Context(), prefix, "jigsmiths/tap", origin); err != nil {
+		t.Fatal(err)
+	}
+	stderr := &bytes.Buffer{}
+	e.err = stderr
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", t.TempDir(), "app"); err == nil {
+		t.Error("installed a cask from an untrusted tap by its bare token")
+	}
+	if !strings.Contains(stderr.String(), "brw: warning: Skipping jigsmiths/tap because it is not trusted. Run `brw trust jigsmiths/tap` to trust it.\n") {
+		t.Errorf("stderr = %q", stderr)
+	}
+
+	out, err := runCmd(t, e, "trust", "-prefix", prefix, "jigsmiths/tap")
+	if want := "Trusted tap: " + strings.ToLower(origin) + "\n"; err != nil || out != want {
+		t.Errorf("trust = %q, %v; want %q", out, err, want)
+	}
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", t.TempDir(), "app"); err != nil || !strings.Contains(out, "app was successfully installed!\n") {
+		t.Errorf("install from the trusted tap = %q, %v", out, err)
+	}
+
+	t.Setenv("HOMEBREW_NO_REQUIRE_TAP_TRUST", "1")
+	if _, err := runCmd(t, e, "untrust", "-prefix", prefix, "jigsmiths/tap"); err != nil {
+		t.Fatal(err)
+	}
+	stderr.Reset()
+	if out, err := runCmd(t, e, "outdated", "-prefix", prefix); err != nil || strings.Contains(stderr.String(), "Skipping") {
+		t.Errorf("with HOMEBREW_NO_REQUIRE_TAP_TRUST: %q, %v, %q", out, err, stderr)
+	}
+}
+
+func TestTrustCommands(t *testing.T) {
+	e, prefix, _, _ := tapStore(t)
+	if out, err := runCmd(t, e, "trust"); err != nil || out != "All official taps and commands are trusted.\nNo trusted taps, formulae, casks or commands.\n" {
+		t.Errorf("trust with nothing trusted = %q, %v", out, err)
+	}
+	for _, tc := range []struct{ args, want string }{
+		{"trust homebrew/cask", "Official tap homebrew/cask is always trusted.\n"},
+		{"trust someone/tap", "Trusted tap: someone/tap\n"},
+		{"trust someone/tap", "Already trusted tap: someone/tap\n"},
+		{"trust someone/tap/thing", "Trusted cask: someone/tap/thing\n"},
+		{"trust --cask other/tap/app", "Trusted cask: other/tap/app\n"},
+		{"untrust someone/tap", "Untrusted tap: someone/tap\n"},
+		{"untrust someone/tap", "Not trusted tap: someone/tap\n"},
+	} {
+		args := strings.Fields(tc.args)
+		out, err := runCmd(t, e, args[0], append([]string{"-prefix", prefix}, args[1:]...)...)
+		if err != nil || out != tc.want {
+			t.Errorf("%s = %q, %v; want %q", tc.args, out, err, tc.want)
+		}
+	}
+	// Untrusting a tap also drops its casks, as brew's untrust does.
+	if out, _ := runCmd(t, e, "trust"); out != "All official taps and commands are trusted.\nTrusted casks:\n  other/tap/app\n" {
+		t.Errorf("trust listing = %q", out)
+	}
+	if _, err := runCmd(t, e, "trust", "-prefix", prefix, "a/b/c/d"); err == nil {
+		t.Error("trusted a name that is neither a tap nor a cask")
 	}
 }
 

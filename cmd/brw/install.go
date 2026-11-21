@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
@@ -18,6 +19,7 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/progress"
 	"github.com/jigsmiths/brw/internal/tap"
+	"github.com/jigsmiths/brw/internal/trust"
 )
 
 func installCommand(e *env, args []string) error {
@@ -89,12 +91,8 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 					return r, err
 				}
 			}
-			if c, ok := casks.Lookup(name); ok {
-				r.casks = append(r.casks, *c)
-				continue
-			}
-			if tapName, _, ok := tap.Split(name); ok && !strings.HasPrefix(tapName, "homebrew/") {
-				c, err := e.tapCask(ctx, prefix, casks, tapName, name)
+			if tapName, token, ok := tap.Split(name); ok && !strings.HasPrefix(tapName, "homebrew/") {
+				c, err := e.tapCask(ctx, prefix, tapName, token)
 				if err != nil {
 					_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 					unknown++
@@ -104,6 +102,9 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 					r.casks = append(r.casks, *c)
 					continue
 				}
+			} else if c, ok := casks.Lookup(name); ok {
+				r.casks = append(r.casks, *c)
+				continue
 			}
 		}
 		kind := "formula or cask"
@@ -123,23 +124,41 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 }
 
 // tapCask finds a cask by full name, tapping its tap first when it is not
-// there, as brew does. It is nil when the tap does not have the cask.
-func (e *env) tapCask(ctx context.Context, prefix string, idx *api.CaskIndex, tapName, name string) (*api.Cask, error) {
+// there, as brew does. Naming it so trusts it, as brew records. It is nil
+// when the tap does not have the cask.
+func (e *env) tapCask(ctx context.Context, prefix, tapName, token string) (*api.Cask, error) {
 	t := tap.Tap{Name: tapName, Dir: tap.Dir(prefix, tapName)}
 	if _, err := os.Stat(t.Dir); err != nil {
 		_, _ = fmt.Fprintf(e.err, "==> Tapping %s\n", tapName)
 		if t, err = tap.Clone(ctx, prefix, tapName, e.tapRemoteURL(tapName)); err != nil {
 			return nil, fmt.Errorf("could not tap %s: %w", tapName, err)
 		}
-		e.addTapCasks(idx, t)
-		if c, ok := idx.Lookup(name); ok {
-			return c, nil
-		}
 	}
 	if _, err := os.Stat(filepath.Join(t.Dir, "api", "cask.json")); err != nil {
-		return nil, fmt.Errorf("%s does not list its casks in api/cask.json, which brw needs to install %s", tapName, name)
+		return nil, fmt.Errorf("%s does not list its casks in api/cask.json, which brw needs to install %s/%s", tapName, tapName, token)
 	}
-	return nil, nil
+	casks, err := t.Casks()
+	if err != nil {
+		return nil, err
+	}
+	i := slices.IndexFunc(casks, func(c api.Cask) bool {
+		return strings.EqualFold(c.Token, token) || slices.Contains(c.OldTokens, token)
+	})
+	if i < 0 {
+		return nil, nil
+	}
+	store, err := trust.Load(trust.Path())
+	if err != nil {
+		return nil, err
+	}
+	added, err := store.Trust(trust.KindCask, trust.Reference(tapName, t.Remote())+"/"+strings.ToLower(casks[i].Token))
+	if err != nil {
+		return nil, err
+	}
+	if added {
+		_, _ = fmt.Fprintf(e.err, "==> Trusted cask %s/%s\n", tapName, casks[i].Token)
+	}
+	return &casks[i], nil
 }
 
 func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) error {

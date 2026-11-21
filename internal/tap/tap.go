@@ -106,6 +106,15 @@ func (t Tap) Casks() ([]api.Cask, error) {
 	return out, nil
 }
 
+// Remote is where the tap was cloned from, or "" when it cannot be read.
+func (t Tap) Remote() string {
+	url, err := run(context.Background(), t.Dir, "config", "--local", "--get", "remote.origin.url")
+	if err != nil {
+		return ""
+	}
+	return url
+}
+
 // Clone taps name from remote, as brew tap does. git writes the tap, so its
 // writes do not go through fsx.
 func Clone(ctx context.Context, prefix, name, remote string) (Tap, error) {
