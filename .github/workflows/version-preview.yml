@@ -19,6 +19,8 @@ concurrency:
 
 jobs:
   preview:
+    # Dependabot PRs get a read-only token; the workflow_run refresh still covers them.
+    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
