@@ -55,8 +55,7 @@ type Item struct {
 	// are unset for a fresh install.
 	Upgrade []cellar.Keg
 	Linked  *bool
-	// Reinstall says the old keg is put aside and the formula installed afresh,
-	// and the old keg is deleted once that worked.
+	// Reinstall puts the old keg aside, installs afresh, and deletes the old keg once that worked.
 	Reinstall bool
 }
 
@@ -199,9 +198,7 @@ func (p *Planner) attachBottles(plan *Plan, problems *[]error) error {
 	return nil
 }
 
-// lockNames lists the items and everything they need at run time, sorted. The
-// dependencies already installed are locked too, as they must not change while
-// the items go in on top of them.
+// lockNames includes installed runtime dependencies, which must not change while the items go in on top.
 func lockNames(r *deps.Resolver, items []Item) ([]string, error) {
 	var names []string
 	for _, it := range items {
@@ -216,17 +213,13 @@ func lockNames(r *deps.Resolver, items []Item) ([]string, error) {
 	return slices.Compact(names), nil
 }
 
-// PlanUpgrade plans bringing the named installed formulae up to date. Each keeps
-// whether it was installed on request and whether it was linked, keg-only
-// formulae come first, and dependencies the new versions need are installed. A
-// formula that cannot be upgraded is reported and does not stop the others.
+// PlanUpgrade keeps each formula's on-request and linked state and puts keg-only formulae first.
+// A formula that cannot be upgraded is reported and does not stop the others.
 func (p *Planner) PlanUpgrade(names []string) (*Plan, []error) {
 	return p.planInstalled(names, false)
 }
 
-// PlanReinstall plans installing the named formulae afresh at their current
-// version, keeping whether each was on request and linked. A name that is not
-// installed is a plain install. Failures are reported one formula at a time.
+// PlanReinstall keeps each formula's on-request and linked state; a name that is not installed is a plain install.
 func (p *Planner) PlanReinstall(names []string) (*Plan, []error) {
 	return p.planInstalled(names, true)
 }
@@ -362,7 +355,6 @@ const versionedReason = ":versioned_formula"
 
 var versionSuffix = regexp.MustCompile(`@[\d.]+(-full)?$`)
 
-// unversioned is the name of the formula without its @version.
 func unversioned(name string) string {
 	return versionSuffix.ReplaceAllString(name, "$1")
 }

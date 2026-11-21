@@ -14,19 +14,8 @@ import (
 
 const lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
-// Upgrade replaces the installed version of a cask with c, as brew's upgrade
-// does: the old version's artifacts go back into its Caskroom folder, which is
-// set aside until c is in and put back if c fails. It refuses, before changing
-// anything, what brw cannot undo or install.
-func (in *Installer) Upgrade(ctx context.Context, old caskroom.Cask, c api.Cask) error {
-	u, err := in.PrepareUpgrade(ctx, old, c)
-	if err != nil {
-		return err
-	}
-	return u.Run(ctx)
-}
-
-// PreparedUpgrade is an upgrade that has been checked and downloaded.
+// PreparedUpgrade is a checked and downloaded upgrade. As in brew, the old
+// version's Caskroom folder is set aside until the new one is in, and restored on failure.
 type PreparedUpgrade struct {
 	in      *Installer
 	old     caskroom.Cask
@@ -66,7 +55,6 @@ func (in *Installer) PrepareUpgrade(ctx context.Context, old caskroom.Cask, c ap
 	return u, nil
 }
 
-// Run carries out the upgrade.
 func (u *PreparedUpgrade) Run(ctx context.Context) error {
 	in, old, c := u.in, u.old, u.c
 	in.logf("==> Upgrading %s", c.Token)

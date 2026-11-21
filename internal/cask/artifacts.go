@@ -15,7 +15,6 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-// Where says where a cask's files go.
 type Where struct {
 	Prefix string
 	AppDir string
@@ -38,7 +37,6 @@ type move struct {
 	source, target string
 }
 
-// installPlan is what installing a cask does.
 type installPlan struct {
 	apps, binaries []move
 	generators     []generator

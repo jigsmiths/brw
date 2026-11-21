@@ -58,7 +58,6 @@ func (k Keg) Abv() (string, error) {
 	return FormatAbv(files, size), nil
 }
 
-// FormatAbv summarises a file count and size the way Abv does.
 func FormatAbv(files int, size int64) string {
 	var b strings.Builder
 	if files > 1 {

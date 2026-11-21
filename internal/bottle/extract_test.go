@@ -35,7 +35,6 @@ func hardlink(name, target string) entry {
 	return entry{name: name, typ: tar.TypeLink, link: target, mode: 0o644}
 }
 
-// tarball writes entries to a gzipped tar and returns its path.
 func tarball(t *testing.T, entries ...entry) string {
 	t.Helper()
 	var buf bytes.Buffer

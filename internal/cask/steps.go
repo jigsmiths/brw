@@ -25,7 +25,6 @@ func readSteps(args json.RawMessage) ([]json.RawMessage, error) {
 	return out, nil
 }
 
-// unsupportedSteps says which steps brw cannot run, or "".
 func unsupportedSteps(steps []json.RawMessage) string {
 	return strings.Join(poststep.Unsupported(steps), ", ")
 }

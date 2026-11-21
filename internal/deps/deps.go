@@ -81,7 +81,6 @@ type Typed struct {
 	Build, Required, Recommended, Optional []string
 }
 
-// Typed splits name's declared dependencies by kind for this host.
 func (r *Resolver) Typed(name string) (Typed, error) {
 	f, err := r.formula(name)
 	if err != nil {

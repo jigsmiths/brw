@@ -26,16 +26,14 @@ type CaskEnv struct {
 	Prefix    string
 	Installed []caskroom.Cask
 	Kegs      []cellar.Keg
-	// Outdated decides which installs are outdated, as brew outdated does
-	// without --greedy. Its Tag is set here.
+	// Outdated is applied as brew outdated without --greedy; CaskText sets its Tag.
 	Outdated outdated.CaskOptions
 	Home     string
 	Rosetta  bool      // whether Rosetta 2 is installed
 	Now      time.Time // for deprecation dates; the zero value means the current time
 }
 
-// CaskText returns what brew info prints for a cask when its output is not a
-// terminal, leaving out the analytics.
+// CaskText returns brew info's non-terminal output for a cask, without analytics.
 func CaskText(c *api.Cask, env CaskEnv) (string, error) {
 	tag, err := platform.Tag(env.Host)
 	if err != nil {
@@ -128,8 +126,7 @@ func (e CaskEnv) isOutdated(ic caskroom.Cask) bool {
 	return err == nil && len(r) > 0
 }
 
-// installedRows lists the installs of the cask and its versioned relatives,
-// such as 1password and 1password@nightly, by full name.
+// installedRows lists installs of the cask and its versioned relatives (1password@nightly) by full name.
 func (e CaskEnv) installedRows(c api.Cask) []string {
 	base, _, _ := strings.Cut(c.Token, "@")
 	type row struct{ name, version, size, warning string }
@@ -176,8 +173,7 @@ func (e CaskEnv) installedRows(c api.Cask) []string {
 	return out
 }
 
-// caskDependencies renders the Dependencies block: the formulae and casks the
-// cask names, and how many of everything they need at run time are installed.
+// caskDependencies renders the Dependencies block, with a count of installed runtime dependencies.
 func (e CaskEnv) caskDependencies(c api.Cask, tag string) string {
 	all := slices.Clone(c.DependsOn.Formula)
 	for _, d := range c.DependsOn.Cask {
@@ -245,8 +241,6 @@ func (e CaskEnv) kegsOf(fullName string) []cellar.Keg {
 	return out
 }
 
-// caskRequirements renders the Requirements block: the architecture and macOS
-// the cask needs.
 func caskRequirements(c api.Cask) string {
 	var reqs []string
 	for _, a := range c.DependsOn.Arch {
@@ -274,8 +268,7 @@ func caskRequirements(c api.Cask) string {
 	return "==> Requirements\nRequired: " + strings.Join(reqs, ", ") + "\n"
 }
 
-// artifactKind is how brew info shows one kind of artifact. Kinds it leaves
-// out, such as binaries and uninstall steps, are not listed.
+// artifactKind is how brew info shows one kind of artifact; kinds it omits (binaries, uninstall) are absent.
 type artifactKind struct {
 	order     int // brew's install order, which sorts the artifacts
 	heading   string
@@ -313,9 +306,7 @@ var artifactKinds = map[string]artifactKind{
 	"generate_completions_from_executable": {11, "Artifacts", "Generated Completion", false},
 }
 
-// artifactSections renders the Apps, Fonts, Manpages, Plugins and Artifacts
-// blocks. Brew sorts the artifacts by kind with an unstable sort, so the
-// order of several of one kind may differ from brew's.
+// artifactSections renders the artifact blocks. Brew's sort by kind is unstable, so order within a kind may differ.
 func artifactSections(c api.Cask, fill func(string) string) string {
 	type entry struct {
 		kind   artifactKind
@@ -428,14 +419,12 @@ func cmpOr(vals ...string) string {
 	return ""
 }
 
-// placeholders fills in the API's placeholders as brew does when it loads a
-// cask.
+// placeholders fills in the API's placeholders as brew does when it loads a cask.
 func (e CaskEnv) placeholders(appDir string) func(string) string {
 	return cask.Placeholders(cask.Where{Prefix: e.Prefix, AppDir: appDir, Home: e.Home})
 }
 
-// caskCaveats is the cask's caveats and the Rosetta caveat brew adds on Apple
-// silicon without Rosetta 2, or "".
+// caskCaveats adds brew's Rosetta caveat on Apple silicon without Rosetta 2.
 func (e CaskEnv) caskCaveats(c api.Cask, appDir string) string {
 	var parts []string
 	if c.Caveats != "" {

@@ -93,7 +93,6 @@ func (m *MacOSRequirement) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// ParseCasks decodes the cask listing.
 func ParseCasks(b []byte) ([]Cask, error) {
 	var casks []Cask
 	if err := json.Unmarshal(b, &casks); err != nil {
@@ -144,9 +143,8 @@ type CaskIndex struct {
 	byToken map[string]int // into all
 	all     []*Cask
 
-	// From Client.CaskIndex: the cached listing and where each cask's entry is
-	// in it, for completing the casks that were loaded without their artifacts
-	// and variations. Nil when every cask is whole.
+	// Set by Client.CaskIndex to complete casks loaded without artifacts and
+	// variations; nil when every cask is whole.
 	mu      sync.Mutex
 	listing string
 	spans   []span
@@ -218,9 +216,8 @@ func (i *CaskIndex) LookupFrom(tap, token string) (*Cask, bool) {
 	return i.all[n], true
 }
 
-// complete reads the rest of a cask from the cached listing, or from a full
-// parse of it when it changed since the index was loaded. Casks from taps
-// are whole.
+// complete fills in a slimmed cask from its span, or from a full parse when the
+// listing changed since the index was loaded. Tap casks are always whole.
 func (i *CaskIndex) complete(n int) bool {
 	if i.spans == nil || n >= len(i.spans) {
 		return true
@@ -249,9 +246,8 @@ func (i *CaskIndex) complete(n int) bool {
 	return true
 }
 
-// CaskIndex loads the cask listing, with the same caching as Formulae. Casks
-// come from the cache without their artifacts and variations, which are most
-// of the listing, and Lookup reads those for just the casks it is asked for.
+// CaskIndex loads casks without artifacts and variations (most of the listing);
+// Lookup reads those back for just the casks it is asked for.
 func (c *Client) CaskIndex(ctx context.Context) (*CaskIndex, error) {
 	var spans []span
 	l := c.caskListing()

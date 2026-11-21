@@ -22,9 +22,7 @@ import (
 
 // Errors racks.Finder reports, aliased so callers need not import racks.
 type (
-	// NoSuchKegError is racks.NoSuchKegError.
-	NoSuchKegError = racks.NoSuchKegError
-	// UnavailableError is racks.UnavailableError.
+	NoSuchKegError   = racks.NoSuchKegError
 	UnavailableError = racks.UnavailableError
 )
 

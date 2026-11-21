@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+// Unneeded lists the formulae Autoremove would remove, in the order it removes them.
+func (r *Remover) Unneeded() ([]string, error) {
+	kegs, err := r.unneeded()
+	names := make([]string, len(kegs))
+	for i, k := range kegs {
+		names[i] = k.Name
+	}
+	return names, err
+}
+
 // pkg installs a linked keg whose receipt says how it was installed: onRequest
 // is "true", "false" or "" for a receipt that does not say, and poured is
 // whether it came from a bottle.

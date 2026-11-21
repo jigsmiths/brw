@@ -55,27 +55,24 @@ Commands take `--prefix` and default to Homebrew's prefix for this machine.
 
 ### Taps
 
-brw reads a tap's cask files as brew does, with an evaluator for the cask DSL instead of Ruby. A `preflight` or `postflight` block becomes the install steps it amounts to (commands, file writes and existence checks); brw refuses a cask whose Ruby it can't translate. Formulae from taps aren't supported.
+brw reads a tap's cask files with its own evaluator for the cask DSL, so it needs no Ruby. Simple `preflight` and `postflight` blocks become install steps; brw refuses a cask with Ruby it can't translate. Formulae from taps aren't supported.
 
 Like brew, brw only loads casks from taps you trust, and shares brew's trust store (`$XDG_CONFIG_HOME/homebrew/trust.json`, else `~/.homebrew/trust.json`). `brw trust jigsmiths/tap` trusts a tap, `brw untrust` removes it, and `brw trust` lists what's trusted. Installing a cask by its full name trusts that cask. `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` turns the check off.
 
 ## Development
 
 ```sh
-just setup          # once: point git at the repo hooks
-just check          # gofmt, lint and tests, as CI and the pre-commit hook run them
-just test           # tests only
+just setup          # once: use the repo's git hooks
+just check          # what CI and the pre-commit hook run: gofmt, go fix, lint, tests
+just test
 just lint
 just fmt
-just conformance    # compare the read-only commands with the real brew (slow)
-just conformance-install    # install with brew and brw, compare the prefixes
-just conformance-uninstall  # the same for upgrade, reinstall, cleanup, link and uninstall
-just conformance-cask-install  # install, adopt and uninstall casks with brew and brw in scratch app folders, compare
-just conformance-tap  # install, update and upgrade a tap's cask with brew and brw, compare
+just conformance    # compare the read-only commands with brew (slow)
+just conformance-install      # and -uninstall, -upgrade, -cask-install, -tap, -full
 just clean
 ```
 
-Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only. The install harnesses need a brew checkout at `~/.brw-oracle/hb`.
+Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only. The conformance harnesses need a brew checkout at `~/.brw-oracle/hb`.
 
 ## License
 

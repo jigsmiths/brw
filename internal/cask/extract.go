@@ -28,10 +28,9 @@ const (
 	compressed               // a single compressed file, such as foo.xz
 )
 
-// Extract unpacks a download into dest, an empty folder, as brew stages a
-// cask: an archive is unpacked, and unpacked again when it holds just one
-// file that is itself an archive; anything else is copied under its own name.
-// What dest gets carries the download's quarantine.
+// Extract stages a download into the empty folder dest as brew does: archives are
+// unpacked (twice if they hold a single archive), anything else is copied, and
+// the download's quarantine carries over.
 func Extract(ctx context.Context, file, dest string) error {
 	if err := extractNested(ctx, file, dest); err != nil {
 		return err
@@ -376,7 +375,6 @@ func detach(mount string) error {
 	return err
 }
 
-// mountPoints reads the mount-point strings from an attach plist.
 func mountPoints(plist []byte) []string { return plistStrings(plist, "mount-point") }
 
 // plistStrings reads the strings under key, wherever it is in the plist.

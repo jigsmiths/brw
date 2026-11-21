@@ -36,8 +36,7 @@ type Cleaner struct {
 	// Current says what version of a formula is current. It may be nil when
 	// there is no formula listing.
 	Current func(name string) (Formula, bool)
-	// Skip says which formulae are left alone.
-	Skip func(name string) bool
+	Skip    func(name string) bool
 	// Downloads is the directory where bottles are cached, or "".
 	Downloads string
 	// PruneDays removes cached downloads older than this many days; 0 removes

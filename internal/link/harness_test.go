@@ -11,8 +11,7 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// newLinker returns a Linker over a fresh prefix with the directories brew
-// always has.
+// newLinker returns a Linker over a fresh prefix with the directories brew always has.
 func newLinker(t *testing.T) (*Linker, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -29,8 +28,7 @@ func newLinker(t *testing.T) (*Linker, string) {
 	return &Linker{Root: root, Prefix: dir}, dir
 }
 
-// file is a file or, when it ends in "->target", a symlink; a name that ends in
-// a slash is an empty directory.
+// files are paths; one ending in "->target" is a symlink, one ending in a slash an empty directory.
 type files []string
 
 // install creates a keg Cellar/name/version holding the given entries.

@@ -23,8 +23,7 @@ import (
 	"github.com/jigsmiths/brw/internal/uninstall"
 )
 
-// installCasks installs the casks that are not installed yet. An installed
-// one is left with a warning, as upgrading is upgrade's job.
+// installCasks skips an installed cask with a warning, as upgrading is upgrade's job.
 func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool, casks []api.Cask) error {
 	tag, err := platform.Tag(e.host)
 	if err != nil {
@@ -212,8 +211,7 @@ func upgradeCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 }
 
 // runCaskUpgrades downloads every cask first, then upgrades each, carrying on
-// past one that fails, as brew does. brew's cleanup of old downloads that
-// follows is of its own cache, which brw does not use.
+// past failures as brew does. brew's cleanup step is skipped: it cleans brew's own cache.
 func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, tag string, upgrade []outdated.Result, installed map[string]caskroom.Cask) error {
 	ctx := context.Background()
 	client, err := e.apiClient()
@@ -421,7 +419,6 @@ func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask,
 		Host:  e.host,
 		Log:   e.out, Warn: e.err,
 	}
-	// A missing app folder holds no app to move back.
 	if _, err := os.Stat(appDir); err == nil {
 		apps, err := fsx.Open(appDir, nil)
 		if err != nil {

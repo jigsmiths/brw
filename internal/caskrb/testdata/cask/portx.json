@@ -1,138 +1,30 @@
 {
- "token": "portx",
- "full_token": "portx",
- "old_tokens": [],
- "tap": "homebrew/cask",
- "name": [
-  "portx"
- ],
- "desc": "SSH Client",
- "homepage": "https://portx.online/",
- "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-arm64.dmg",
- "url_specs": {},
- "version": "2.3.0,10.79",
- "autobump": false,
- "no_autobump_message": "extract_plist",
- "skip_livecheck": false,
- "installed": null,
- "installed_time": null,
- "bundle_version": null,
- "bundle_short_version": null,
- "pinned": false,
- "pinned_version": null,
- "outdated": false,
- "sha256": "fe0080499e07837efcadc1d11fce231d7383d7083add87e2ceb17f991a8cc7fe",
- "artifacts": [
-  {
-   "uninstall": [
-    {
-     "quit": "com.netsarang.portx"
-    }
-   ]
-  },
-  {
-   "app": [
-    "PortX.app"
-   ],
-   "target": "/Applications/PortX.app"
-  },
-  {
-   "zap": [
-    {
-     "trash": [
-      "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.netsarang.portx.sfl*",
-      "~/Library/Application Support/PortX",
-      "~/Library/Logs/PortX",
-      "~/Library/Preferences/com.netsarang.portx.plist",
-      "~/Library/Saved Application State/com.netsarang.portx.savedState"
-     ]
-    }
-   ]
-  }
- ],
- "caveats": null,
- "caveats_rosetta": null,
- "depends_on": {
-  "macos": {}
- },
- "conflicts_with": null,
- "container": null,
- "rename": [],
- "auto_updates": null,
- "deprecated": true,
- "deprecation_date": "2026-11-10",
- "deprecation_reason": "discontinued",
- "deprecation_replacement_formula": null,
- "deprecation_replacement_cask": "xcasca",
- "deprecate_args": {
-  "date": "2026-11-10",
-  "because": "discontinued",
-  "replacement_formula": null,
-  "replacement_cask": "xcasca"
- },
- "disabled": false,
- "disable_date": null,
- "disable_reason": null,
- "disable_replacement_formula": null,
- "disable_replacement_cask": null,
- "disable_args": null,
- "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
- "languages": [],
- "ruby_source_path": "Casks/p/portx.rb",
- "ruby_source_checksum": {
-  "sha256": "b2395a5fb1afb65bcbd5e1839f350e10da6bed19b73ef4bb7803c33ffaa83633"
- },
- "variations": {
-  "golden_gate": {
-   "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg",
-   "sha256": "a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"
-  },
-  "tahoe": {
-   "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg",
-   "sha256": "a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"
-  },
-  "sequoia": {
-   "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg",
-   "sha256": "a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"
-  },
-  "sonoma": {
-   "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg",
-   "sha256": "a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"
-  },
-  "ventura": {
-   "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg",
-   "sha256": "a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"
-  },
-  "monterey": {
-   "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg",
-   "sha256": "a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"
-  },
-  "big_sur": {
-   "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg",
-   "sha256": "a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"
-  },
-  "x86_64_linux": {
-   "url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg",
-   "sha256": null
-  },
-  "arm64_linux": {
-   "sha256": null
-  }
- },
- "supported_platforms": [
-  "golden_gate",
-  "arm64_golden_gate",
-  "tahoe",
-  "arm64_tahoe",
-  "sequoia",
-  "arm64_sequoia",
-  "sonoma",
-  "arm64_sonoma",
-  "ventura",
-  "arm64_ventura",
-  "monterey",
-  "arm64_monterey",
-  "big_sur",
-  "arm64_big_sur"
- ]
+"artifacts": [{"uninstall":[{"quit":"com.netsarang.portx"}]},{"app":["PortX.app"],"target":"/Applications/PortX.app"},{"zap":[{"trash":["~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.netsarang.portx.sfl*","~/Library/Application Support/PortX","~/Library/Logs/PortX","~/Library/Preferences/com.netsarang.portx.plist","~/Library/Saved Application State/com.netsarang.portx.savedState"]}]}],
+"auto_updates": null,
+"caveats": null,
+"caveats_rosetta": null,
+"conflicts_with": null,
+"container": null,
+"depends_on": {"macos":{}},
+"deprecated": true,
+"deprecation_date": "2026-11-10",
+"deprecation_reason": "discontinued",
+"deprecation_replacement_cask": "xcasca",
+"deprecation_replacement_formula": null,
+"desc": "SSH Client",
+"disable_date": null,
+"disable_reason": null,
+"disable_replacement_cask": null,
+"disable_replacement_formula": null,
+"disabled": false,
+"homepage": "https://portx.online/",
+"languages": [],
+"name": ["portx"],
+"rename": [],
+"sha256": "fe0080499e07837efcadc1d11fce231d7383d7083add87e2ceb17f991a8cc7fe",
+"url": "https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-arm64.dmg",
+"url_specs": {},
+"version": "2.3.0,10.79",
+"supported_platforms": ["golden_gate","arm64_golden_gate","tahoe","arm64_tahoe","sequoia","arm64_sequoia","sonoma","arm64_sonoma","ventura","arm64_ventura","monterey","arm64_monterey","big_sur","arm64_big_sur"],
+"variations": {"golden_gate":{"url":"https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg","sha256":"a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"},"tahoe":{"url":"https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg","sha256":"a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"},"sequoia":{"url":"https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg","sha256":"a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"},"sonoma":{"url":"https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg","sha256":"a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"},"ventura":{"url":"https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg","sha256":"a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"},"monterey":{"url":"https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg","sha256":"a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"},"big_sur":{"url":"https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg","sha256":"a45759983efdbaf48ca1c24b2e1f1dcd7528cd9feb268e8530e63a560d63d8cf"},"x86_64_linux":{"url":"https://cdn.netsarang.net/0ac7ea20/PortX-2.3.0-x64.dmg","sha256":null},"arm64_linux":{"sha256":null}}
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// Keg is the keg to link or unlink.
 type Keg struct {
 	Name, Version string
 	Aliases       []string // from the receipt
@@ -55,7 +54,7 @@ func (l *Linker) UnlinkCount(k Keg) (int, error) {
 	return l.n, err
 }
 
-// The directories of the prefix that stay when the last link in them goes.
+// mustExist are the prefix directories that stay when the last link in them goes.
 var mustExist = []string{"bin", "etc", "include", "lib", "sbin", "share", "opt", "var/homebrew/linked"}
 
 // unlinkDirs are the directories of a keg that Unlink looks through.
@@ -370,10 +369,8 @@ func (l *Linker) Unlink(k Keg) error {
 	return nil
 }
 
-// Forget tidies up after a keg is deleted, as brew does: the rack goes if it is
-// empty, and so does the opt record if it led to this keg, even with other
-// versions left. The records of its versioned aliases go too once they lead
-// nowhere, which they only do after the keg is deleted.
+// Forget tidies up after a keg is deleted, as brew does: an empty rack, the opt record if it led
+// to this keg (even with other versions left), and versioned alias records that now lead nowhere.
 func (l *Linker) Forget(k Keg) error {
 	l.rmdirIfPossible(k.rack())
 	if l.isSymlink(k.opt()) && l.resolved(k.opt()) == k.path() {

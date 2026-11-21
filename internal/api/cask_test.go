@@ -304,7 +304,6 @@ func TestCasksRejectAnUnsignedListing(t *testing.T) {
 	}
 }
 
-// casksOf loads the cask listing and returns the casks in it.
 func casksOf(c *Client) ([]*Cask, error) {
 	idx, err := c.CaskIndex(context.Background())
 	if err != nil {
