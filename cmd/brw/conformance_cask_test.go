@@ -19,9 +19,9 @@ import (
 // $BRW_ORACLE (default ~/.brw-oracle/hb) and BRW_CONFORMANCE_CASK_INSTALL=1.
 
 // Small casks that nobody has running, since brew's uninstall quits them: an
-// app from a zip, one from a disk image, and binaries named by their path in
-// the prefix, from a zip.
-var caskInstallSet = []string{"itsycal", "monitorcontrol", "android-platform-tools"}
+// app from a zip, one from a disk image, binaries named by their path in the
+// prefix, from a zip, and a binary it generates completions from.
+var caskInstallSet = []string{"itsycal", "monitorcontrol", "android-platform-tools", "1password-cli"}
 
 func TestConformanceCaskInstall(t *testing.T) {
 	if os.Getenv("BRW_CONFORMANCE_CASK_INSTALL") == "" {
@@ -70,6 +70,7 @@ func TestConformanceCaskInstall(t *testing.T) {
 		}
 	}
 	compareTrees("install")
+	compareCompletions(t, "install", theirs, mine)
 	for _, token := range caskInstallSet {
 		meta := filepath.Join("Caskroom", token, ".metadata")
 		a := caskMetadata(t, filepath.Join(theirs, meta), theirs, theirApps, home)

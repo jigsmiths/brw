@@ -44,8 +44,9 @@ type Installer struct {
 	Exec    Exec // nil runs commands; uninstall's commands go through it
 	Adopt   bool // take over an app already at the target, as brew's --adopt
 
-	upgrading bool     // quit records what it quit, to reopen
-	reopen    []string // bundle IDs quit during this upgrade
+	upgrading     bool     // quit records what it quit, to reopen
+	reopen        []string // bundle IDs quit during this upgrade
+	warnedSandbox bool
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -162,6 +163,11 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 			continue
 		}
 		if err := in.linkBinary(ctx, staged, m, action, undo); err != nil {
+			return fmt.Errorf("%s: %w", c.Token, err)
+		}
+	}
+	for _, g := range p.generators {
+		if err := in.generateCompletions(ctx, c.Token, staged, g, undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}

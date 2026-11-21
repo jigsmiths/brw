@@ -41,6 +41,7 @@ type move struct {
 // installPlan is what installing a cask does.
 type installPlan struct {
 	apps, binaries []move
+	generators     []generator
 	// uninstall is the receipt's uninstall_artifacts: the artifacts brew undoes
 	// on uninstall, as the API has them with the placeholders filled in.
 	uninstall []map[string]json.RawMessage
@@ -91,6 +92,12 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				if bad := unknownDirectives(args); bad != "" {
 					return unsupported("uninstall " + bad)
 				}
+			case "generate_completions_from_executable":
+				g, err := readGenerator(args)
+				if err != nil {
+					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
+				}
+				p.generators = append(p.generators, g)
 			case "zap":
 			default:
 				return unsupported(kind + " artifacts")

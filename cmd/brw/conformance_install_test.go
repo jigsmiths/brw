@@ -112,7 +112,7 @@ func sh(t *testing.T, dir string, env []string, name string, args ...string) str
 }
 
 // snapshot lists the prefix like `find`, leaving out the checkout, the Cellar
-// and brew's locks and scratch space.
+// and brew's locks and scratch space, its sandbox's included.
 func snapshot(t *testing.T, prefix string) string {
 	t.Helper()
 	var lines []string
@@ -122,7 +122,7 @@ func snapshot(t *testing.T, prefix string) string {
 		}
 		rel, _ := filepath.Rel(prefix, p)
 		switch rel {
-		case ".", ".git", "Library", "Cellar", "var/homebrew/locks", "var/homebrew/tmp":
+		case ".", ".git", "Library", "Cellar", "var/homebrew/locks", "var/homebrew/tmp", "var/homebrew/sandbox":
 			if rel == "." {
 				return nil
 			}

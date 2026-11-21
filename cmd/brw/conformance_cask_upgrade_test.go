@@ -19,12 +19,36 @@ import (
 // BRW_CONFORMANCE_CASK_UPGRADE=1.
 
 // oldCasks are cask files from homebrew-cask's history, older than today's
-// listing: an app that updates itself and quits on upgrade, from a zip, and a
-// binary. claude and zed are left out: their uninstall quits the copies the
-// user has open, and zed generates completions, which brw cannot do yet.
+// listing: an app that updates itself and quits on upgrade, from a zip; a
+// binary; and an app with a binary it generates completions from, as zed
+// does. claude and zed are left out: their upgrade quits the copies the user
+// has open.
 var oldCasks = []struct{ token, path, commit, version string }{
 	{"itsycal", "Casks/i/itsycal.rb", "24d2b0f0ce07c095284e9d4e4e8bae2c403e8f13", "0.28.0"},
 	{"claude-code", "Casks/c/claude-code.rb", "4beccf4bcd0f327fd2675e6751725c42ddb2cf58", "2.1.311"},
+	{"otty", "Casks/o/otty.rb", "51fb3a5fe0fae37046830edc2e1635adf8f59f38", "1.6.2"},
+}
+
+// completionDirs are where casks' generated completions go.
+var completionDirs = []string{"etc/bash_completion.d", "share/zsh/site-functions", "share/fish/vendor_completions.d", "share/pwsh/completions"}
+
+// compareCompletions reports completion files whose contents differ.
+func compareCompletions(t *testing.T, step, theirs, mine string) {
+	t.Helper()
+	for _, dir := range completionDirs {
+		entries, _ := os.ReadDir(filepath.Join(theirs, dir))
+		for _, e := range entries {
+			rel := filepath.Join(dir, e.Name())
+			a, errA := os.ReadFile(filepath.Join(theirs, rel))
+			b, errB := os.ReadFile(filepath.Join(mine, rel))
+			if errA != nil || errB != nil {
+				continue // the trees' comparison names a missing file
+			}
+			if strings.ReplaceAll(string(a), theirs, "<prefix>") != strings.ReplaceAll(string(b), mine, "<prefix>") {
+				t.Errorf("%s: %s differs (%d bytes from brew, %d from brw)", step, rel, len(a), len(b))
+			}
+		}
+	}
 }
 
 func TestConformanceCaskUpgrade(t *testing.T) {
@@ -105,6 +129,7 @@ func TestConformanceCaskUpgrade(t *testing.T) {
 		}
 	}
 	compareTrees("old install")
+	compareCompletions(t, "old install", theirs, mine)
 
 	// Both see the same casks as outdated, and every old one is.
 	quiet := func(out string) []string {
@@ -136,6 +161,10 @@ func TestConformanceCaskUpgrade(t *testing.T) {
 		t.Errorf("upgrade output differs:\n%s\nbrew:\n%s\nbrw:\n%s", strings.Join(d, "\n"), ua, ub)
 	}
 	compareTrees("upgrade")
+	compareCompletions(t, "upgrade", theirs, mine)
+	if _, err := os.Stat(filepath.Join(mine, "share/zsh/site-functions/_otty")); err != nil {
+		t.Errorf("brw did not generate otty's zsh completions: %v", err)
+	}
 	for _, c := range oldCasks {
 		if _, err := os.Stat(filepath.Join(mine, "Caskroom", c.token, c.version)); err == nil {
 			t.Errorf("brw left %s %s behind", c.token, c.version)

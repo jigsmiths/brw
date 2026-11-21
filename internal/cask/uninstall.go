@@ -58,9 +58,10 @@ type uninstallStep struct {
 	kind       string
 	directives map[string][]string // for "uninstall"
 	move       move                // for "app" and "binary"
+	generator  generator           // for "generate_completions_from_executable"
 }
 
-var stepOrder = map[string]int{"uninstall": 0, "app": 1, "binary": 2}
+var stepOrder = map[string]int{"uninstall": 0, "app": 1, "binary": 2, "generate_completions_from_executable": 3}
 
 // Uninstall removes an installed version of a cask as brew does, from the
 // artifacts its receipt recorded. It refuses, before changing anything, a
@@ -107,6 +108,8 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 			if err := in.unlinkBinary(s.move); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
+		case "generate_completions_from_executable":
+			in.removeCompletions(token, s.generator)
 		}
 	}
 	return nil
@@ -196,6 +199,10 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 			return s, unsupported(token, "app with an absolute source")
 		}
 		s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
+	case "generate_completions_from_executable":
+		if s.generator, err = readGenerator(args); err != nil {
+			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
+		}
 	default:
 		return s, unsupported(token, kind+" artifacts")
 	}
