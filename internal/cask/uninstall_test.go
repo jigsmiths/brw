@@ -21,12 +21,17 @@ type fakeExec struct {
 	running map[string]int // bundle ID: how many more checks find it running
 	fail    map[string]bool
 	noFix   bool // chflags and chmod without sudo change nothing
+	// handle answers for a command in place of the default.
+	handle map[string]func(args []string) ([]byte, error)
 }
 
 func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
 	f.calls = append(f.calls, strings.TrimSpace(name+" "+strings.Join(args, " ")))
 	if f.fail[name] {
 		return nil, errors.New("failed")
+	}
+	if h := f.handle[name]; h != nil {
+		return h(args)
 	}
 	switch name {
 	case "/usr/bin/sudo":

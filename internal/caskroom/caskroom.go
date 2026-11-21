@@ -203,6 +203,23 @@ func AppDir(prefix, token string) string {
 	return fallback
 }
 
+// ExplicitAppDir is the --appdir the cask was installed with, or "".
+func ExplicitAppDir(prefix, token string) string {
+	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
+	if err != nil {
+		return ""
+	}
+	var c struct {
+		Explicit struct {
+			AppDir string `json:"appdir"`
+		}
+	}
+	if json.Unmarshal(b, &c) != nil {
+		return ""
+	}
+	return c.Explicit.AppDir
+}
+
 // visible lists the names in a directory that a shell glob would match. A
 // missing directory, or a file in its place, has none.
 func visible(path string) ([]string, error) {

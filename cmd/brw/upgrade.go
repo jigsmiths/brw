@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/cleanup"
 	"github.com/jigsmiths/brw/internal/fsx"
@@ -25,7 +26,16 @@ func upgradeCommand(e *env, args []string) error {
 	fs := newFlagSet("upgrade")
 	var dryRun bool
 	prefixArg, journal := changeFlags(e, fs, &dryRun)
+	kinds := kindFlags(fs)
+	var o outdated.CaskOptions
+	fs.BoolVar(&o.Greedy, "greedy", false, "include casks that update themselves or are unversioned")
+	fs.BoolVar(&o.GreedyLatest, "greedy-latest", false, "include unversioned casks")
+	fs.BoolVar(&o.GreedyAutoUpdates, "greedy-auto-updates", false, "include casks that update themselves")
 	names, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	formulaOnly, caskOnly, err := kinds()
 	if err != nil {
 		return err
 	}
@@ -33,17 +43,91 @@ func upgradeCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	idx, client, err := e.indexAndClient(context.Background())
+	formulae, casks := names, []string(nil)
+	if len(names) > 0 && !formulaOnly {
+		if formulae, casks, err = e.splitUpgradeNames(prefix, names, caskOnly); err != nil {
+			return err
+		}
+	}
+	var failures []error
+	found := false
+	if !caskOnly && (len(names) == 0 || len(formulae) > 0) {
+		f, err := upgradeFormulae(e, prefix, *journal, dryRun, formulae)
+		found = found || f
+		failures = append(failures, err)
+	}
+	if !formulaOnly && (len(names) == 0 || len(casks) > 0) {
+		f, err := upgradeCasks(e, prefix, *journal, dryRun, casks, o)
+		found = found || f
+		failures = append(failures, err)
+	}
+	if !found && len(names) == 0 {
+		_, _ = fmt.Fprintln(e.out, "Nothing to upgrade.")
+	}
+	return errors.Join(failures...)
+}
+
+// splitUpgradeNames sorts the names into formulae and casks: a name is a
+// formula when the listing or the Cellar has one, else a cask when the cask
+// listing has one. A name that is neither goes with the formulae, which say
+// what is wrong with it.
+func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (formulae, casks []string, err error) {
+	if caskOnly {
+		return nil, names, nil
+	}
+	idx, err := e.index(context.Background())
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	kegs, err := e.kegs(prefix)
 	if err != nil {
-		return err
+		return nil, nil, err
+	}
+	finder := racks.Finder{Prefix: prefix, Kegs: kegs, Resolve: func(name string) (string, bool) {
+		f, ok := idx.Lookup(name)
+		if !ok {
+			return name, false
+		}
+		return f.Name, true
+	}}
+	var caskIdx *api.CaskIndex
+	for _, n := range names {
+		if _, ok := idx.Lookup(n); ok {
+			formulae = append(formulae, n)
+			continue
+		}
+		if _, err := finder.Find(n); err == nil {
+			formulae = append(formulae, n)
+			continue
+		}
+		if caskIdx == nil {
+			if caskIdx, err = e.caskIndex(context.Background()); err != nil {
+				return nil, nil, err
+			}
+		}
+		if _, ok := caskIdx.Lookup(n); ok {
+			casks = append(casks, n)
+			continue
+		}
+		formulae = append(formulae, n)
+	}
+	return formulae, casks, nil
+}
+
+// upgradeFormulae upgrades the named formulae, or every outdated one. found
+// says whether any was out of date.
+func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string) (found bool, err error) {
+	idx, client, err := e.indexAndClient(context.Background())
+	if err != nil {
+		return false, err
+	}
+	kegs, err := e.kegs(prefix)
+	if err != nil {
+		return false, err
 	}
 	stale, err := outdated.Check(idx, cellar.Prefix(prefix), kegs)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var upgrade, pinned []outdated.Result
@@ -81,7 +165,7 @@ func upgradeCommand(e *env, args []string) error {
 			}
 		}
 		if len(problems) > 0 {
-			return errors.Join(problems...)
+			return false, errors.Join(problems...)
 		}
 	}
 	var failures []error
@@ -94,10 +178,7 @@ func upgradeCommand(e *env, args []string) error {
 		failures = append(failures, errors.New(msg.String()))
 	}
 	if len(upgrade) == 0 {
-		if len(names) == 0 {
-			_, _ = fmt.Fprintln(e.out, "Nothing to upgrade.")
-		}
-		return errors.Join(failures...)
+		return false, errors.Join(failures...)
 	}
 
 	planner := &install.Planner{
@@ -112,7 +193,7 @@ func upgradeCommand(e *env, args []string) error {
 		upgradeNames[i] = r.Name
 	}
 	plan, planErrs := planner.PlanUpgrade(upgradeNames)
-	return applyPlan(e, prefix, *journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures)
+	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures)
 }
 
 // applyPlan reports what could not be planned, then shows the plan or carries it

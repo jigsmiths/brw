@@ -162,6 +162,11 @@ func TestAppDir(t *testing.T) {
 			t.Errorf("AppDir(%s) = %q, want %q", token, got, want)
 		}
 	}
+	for token, want := range map[string]string{"default": "", "explicit": "/Opt/Apps", "garbled": "", "missing": ""} {
+		if got := ExplicitAppDir(prefix, token); got != want {
+			t.Errorf("ExplicitAppDir(%s) = %q, want %q", token, got, want)
+		}
+	}
 }
 
 func TestInstalledWithoutACaskroom(t *testing.T) {

@@ -58,9 +58,10 @@ type uninstallStep struct {
 	kind       string
 	directives map[string][]string // for "uninstall"
 	move       move                // for "app" and "binary"
+	generator  generator           // for "generate_completions_from_executable"
 }
 
-var stepOrder = map[string]int{"uninstall": 0, "app": 1, "binary": 2}
+var stepOrder = map[string]int{"uninstall": 0, "app": 1, "binary": 2, "generate_completions_from_executable": 3}
 
 // Uninstall removes an installed version of a cask as brew does, from the
 // artifacts its receipt recorded. It refuses, before changing anything, a
@@ -72,6 +73,27 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 		return err
 	}
 	in.logf("==> Uninstalling Cask %s", token)
+	if err := in.removeArtifacts(ctx, token, steps, force); err != nil {
+		return err
+	}
+	meta := filepath.Join("Caskroom", token, ".metadata")
+	for _, name := range []string{"INSTALL_RECEIPT.json", "LATEST_DOWNLOAD_SHA256", "config.json"} {
+		if err := removeIfThere(in.Root, filepath.Join(meta, name)); err != nil {
+			return err
+		}
+	}
+	in.logf("==> Purging files for version %s of Cask %s", version, token)
+	if err := in.purge(ctx, api.Cask{Token: token, Version: version}); err != nil {
+		return err
+	}
+	if force {
+		return in.removePath(ctx, in.Root, filepath.Join("Caskroom", token))
+	}
+	return nil
+}
+
+// removeArtifacts carries out the steps: brew's uninstall_artifacts.
+func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []uninstallStep, force bool) error {
 	for _, s := range steps {
 		switch s.kind {
 		case "uninstall":
@@ -86,20 +108,9 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 			if err := in.unlinkBinary(s.move); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
+		case "generate_completions_from_executable":
+			in.removeCompletions(token, s.generator)
 		}
-	}
-	meta := filepath.Join("Caskroom", token, ".metadata")
-	for _, name := range []string{"INSTALL_RECEIPT.json", "LATEST_DOWNLOAD_SHA256", "config.json"} {
-		if err := removeIfThere(in.Root, filepath.Join(meta, name)); err != nil {
-			return err
-		}
-	}
-	in.logf("==> Purging files for version %s of Cask %s", version, token)
-	if err := in.purge(ctx, api.Cask{Token: token, Version: version}); err != nil {
-		return err
-	}
-	if force {
-		return in.removePath(ctx, in.Root, filepath.Join("Caskroom", token))
 	}
 	return nil
 }
@@ -188,6 +199,10 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 			return s, unsupported(token, "app with an absolute source")
 		}
 		s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
+	case "generate_completions_from_executable":
+		if s.generator, err = readGenerator(args); err != nil {
+			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
+		}
 	default:
 		return s, unsupported(token, kind+" artifacts")
 	}
@@ -376,6 +391,9 @@ func (in *Installer) quit(ctx context.Context, ids []string) {
 			if _, err := in.exec(ctx, "osascript", "-l", "JavaScript", "-e", quitScript, id); err == nil && !in.running(ctx, id) {
 				in.logf("Application '%s' quit successfully.", id)
 				quit = true
+				if in.upgrading {
+					in.reopen = append(in.reopen, id)
+				}
 				break
 			}
 			in.sleep(100 * time.Millisecond)

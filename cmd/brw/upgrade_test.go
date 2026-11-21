@@ -334,3 +334,143 @@ func TestUpgradeWarnsAboutDeprecatedFormulae(t *testing.T) {
 		t.Errorf("stderr = %q", w)
 	}
 }
+
+// makeCaskOutdated turns the installed 1.0 of an app cask into a 0.9, which
+// the listing says is out of date.
+func makeCaskOutdated(t *testing.T, prefix, token string) {
+	t.Helper()
+	dir := filepath.Join(prefix, "Caskroom", token)
+	for _, d := range []string{dir, filepath.Join(dir, ".metadata")} {
+		if err := os.Rename(filepath.Join(d, "1.0"), filepath.Join(d, "0.9")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tool := filepath.Join(prefix, "bin/tool")
+	if err := os.Remove(tool); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "0.9/tool"), tool); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpgradeBringsOutdatedCasksUpToDate(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_ENV_HINTS", "")
+	_, e, prefix, apps := installedCasks(t, "app")
+	makeCaskOutdated(t, prefix, "app")
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"Some casks with `auto_updates true` or `version :latest` may still require `--greedy`,\n",
+		"Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).\n",
+		"==> Fetching downloads for: app\n==> Upgrading app\n  0.9 -> 1.0\n",
+		"==> Purging files for version 0.9 of Cask app\n",
+		"app was successfully upgraded!\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Nothing to upgrade.") || strings.Contains(out, "will now attempt to upgrade casks with `auto_updates true`") ||
+		strings.Contains(out, "Upgraded 1") {
+		t.Errorf("output:\n%s", out)
+	}
+	if exists(t, prefix, "Caskroom/app/0.9") || !exists(t, prefix, "Caskroom/app/1.0") {
+		t.Error("the old version should be gone and the new one there")
+	}
+	if got, _ := os.Readlink(filepath.Join(prefix, "Caskroom/app/1.0/App.app")); got != filepath.Join(apps, "App.app") {
+		t.Errorf("Caskroom link -> %q, want the app in the folder it was installed to", got)
+	}
+	if got, _ := os.Readlink(filepath.Join(prefix, "bin/tool")); got != filepath.Join(prefix, "Caskroom/app/1.0/tool") {
+		t.Errorf("bin/tool -> %q", got)
+	}
+	config, err := os.ReadFile(filepath.Join(prefix, "Caskroom/app/.metadata/config.json"))
+	if err != nil || !strings.Contains(string(config), `"explicit":{"appdir":"`+apps+`"}`) {
+		t.Errorf("config.json lost the explicit app folder: %s, %v", config, err)
+	}
+
+	if out, err := runCmd(t, e, "upgrade", "-prefix", prefix); err != nil || out != "Nothing to upgrade.\n" {
+		t.Errorf("upgrade again = %q, %v", out, err)
+	}
+	if out, err := runCmd(t, e, "outdated", "-prefix", prefix); err != nil || out != "" {
+		t.Errorf("outdated after upgrade = %q, %v", out, err)
+	}
+}
+
+func TestUpgradeOnlyTheNamedCask(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
+	_, e, prefix, _ := installedCasks(t, "app")
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix, "app")
+	if err != nil || out != "" {
+		t.Errorf("a current cask: out = %q, err = %v", out, err)
+	}
+	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, "brw: warning: Not upgrading app, the latest version is already installed\n") {
+		t.Errorf("stderr = %q", w)
+	}
+	makeCaskOutdated(t, prefix, "app")
+	out, err = runCmd(t, e, "upgrade", "-prefix", prefix, "--cask", "app")
+	if err != nil || !strings.Contains(out, "==> Upgrading app\n  0.9 -> 1.0\n") {
+		t.Errorf("out = %q, err = %v", out, err)
+	}
+}
+
+func TestUpgradeFormulaFlagLeavesCasksAlone(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t, "app")
+	makeCaskOutdated(t, prefix, "app")
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix, "--formula")
+	if err != nil || out != "Nothing to upgrade.\n" || !exists(t, prefix, "Caskroom/app/0.9") {
+		t.Errorf("out = %q, err = %v", out, err)
+	}
+}
+
+func TestUpgradeCaskDryRunChangesNothing(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
+	_, e, prefix, apps := installedCasks(t, "app")
+	makeCaskOutdated(t, prefix, "app")
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix, "-n")
+	if err != nil || out != "==> Would upgrade 1 outdated package\napp 0.9 -> 1.0\n" {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	if !exists(t, prefix, "Caskroom/app/0.9") || exists(t, prefix, "Caskroom/app/1.0") || !exists(t, apps, "App.app") {
+		t.Error("dry run changed something")
+	}
+}
+
+func TestUpgradeSkipsPinnedCasksAndRefusesWhenNamed(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t, "app")
+	makeCaskOutdated(t, prefix, "app")
+	pins := filepath.Join(prefix, "var/homebrew/pinned_casks")
+	if err := os.MkdirAll(pins, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(prefix, "Caskroom/app/0.9"), filepath.Join(pins, "app")); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runCmd(t, e, "upgrade", "-prefix", prefix); err != nil || out != "Nothing to upgrade.\n" {
+		t.Errorf("out = %q, err = %v", out, err)
+	}
+	_, err := runCmd(t, e, "upgrade", "-prefix", prefix, "app")
+	if err == nil || err.Error() != "not upgrading 1 pinned package:\napp 0.9 -> 1.0" {
+		t.Errorf("err = %v", err)
+	}
+	if !exists(t, prefix, "Caskroom/app/0.9") {
+		t.Error("upgraded a pinned cask")
+	}
+}
+
+func TestUpgradeLeavesSelfUpdatingCasksUnlessGreedy(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
+	s, _, prefix, _ := installedCasks(t, "app")
+	makeCaskOutdated(t, prefix, "app")
+	s.casks[0]["auto_updates"] = true
+	e2, _ := s.env()
+	if out, err := runCmd(t, e2, "upgrade", "-prefix", prefix); err != nil || out != "Nothing to upgrade.\n" {
+		t.Errorf("out = %q, err = %v", out, err)
+	}
+	out, err := runCmd(t, e2, "upgrade", "-prefix", prefix, "--greedy")
+	if err != nil || !strings.Contains(out, "==> Upgrading app\n  0.9 -> 1.0\n") {
+		t.Errorf("--greedy: out = %q, err = %v", out, err)
+	}
+}
