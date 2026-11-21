@@ -56,6 +56,27 @@ func Check(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg) ([]Result, e
 	return out, nil
 }
 
+// OtherTap returns, sorted, the racks Check skips because all their kegs came
+// from a tap other than the listing's.
+func OtherTap(idx *api.Index, kegs []cellar.Keg) []string {
+	byName := map[string][]cellar.Keg{}
+	for _, k := range kegs {
+		byName[k.Name] = append(byName[k.Name], k)
+	}
+	var out []string
+	for name, group := range byName {
+		tap := "homebrew/core"
+		if f, ok := idx.Lookup(name); ok && f.Name == name {
+			tap = f.Tap
+		}
+		if len(FromTap(group, tap)) == 0 {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // FromTap keeps the kegs installed from tap. A receipt without a tap counts as a match.
 func FromTap(kegs []cellar.Keg, tap string) []cellar.Keg {
 	var out []cellar.Keg

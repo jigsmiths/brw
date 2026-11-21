@@ -244,3 +244,20 @@ func TestTapKegWithACoreNamesakeIsSkipped(t *testing.T) {
 		t.Errorf("a core install should be checked: %+v", got)
 	}
 }
+
+func TestOtherTapNamesRacksCheckCannotSee(t *testing.T) {
+	idx := index(t, formula{name: "opencode", version: "2.0"}, formula{name: "jq", version: "1.8"}, formula{name: "mixed", version: "1"})
+	p := prefix(t,
+		keg{name: "fort", version: "0.1", tap: "djadmin/tap"},
+		keg{name: "opencode", version: "1.19", tap: "anomalyco/tap"},
+		keg{name: "jq", version: "1.7", tap: "homebrew/core"},
+		keg{name: "gone", version: "1"},
+		keg{name: "mixed", version: "0.9", tap: "other/tap"},
+		keg{name: "mixed", version: "1", tap: "homebrew/core"},
+	)
+	kegs, err := p.Kegs()
+	must(t, err)
+	if got := OtherTap(idx, kegs); !reflect.DeepEqual(got, []string{"fort", "opencode"}) {
+		t.Errorf("got %v", got)
+	}
+}

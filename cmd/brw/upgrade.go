@@ -130,8 +130,10 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 		return false, err
 	}
 
+	otherTap := outdated.OtherTap(idx, kegs)
 	var upgrade, pinned []outdated.Result
 	if len(names) == 0 {
+		e.warnOtherTap(otherTap)
 		for _, r := range stale {
 			if r.Pinned {
 				continue // brew leaves pinned formulae alone without a word
@@ -155,6 +157,8 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 			}
 			i := slices.IndexFunc(stale, func(r outdated.Result) bool { return r.Name == rack })
 			switch {
+			case slices.Contains(otherTap, rack):
+				problems = append(problems, fmt.Errorf("%s: %w", rack, install.ErrOtherTap))
 			case i < 0:
 				f, _ := idx.Lookup(rack)
 				_, _ = fmt.Fprintf(e.err, "brw: warning: %s %s already installed\n", rack, pkgVersionOf(f.Versions.Stable, f.Revision))

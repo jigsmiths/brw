@@ -144,7 +144,15 @@ func (e *env) outdatedFormulae(prefix string) ([]outdated.Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	e.warnOtherTap(outdated.OtherTap(idx, kegs))
 	return outdated.Check(idx, cellar.Prefix(prefix), kegs)
+}
+
+// warnOtherTap says which formulae were left out because brw can't read their taps yet.
+func (e *env) warnOtherTap(names []string) {
+	if len(names) > 0 {
+		_, _ = fmt.Fprintf(e.err, "brw: warning: not checking formulae from other taps: %s\n", strings.Join(names, ", "))
+	}
 }
 
 // outdatedCasks checks the installed casks against the cask listing, which is
