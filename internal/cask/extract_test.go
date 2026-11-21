@@ -257,3 +257,25 @@ func TestExtractDmg(t *testing.T) {
 		}
 	}
 }
+
+// hdiutil attach on macOS 27.2 can fail with nothing but a deprecation
+// warning, so when diskutil failed first, its reason is reported too.
+func TestUnpackDmgReportsWhyDiskutilFailed(t *testing.T) {
+	if runtime.GOOS != "darwin" || !diskutilImages() {
+		t.Skip("needs macOS 27.2 or later")
+	}
+	file := filepath.Join(t.TempDir(), "Broken.dmg")
+	writeFile(t, file, []byte("not a disk image"), 0o644)
+	err := unpackDmg(context.Background(), file, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "hdiutil attach "+file) || !strings.Contains(err.Error(), "diskutil image attach "+file) {
+		t.Errorf("err = %v, want both tools' reasons", err)
+	}
+}
+
+func TestMacAtLeast(t *testing.T) {
+	for v, want := range map[string]bool{"27.2": true, "27.2.1": true, "28.0": true, "27.1.9": false, "26.4": false, "27": false, "": false} {
+		if got := macAtLeast(v, 27, 2); got != want {
+			t.Errorf("macAtLeast(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
