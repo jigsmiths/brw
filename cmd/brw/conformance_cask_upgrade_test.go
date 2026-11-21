@@ -77,6 +77,15 @@ func TestConformanceCaskUpgrade(t *testing.T) {
 	}
 	brewIn(theirs, "update", "--quiet")
 	brewIn(mine, "update", "--quiet")
+	// brew's sandbox can't create a completion folder while upgrading, and a
+	// prefix in use has them, so both start with them.
+	for _, p := range []string{theirs, mine} {
+		for _, d := range completionDirs {
+			if err := os.MkdirAll(filepath.Join(p, d), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 
 	// brew installs a cask file only from a tap, so the old files go into a
 	// homebrew/cask tap of their own, which is removed once they are in. The

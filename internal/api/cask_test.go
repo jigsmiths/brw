@@ -183,6 +183,56 @@ func TestCaskIndexLookup(t *testing.T) {
 	}
 }
 
+func TestCaskIndexWithTapCasks(t *testing.T) {
+	_, idx := indexedCasks(t) // casks loaded from the cache, completed on lookup
+	idx.AddTap([]Cask{
+		{Token: "brw", Tap: "jigsmiths/tap", Version: "0.20.0", OldTokens: []string{"brew-go"}},
+		{Token: "slack", Tap: "jigsmiths/tap", Version: "0.0.1"},
+	})
+	for name, want := range map[string]string{
+		"brw":                 "jigsmiths/tap 0.20.0",
+		"jigsmiths/tap/brw":   "jigsmiths/tap 0.20.0",
+		"JigSmiths/Tap/brw":   "jigsmiths/tap 0.20.0",
+		"brew-go":             "jigsmiths/tap 0.20.0",
+		"slack":               "homebrew/cask", // the API's cask wins a bare token
+		"homebrew/cask/slack": "homebrew/cask",
+		"jigsmiths/tap/slack": "jigsmiths/tap 0.0.1",
+	} {
+		c, ok := idx.Lookup(name)
+		if !ok {
+			t.Errorf("Lookup(%q) found nothing", name)
+			continue
+		}
+		got := c.Tap
+		if c.Tap != "homebrew/cask" {
+			got += " " + c.Version
+		} else if c.Artifacts == nil {
+			t.Errorf("Lookup(%q) returned slack without its artifacts", name)
+		}
+		if got != want {
+			t.Errorf("Lookup(%q) = %s, want %s", name, got, want)
+		}
+	}
+	for _, name := range []string{"other/tap/brw", "homebrew/cask/brw"} {
+		if c, ok := idx.Lookup(name); ok {
+			t.Errorf("Lookup(%q) = %s from %s", name, c.Token, c.Tap)
+		}
+	}
+	for _, tc := range []struct{ tap, token, want string }{
+		{"jigsmiths/tap", "slack", "jigsmiths/tap"},
+		{"homebrew/cask", "slack", "homebrew/cask"},
+		{"", "slack", "homebrew/cask"},
+		{"jigsmiths/tap", "brw", "jigsmiths/tap"},
+	} {
+		if c, ok := idx.LookupFrom(tc.tap, tc.token); !ok || c.Tap != tc.want {
+			t.Errorf("LookupFrom(%q, %q) = %v, %v", tc.tap, tc.token, c, ok)
+		}
+	}
+	if _, ok := idx.LookupFrom("other/tap", "brw"); ok {
+		t.Error("LookupFrom found brw in a tap that does not list it")
+	}
+}
+
 // listings serves the formula and cask fixtures at /formula and /cask.
 func listings(t *testing.T) (*httptest.Server, *server, *server) {
 	t.Helper()

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/poststep"
 )
 
 // Exec runs a command and returns its standard output. Installer.Exec
@@ -59,9 +60,15 @@ type uninstallStep struct {
 	directives map[string][]string // for "uninstall"
 	move       move                // for "app" and "binary"
 	generator  generator           // for "generate_completions_from_executable"
+	// For "preflight_steps" and "postflight_steps": the steps, and the
+	// version's folder they ran in.
+	steps         []json.RawMessage
+	version       string
+	stagedVersion string
 }
 
-var stepOrder = map[string]int{"uninstall": 0, "app": 1, "binary": 2, "generate_completions_from_executable": 3}
+var stepOrder = map[string]int{"uninstall": 0, "app": 1, "binary": 2, "generate_completions_from_executable": 3,
+	"preflight_steps": 4, "postflight_steps": 4}
 
 // Uninstall removes an installed version of a cask as brew does, from the
 // artifacts its receipt recorded. It refuses, before changing anything, a
@@ -110,6 +117,10 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 			}
 		case "generate_completions_from_executable":
 			in.removeCompletions(token, s.generator)
+		case "preflight_steps", "postflight_steps":
+			if err := poststep.Uninstall(in.stepContext(token, s.version, s.stagedVersion), s.steps); err != nil {
+				return fmt.Errorf("%s: %s: %w", token, s.kind, err)
+			}
 		}
 	}
 	return nil
@@ -202,6 +213,14 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 	case "generate_completions_from_executable":
 		if s.generator, err = readGenerator(args); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
+		}
+	case "preflight_steps", "postflight_steps":
+		if s.steps, err = readSteps(args); err != nil {
+			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
+		}
+		s.version = version
+		if s.stagedVersion, err = in.Root.Abs(filepath.Join("Caskroom", token, version)); err != nil {
+			return s, err
 		}
 	default:
 		return s, unsupported(token, kind+" artifacts")

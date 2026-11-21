@@ -32,6 +32,8 @@ const usage = `Example usage:
   brw pin FORMULA...
   brw unpin FORMULA...
   brw cleanup [FORMULA|CASK...]
+  brw trust [TAP|CASK...]
+  brw untrust TAP|CASK...
   brw version
   brw tag
 
@@ -47,6 +49,8 @@ type env struct {
 	client   *api.Client
 
 	defaultPrefix string // overrides the host's default prefix, for tests
+	// tapRemote overrides where a tap is cloned from, for tests.
+	tapRemote func(name string) string
 }
 
 // kegs lists the kegs of a prefix and warns about each receipt it could not read.
@@ -121,6 +125,10 @@ func run(e *env, cmd string, args []string) error {
 		return versionCommand(e, args)
 	case "update":
 		return updateCommand(e, args)
+	case "trust":
+		return trustCommand(e, args)
+	case "untrust":
+		return untrustCommand(e, args)
 	case "tag":
 		tag, err := platform.Tag(e.host)
 		if err != nil {

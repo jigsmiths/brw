@@ -208,6 +208,8 @@ func (in *Installer) reinstall(ctx context.Context, old caskroom.Cask, steps []u
 			errs = errors.Join(errs, in.linkBinary(ctx, staged, s.move, action, &undo))
 		case "generate_completions_from_executable":
 			errs = errors.Join(errs, in.generateCompletions(ctx, old.Token, staged, s.generator, &undo))
+		case "preflight_steps", "postflight_steps":
+			errs = errors.Join(errs, in.runSteps(s.kind, old.Token, old.Version, staged, s.steps))
 		}
 	}
 	return errs

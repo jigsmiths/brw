@@ -193,7 +193,7 @@ func TestConformanceSearch(t *testing.T) {
 // the casks of the API before comparing.
 func TestConformanceSearchCasks(t *testing.T) {
 	e := conformanceEnv(t)
-	idx, err := e.caskIndex(t.Context())
+	idx, err := e.caskIndex(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +378,7 @@ func caskSections(out string) map[string][]string {
 // artifacts of one kind with an unstable sort, so their order is not compared.
 func TestConformanceInfoCasks(t *testing.T) {
 	e := conformanceEnv(t)
-	idx, err := e.caskIndex(t.Context())
+	idx, err := e.caskIndex(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

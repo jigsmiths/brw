@@ -125,7 +125,7 @@ func (e *env) lookupInfoItems(ctx context.Context, names []string, formulaOnly, 
 		}
 		if !formulaOnly {
 			if l.casks == nil {
-				if l.casks, err = e.caskIndex(ctx); err != nil {
+				if l.casks, err = e.caskIndex(ctx, ""); err != nil {
 					return l, err
 				}
 			}

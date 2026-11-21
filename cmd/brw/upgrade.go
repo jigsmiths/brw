@@ -101,7 +101,7 @@ func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (f
 			continue
 		}
 		if caskIdx == nil {
-			if caskIdx, err = e.caskIndex(context.Background()); err != nil {
+			if caskIdx, err = e.caskIndex(context.Background(), prefix); err != nil {
 				return nil, nil, err
 			}
 		}

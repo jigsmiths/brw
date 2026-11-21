@@ -48,6 +48,15 @@ func TestConformanceCaskInstall(t *testing.T) {
 	// casks. Both prefixes get the links brew update makes.
 	brewIn(theirs, "update", "--quiet")
 	brewIn(mine, "update", "--quiet")
+	// brew's sandbox can't create a completion folder, and a prefix in use has
+	// them, so both start with them.
+	for _, p := range []string{theirs, mine} {
+		for _, d := range completionDirs {
+			if err := os.MkdirAll(filepath.Join(p, d), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 
 	brewIn(theirs, append([]string{"install", "--cask", "--appdir", theirApps}, caskInstallSet...)...)
 	sh(t, "", brwEnv, bin, append([]string{"install", "--cask", "-prefix", mine, "--appdir", myApps}, caskInstallSet...)...)

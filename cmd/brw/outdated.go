@@ -154,7 +154,7 @@ func (e *env) outdatedCasks(prefix string, o outdated.CaskOptions) ([]outdated.R
 	if err != nil || len(installed) == 0 {
 		return nil, err
 	}
-	idx, err := e.caskIndex(context.Background())
+	idx, err := e.caskIndex(context.Background(), prefix)
 	if err != nil {
 		return nil, err
 	}

@@ -36,7 +36,7 @@ func searchCommand(e *env, args []string) error {
 	}
 	var casks *api.CaskIndex
 	if !formulaOnly {
-		if casks, err = e.caskIndex(ctx); err != nil {
+		if casks, err = e.caskIndex(ctx, ""); err != nil {
 			return err
 		}
 	}
