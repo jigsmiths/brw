@@ -50,6 +50,10 @@ conformance-install:
 conformance-cask-install:
     BRW_CONFORMANCE_CASK_INSTALL=1 go test ./cmd/brw -run TestConformanceCaskInstall -count=1 -v -timeout 20m
 
+# Install an old brw from a local copy of jigsmiths/tap with brew and brw, release a newer one, update and upgrade, compare (needs ~/.brw-oracle/hb)
+conformance-tap:
+    BRW_CONFORMANCE_TAP=1 go test ./cmd/brw -run TestConformanceTapCask -count=1 -v -timeout 30m
+
 # Remove formulae with brew and with brw and compare the prefixes (needs ~/.brw-oracle/hb)
 conformance-uninstall:
     BRW_CONFORMANCE_UNINSTALL=1 go test ./cmd/brw -run TestConformanceUninstall -count=1 -v -timeout 20m

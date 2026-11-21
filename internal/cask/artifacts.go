@@ -42,6 +42,8 @@ type move struct {
 type installPlan struct {
 	apps, binaries []move
 	generators     []generator
+	// preflight runs before the artifacts are installed, postflight after.
+	preflight, postflight []json.RawMessage
 	// uninstall is the receipt's uninstall_artifacts: the artifacts brew undoes
 	// on uninstall, as the API has them with the placeholders filled in.
 	uninstall []map[string]json.RawMessage
@@ -98,6 +100,19 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
 				p.generators = append(p.generators, g)
+			case "preflight_steps", "postflight_steps":
+				steps, err := readSteps(args)
+				if err != nil {
+					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
+				}
+				if bad := unsupportedSteps(steps); bad != "" {
+					return unsupported(kind + " " + bad)
+				}
+				if kind == "preflight_steps" {
+					p.preflight = append(p.preflight, steps...)
+				} else {
+					p.postflight = append(p.postflight, steps...)
+				}
 			case "zap":
 			default:
 				return unsupported(kind + " artifacts")

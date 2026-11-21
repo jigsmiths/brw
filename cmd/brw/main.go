@@ -47,6 +47,8 @@ type env struct {
 	client   *api.Client
 
 	defaultPrefix string // overrides the host's default prefix, for tests
+	// tapRemote overrides where a tap is cloned from, for tests.
+	tapRemote func(name string) string
 }
 
 // kegs lists the kegs of a prefix and warns about each receipt it could not read.

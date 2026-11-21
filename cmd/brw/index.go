@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/tap"
 )
 
 // apiClient returns the formula API client, warning on stderr when it falls
@@ -43,11 +45,42 @@ func (e *env) indexAndClient(ctx context.Context) (*api.Index, *api.Client, erro
 	return api.NewIndex(formulae), c, nil
 }
 
-// caskIndex loads the cask listing, using the cache when offline.
-func (e *env) caskIndex(ctx context.Context) (*api.CaskIndex, error) {
+// caskIndex loads the cask listing, using the cache when offline, with the
+// casks the prefix's taps list. A tap that cannot be read is left out with a
+// warning. An empty prefix reads no taps.
+func (e *env) caskIndex(ctx context.Context, prefix string) (*api.CaskIndex, error) {
 	c, err := e.apiClient()
 	if err != nil {
 		return nil, err
 	}
-	return c.CaskIndex(ctx)
+	idx, err := c.CaskIndex(ctx)
+	if err != nil || prefix == "" {
+		return idx, err
+	}
+	taps, err := tap.List(prefix)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range taps {
+		e.addTapCasks(idx, t)
+	}
+	return idx, nil
+}
+
+func (e *env) addTapCasks(idx *api.CaskIndex, t tap.Tap) {
+	casks, err := t.Casks()
+	if err != nil {
+		_, _ = fmt.Fprintln(e.err, "brw: warning:", err)
+		return
+	}
+	idx.AddTap(casks)
+}
+
+// tapRemoteURL is where brew taps name from.
+func (e *env) tapRemoteURL(name string) string {
+	if e.tapRemote != nil {
+		return e.tapRemote(name)
+	}
+	user, repo, _ := strings.Cut(name, "/")
+	return "https://github.com/" + user + "/homebrew-" + repo
 }

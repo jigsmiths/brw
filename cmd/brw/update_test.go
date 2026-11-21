@@ -12,11 +12,12 @@ const listingsUpdated = "Updated the formula listing: 19 formulae\nUpdated the c
 
 func TestUpdate(t *testing.T) {
 	e := &env{host: linux, client: apiServer(t)}
-	out, err := runCmd(t, e, "update")
+	prefix := t.TempDir()
+	out, err := runCmd(t, e, "update", "-prefix", prefix)
 	if err != nil || out != listingsUpdated {
 		t.Errorf("first update = %q, %v", out, err)
 	}
-	out, err = runCmd(t, e, "update")
+	out, err = runCmd(t, e, "update", "-prefix", prefix)
 	if err != nil || out != "Already up-to-date.\n" {
 		t.Errorf("second update = %q, %v", out, err)
 	}
@@ -25,11 +26,12 @@ func TestUpdate(t *testing.T) {
 func TestUpdateFailsOffline(t *testing.T) {
 	c := apiServer(t)
 	e := &env{host: linux, client: c}
-	if _, err := runCmd(t, e, "update"); err != nil {
+	prefix := t.TempDir()
+	if _, err := runCmd(t, e, "update", "-prefix", prefix); err != nil {
 		t.Fatal(err)
 	}
 	e.client = &api.Client{URL: "http://127.0.0.1:1", CacheDir: c.CacheDir}
-	out, err := runCmd(t, e, "update")
+	out, err := runCmd(t, e, "update", "-prefix", prefix)
 	if err == nil || out != "" {
 		t.Errorf("update offline = %q, %v; want an error and no output", out, err)
 	}
@@ -38,7 +40,7 @@ func TestUpdateFailsOffline(t *testing.T) {
 func TestUpdateFailsWhenTheCaskListingFails(t *testing.T) {
 	c := apiServer(t)
 	c.CaskURL = "http://127.0.0.1:1"
-	out, err := runCmd(t, &env{host: linux, client: c}, "update")
+	out, err := runCmd(t, &env{host: linux, client: c}, "update", "-prefix", t.TempDir())
 	if err == nil || out != "" {
 		t.Errorf("update = %q, %v; want an error and no output", out, err)
 	}
@@ -46,13 +48,21 @@ func TestUpdateFailsWhenTheCaskListingFails(t *testing.T) {
 
 func TestUpdateTakesNoArguments(t *testing.T) {
 	e := &env{host: linux, client: apiServer(t)}
-	if _, err := runCmd(t, e, "update", "jq"); err == nil || !strings.Contains(err.Error(), "usage: brw update") {
+	if _, err := runCmd(t, e, "update", "-prefix", t.TempDir(), "jq"); err == nil || !strings.Contains(err.Error(), "usage: brw update") {
 		t.Errorf("error = %v", err)
 	}
 }
 
 func TestUpdateSummary(t *testing.T) {
 	unchanged := api.Update{Total: 7}
+	for taps, want := range map[string]string{
+		"jigsmiths/tap": "Updated 1 tap (jigsmiths/tap).\n",
+		"a/b c/d e/f":   "Updated 3 taps (a/b, c/d and e/f).\n",
+	} {
+		if got := updateSummary(unchanged, unchanged, strings.Fields(taps)); got != want {
+			t.Errorf("taps %s: got %q, want %q", taps, got, want)
+		}
+	}
 	for _, tc := range []struct {
 		formulae, casks api.Update
 		want            string
@@ -66,7 +76,7 @@ func TestUpdateSummary(t *testing.T) {
 		{api.Update{Changed: true, Total: 5}, api.Update{Changed: true, Total: 9},
 			"Updated the formula listing: 5 formulae\nUpdated the cask listing: 9 casks\n"},
 	} {
-		if got := updateSummary(tc.formulae, tc.casks); got != tc.want {
+		if got := updateSummary(tc.formulae, tc.casks, nil); got != tc.want {
 			t.Errorf("%+v, %+v: got %q, want %q", tc.formulae, tc.casks, got, tc.want)
 		}
 	}

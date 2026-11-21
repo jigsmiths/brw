@@ -17,6 +17,7 @@ import (
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/progress"
+	"github.com/jigsmiths/brw/internal/tap"
 )
 
 func installCommand(e *env, args []string) error {
@@ -41,7 +42,7 @@ func installCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	r, err := e.resolve(context.Background(), names, formulaOnly, caskOnly)
+	r, err := e.resolve(context.Background(), prefix, names, formulaOnly, caskOnly)
 	if err != nil {
 		return err
 	}
@@ -65,7 +66,7 @@ type resolved struct {
 	failures []error // names that are neither, already reported
 }
 
-func (e *env) resolve(ctx context.Context, names []string, formulaOnly, caskOnly bool) (resolved, error) {
+func (e *env) resolve(ctx context.Context, prefix string, names []string, formulaOnly, caskOnly bool) (resolved, error) {
 	var r resolved
 	var err error
 	if !caskOnly {
@@ -84,13 +85,25 @@ func (e *env) resolve(ctx context.Context, names []string, formulaOnly, caskOnly
 		}
 		if !formulaOnly {
 			if casks == nil {
-				if casks, err = e.caskIndex(ctx); err != nil {
+				if casks, err = e.caskIndex(ctx, prefix); err != nil {
 					return r, err
 				}
 			}
 			if c, ok := casks.Lookup(name); ok {
 				r.casks = append(r.casks, *c)
 				continue
+			}
+			if tapName, _, ok := tap.Split(name); ok && !strings.HasPrefix(tapName, "homebrew/") {
+				c, err := e.tapCask(ctx, prefix, casks, tapName, name)
+				if err != nil {
+					_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
+					unknown++
+					continue
+				}
+				if c != nil {
+					r.casks = append(r.casks, *c)
+					continue
+				}
 			}
 		}
 		kind := "formula or cask"
@@ -107,6 +120,26 @@ func (e *env) resolve(ctx context.Context, names []string, formulaOnly, caskOnly
 		r.failures = append(r.failures, fmt.Errorf("%d of %d names are neither a formula nor a cask", unknown, len(names)))
 	}
 	return r, nil
+}
+
+// tapCask finds a cask by full name, tapping its tap first when it is not
+// there, as brew does. It is nil when the tap does not have the cask.
+func (e *env) tapCask(ctx context.Context, prefix string, idx *api.CaskIndex, tapName, name string) (*api.Cask, error) {
+	t := tap.Tap{Name: tapName, Dir: tap.Dir(prefix, tapName)}
+	if _, err := os.Stat(t.Dir); err != nil {
+		_, _ = fmt.Fprintf(e.err, "==> Tapping %s\n", tapName)
+		if t, err = tap.Clone(ctx, prefix, tapName, e.tapRemoteURL(tapName)); err != nil {
+			return nil, fmt.Errorf("could not tap %s: %w", tapName, err)
+		}
+		e.addTapCasks(idx, t)
+		if c, ok := idx.Lookup(name); ok {
+			return c, nil
+		}
+	}
+	if _, err := os.Stat(filepath.Join(t.Dir, "api", "cask.json")); err != nil {
+		return nil, fmt.Errorf("%s does not list its casks in api/cask.json, which brw needs to install %s", tapName, name)
+	}
+	return nil, nil
 }
 
 func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) error {

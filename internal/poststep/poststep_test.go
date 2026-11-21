@@ -494,6 +494,66 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestCaskSteps(t *testing.T) {
+	f := newFixture(t)
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", Arch: "arm", OS: "darwin", Log: &f.log,
+		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0")}
+	f.write("Caskroom/tool/2.0/tool", "#!/bin/sh\nprintf '%s' \"$1\" > \"$2/out\"\n", 0o755)
+	f.mustRun(`[
+		{"type":"run","command":{"path":"{{staged_path}}/tool"},"args":["{{token}}-{{name}}-{{version}}-{{arch}}","{{caskroom_path}}"]},
+		{"type":"touch","path":{"base":"staged_path","path":"made"}},
+		{"type":"touch","path":{"base":"caskroom_path","path":"also"}},
+		{"type":"touch","path":{"base":"homebrew_prefix","path":"etc/tool.conf"}}
+	]`)
+	if got := f.read("Caskroom/tool/out"); got != "tool-tool-2.0-arm" {
+		t.Errorf("tokens = %q", got)
+	}
+	for _, p := range []string{"Caskroom/tool/2.0/made", "Caskroom/tool/also", "etc/tool.conf"} {
+		if !f.exists(p) {
+			t.Errorf("%s was not made", p)
+		}
+	}
+	// A formula's bases, and folders outside the prefix, mean nothing here.
+	for _, base := range []string{"bin", "prefix", "var", "appdir", "home"} {
+		if err := f.run(`[{"type":"touch","path":{"base":"` + base + `","path":"x"}}]`); err == nil {
+			t.Errorf("a cask step with base %s ran", base)
+		}
+	}
+}
+
+func TestUninstallRemovesOnlyTheLinksMarkedForIt(t *testing.T) {
+	f := newFixture(t)
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log,
+		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0")}
+	f.write("Caskroom/tool/2.0/tool", "", 0o755)
+	steps := `[
+		{"type":"symlink","source":{"base":"staged_path","path":"tool"},"target":{"base":"homebrew_prefix","path":"bin/marked"},"uninstall":true},
+		{"type":"symlink","source":{"base":"staged_path","path":"tool"},"target":{"base":"homebrew_prefix","path":"bin/kept"}},
+		{"type":"symlink","source":{"base":"staged_path","path":"tool"},"target":{"base":"homebrew_prefix","path":"bin/moved"},"uninstall":true},
+		{"type":"touch","path":{"base":"homebrew_prefix","path":"etc/tool.conf"}}
+	]`
+	f.mustRun(steps)
+	steps = strings.Replace(steps, `"etc/tool.conf"}}`, `"etc/tool.conf"}},
+		{"type":"run","command":{"path":"/usr/bin/false"}}`, 1)
+	// A link the user pointed elsewhere since is theirs.
+	if err := os.Remove(filepath.Join(f.prefix, "bin/moved")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/elsewhere", filepath.Join(f.prefix, "bin/moved")); err != nil {
+		t.Fatal(err)
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal([]byte(steps), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := Uninstall(f.ctx, raw); err != nil {
+		t.Fatal(err)
+	}
+	if f.exists("bin/marked") || !f.exists("bin/kept") || f.link("bin/moved") != "/elsewhere" || !f.exists("etc/tool.conf") {
+		t.Error("uninstall should remove just the marked link that still leads to its source")
+	}
+}
+
 func TestRunFailureAndOptions(t *testing.T) {
 	f := newFixture(t)
 	f.write("Cellar/pkg/1.2.3-1/libexec/fail", "#!/bin/sh\necho oops >&2\necho out\nexit 3\n", 0o755)

@@ -131,7 +131,7 @@ func upgradeCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 	if err != nil || (len(installed) == 0 && len(tokens) == 0) {
 		return false, err
 	}
-	idx, err := e.caskIndex(ctx)
+	idx, err := e.caskIndex(ctx, prefix)
 	if err != nil {
 		return false, err
 	}
@@ -232,6 +232,9 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, 
 	names := make([]string, len(upgrade))
 	for i, r := range upgrade {
 		names[i] = r.Name
+		if tap := installed[r.Name].Tap; tap != "" && tap != "homebrew/cask" {
+			names[i] = tap + "/" + r.Name
+		}
 	}
 	_, _ = fmt.Fprintf(e.out, "==> Fetching downloads for: %s\n", sentence(names))
 	var prepared []*cask.PreparedUpgrade
@@ -273,7 +276,7 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, 
 // prepareCaskUpgrade checks and downloads one cask's upgrade, with its apps
 // going where the installed version's went.
 func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, home, version string, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
-	listed, ok := idx.Lookup(old.Token)
+	listed, ok := idx.LookupFrom(old.Tap, old.Token)
 	if !ok {
 		return nil, nil, fmt.Errorf("%s is not in the cask listing", old.Token)
 	}
@@ -440,7 +443,7 @@ func (e *env) checkDependentCasks(named []string, casks, installed []caskroom.Ca
 	if len(installed) == len(casks) {
 		return nil
 	}
-	idx, err := e.caskIndex(context.Background())
+	idx, err := e.caskIndex(context.Background(), "")
 	if err != nil {
 		_, _ = fmt.Fprintf(e.err, "brw: warning: not checking for casks that need these: %v\n", err)
 		return nil

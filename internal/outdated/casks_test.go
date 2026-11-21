@@ -86,6 +86,27 @@ func TestCheckCasks(t *testing.T) {
 	}
 }
 
+func TestCheckCasksFromATap(t *testing.T) {
+	idx := caskIndex(t)
+	idx.AddTap([]api.Cask{
+		{Token: "brw", Tap: "jigsmiths/tap", Version: "0.20.0"},
+		{Token: "slack", Tap: "jigsmiths/tap", Version: "9.0"},
+	})
+	installed := []caskroom.Cask{
+		{Token: "brw", Version: "0.19.0", Tap: "jigsmiths/tap"},
+		{Token: "slack", Version: "4.50.0", Tap: "jigsmiths/tap"},
+		{Token: "1password-cli", Version: "2.40.0"}, // no receipt: from the API
+	}
+	got, err := CheckCasks(idx, t.TempDir(), installed, options(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"brw 0.19.0 0.20.0", "slack 4.50.0 9.0", "1password-cli 2.40.0 2.42.0"}
+	if !slices.Equal(caskLines(got), want) {
+		t.Errorf("CheckCasks = %q, want %q", caskLines(got), want)
+	}
+}
+
 func TestCheckCasksAutoUpdates(t *testing.T) {
 	idx := caskIndex(t)
 	installed := []caskroom.Cask{{Token: "slack", Version: "4.50.0"}}

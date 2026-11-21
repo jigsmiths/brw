@@ -142,6 +142,9 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 	if err := in.writeCaskfile(c); err != nil {
 		return err
 	}
+	if err := in.runSteps("preflight_steps", c.Token, c.Version, staged, p.preflight); err != nil {
+		return err
+	}
 	for _, m := range p.apps {
 		if err := in.moveApp(ctx, version, m, c.AutoUpdates, undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
@@ -170,6 +173,9 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 		if err := in.generateCompletions(ctx, c.Token, staged, g, undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
+	}
+	if err := in.runSteps("postflight_steps", c.Token, c.Version, staged, p.postflight); err != nil {
+		return err
 	}
 	return in.writeConfig(c)
 }
@@ -591,6 +597,10 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) err
 	if c.TapGitHead != "" {
 		head = &c.TapGitHead
 	}
+	fromAPI, path := c.SourceFile == "", in.APIPath
+	if !fromAPI {
+		path = c.SourceFile
+	}
 	arch := "arm64"
 	if in.Host.Arch == "amd64" {
 		arch = "x86_64"
@@ -608,9 +618,9 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) err
 		UninstallArtifacts    []map[string]json.RawMessage `json:"uninstall_artifacts"`
 		BuiltOn               map[string]string            `json:"built_on"`
 	}{
-		HomebrewVersion: in.Version, LoadedFromAPI: true, LoadedFromInternalAPI: true,
+		HomebrewVersion: in.Version, LoadedFromAPI: fromAPI, LoadedFromInternalAPI: fromAPI,
 		InstalledOnRequest: onRequest, Time: in.Now().Unix(),
-		Source: source{Tap: c.Tap, TapGitHead: head, Version: c.Version, Path: in.APIPath},
+		Source: source{Tap: c.Tap, TapGitHead: head, Version: c.Version, Path: path},
 		Arch:   arch, UninstallArtifacts: p.uninstall,
 		BuiltOn: map[string]string{"os": "Macintosh", "os_version": "macOS " + in.Host.MacVersion},
 	}, "", "  ")

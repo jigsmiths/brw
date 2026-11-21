@@ -30,15 +30,15 @@ type CaskOptions struct {
 	Home   string // for app targets under ~
 }
 
-// CheckCasks returns the outdated casks in the order given. Casks the API
-// does not know, or that were installed from another tap, are skipped. A
+// CheckCasks returns the outdated casks in the order given, each checked
+// against the tap it was installed from. Casks that tap does not list are skipped. A
 // version "latest" cask is never reported: brew downloads it to tell, and brw
 // does not.
 func CheckCasks(idx *api.CaskIndex, prefix string, installed []caskroom.Cask, o CaskOptions) ([]Result, error) {
 	var out []Result
 	for _, ic := range installed {
-		c, ok := idx.Lookup(ic.Token)
-		if !ok || (ic.Tap != "" && ic.Tap != c.Tap) {
+		c, ok := idx.LookupFrom(ic.Tap, ic.Token)
+		if !ok {
 			continue
 		}
 		cask, err := c.ForTag(o.Tag)

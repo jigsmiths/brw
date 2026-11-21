@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -212,6 +213,76 @@ func TestInstallAppAndBinaries(t *testing.T) {
 		"🍺  app was successfully installed!\n"
 	if got := ti.out.String(); got != wantOut {
 		t.Errorf("output =\n%s\nwant\n%s", got, wantOut)
+	}
+}
+
+func TestInstallReceiptOfATapCask(t *testing.T) {
+	ti := newTestInstall(t, appTarball)
+	c := ti.cask(t, `[{"binary":["tool"]}]`)
+	c.Tap, c.SourceFile = "jigsmiths/tap", "/opt/homebrew/Library/Taps/jigsmiths/homebrew-tap/Casks/app.rb"
+	if err := ti.in.Install(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(ti.prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r struct {
+		LoadedFromAPI         bool `json:"loaded_from_api"`
+		LoadedFromInternalAPI bool `json:"loaded_from_internal_api"`
+		Source                struct{ Tap, Path string }
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.LoadedFromAPI || r.LoadedFromInternalAPI || r.Source.Tap != c.Tap || r.Source.Path != c.SourceFile {
+		t.Errorf("receipt = %s", b)
+	}
+}
+
+const flightSteps = `[{"binary":["tool"]},
+	{"postflight_steps":[{"steps":[
+		{"type":"run","command":{"path":"/usr/bin/touch"},"args":["{{staged_path}}/post-{{token}}"]},
+		{"type":"symlink","source":{"base":"staged_path","path":"tool"},"target":{"base":"homebrew_prefix","path":"bin/tool-alias"},"uninstall":true}]}]},
+	{"preflight_steps":[{"steps":[{"type":"touch","path":{"base":"staged_path","path":"pre"}}]}]}]`
+
+func TestInstallRunsFlightStepsAndUninstallUndoesTheirLinks(t *testing.T) {
+	ti := newTestInstall(t, appTarball)
+	if err := ti.in.Install(context.Background(), ti.cask(t, flightSteps)); err != nil {
+		t.Fatal(err)
+	}
+	version := filepath.Join(ti.prefix, "Caskroom/app/1.0")
+	for _, f := range []string{"pre", "post-app"} {
+		if _, err := os.Stat(filepath.Join(version, f)); err != nil {
+			t.Errorf("a step did not make %s: %v", f, err)
+		}
+	}
+	if got := readLink(t, filepath.Join(ti.prefix, "bin/tool-alias")); got != filepath.Join(version, "tool") {
+		t.Errorf("bin/tool-alias -> %s", got)
+	}
+	receipt, err := os.ReadFile(filepath.Join(ti.prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json"))
+	if err != nil || !strings.Contains(string(receipt), `"postflight_steps"`) || !strings.Contains(string(receipt), `"{{staged_path}}/post-{{token}}"`) {
+		t.Errorf("the receipt should keep the steps as listed: %s %v", receipt, err)
+	}
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(ti.prefix, "bin/tool-alias")); err == nil {
+		t.Error("uninstall left the step's link")
+	}
+	if _, err := os.Stat(version); err == nil {
+		t.Error("uninstall left the version")
+	}
+}
+
+func TestInstallRefusesStepsBrwCannotRun(t *testing.T) {
+	ti := newTestInstall(t, appTarball)
+	c := ti.cask(t, `[{"binary":["tool"]},{"postflight_steps":[{"steps":[{"type":"terminate_process","name":"x"}]}]}]`)
+	if err := ti.in.Install(context.Background(), c); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "terminate_process") {
+		t.Errorf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ti.prefix, "Caskroom/app")); err == nil {
+		t.Error("a refused cask was installed")
 	}
 }
 

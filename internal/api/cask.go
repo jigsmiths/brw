@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -35,6 +36,12 @@ type Cask struct {
 	CaveatsRosetta bool            `json:"caveats_rosetta"` // built for Intel, so Apple silicon needs Rosetta 2
 	Languages      []string        `json:"languages"`
 	RubySourcePath string          `json:"ruby_source_path"`
+	// RubySourceChecksum is of the cask file the entry was generated from.
+	RubySourceChecksum struct {
+		SHA256 string `json:"sha256"`
+	} `json:"ruby_source_checksum"`
+	// SourceFile is the tap's cask file, for a cask listed by a tap rather than the API.
+	SourceFile string `json:"-"`
 
 	Deprecated                    bool   `json:"deprecated"`
 	Disabled                      bool   `json:"disabled"`
@@ -167,19 +174,55 @@ func NewCaskIndex(casks []Cask) *CaskIndex {
 // can lack their artifacts and variations: Lookup returns a cask whole.
 func (i *CaskIndex) Casks() []*Cask { return i.all }
 
-// Lookup finds a cask by token or old token.
-func (i *CaskIndex) Lookup(token string) (*Cask, bool) {
-	n, ok := i.byToken[token]
+// coreTap is the tap of the API's casks.
+const coreTap = "homebrew/cask"
+
+// AddTap adds casks a tap lists, found by tap/token and old tokens. A bare
+// token finds one too, unless the API or an earlier tap has it.
+func (i *CaskIndex) AddTap(casks []Cask) {
+	for _, c := range casks {
+		n := len(i.all)
+		i.all = append(i.all, &c)
+		for _, name := range append([]string{c.Token}, c.OldTokens...) {
+			i.byToken[c.Tap+"/"+name] = n
+			if _, taken := i.byToken[name]; !taken {
+				i.byToken[name] = n
+			}
+		}
+	}
+}
+
+// Lookup finds a cask by token, old token or full name, such as
+// jigsmiths/tap/brw or homebrew/cask/slack.
+func (i *CaskIndex) Lookup(name string) (*Cask, bool) {
+	if parts := strings.Split(name, "/"); len(parts) == 3 {
+		return i.LookupFrom(strings.ToLower(parts[0]+"/"+parts[1]), parts[2])
+	}
+	n, ok := i.byToken[name]
 	if !ok || !i.complete(n) {
 		return nil, false
 	}
 	return i.all[n], true
 }
 
+// LookupFrom finds a cask in the given tap, the API's when tap is "".
+func (i *CaskIndex) LookupFrom(tap, token string) (*Cask, bool) {
+	key := tap + "/" + token
+	if tap == "" || tap == coreTap {
+		key = token
+	}
+	n, ok := i.byToken[key]
+	if !ok || !i.complete(n) || (tap == "" || tap == coreTap) && i.all[n].Tap != coreTap && i.all[n].Tap != "" {
+		return nil, false
+	}
+	return i.all[n], true
+}
+
 // complete reads the rest of a cask from the cached listing, or from a full
-// parse of it when it changed since the index was loaded.
+// parse of it when it changed since the index was loaded. Casks from taps
+// are whole.
 func (i *CaskIndex) complete(n int) bool {
-	if i.spans == nil {
+	if i.spans == nil || n >= len(i.spans) {
 		return true
 	}
 	i.mu.Lock()

@@ -4,7 +4,7 @@
 
 A Go, Homebrew-compatible package client. It reads Homebrew's metadata and bottles and shares a prefix with `brew`.
 
-**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae. For casks, the queries work and brw installs and uninstalls casks whose artifacts are apps and binaries; it does not upgrade them yet.
+**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae. For casks, the queries work and brw installs, upgrades and uninstalls casks whose artifacts are apps and binaries.
 
 ## Install
 
@@ -25,7 +25,7 @@ just run deps git --tree         # also: --1, --installed
 just run uses --installed pcre2
 just run leaves                  # not needed by anything else; -r on request, -p as dependency
 just run outdated                # also: --cask, --formula, --greedy, --json, --quiet
-just run update                  # refresh the formula and cask listings
+just run update                  # refresh the formula and cask listings and pull the taps
 just install                     # put brw on your PATH (GOBIN)
 ```
 
@@ -34,7 +34,8 @@ Commands that change the prefix take `--dry-run` (`-n`) to show what they would 
 ```sh
 just run install jq              # bottle and its dependencies
 just run install --cask slack    # app and binary casks; also --appdir, --adopt; formulae and casks can be mixed
-just run upgrade                 # all outdated formulae, or name some
+just run install jigsmiths/tap/brw  # a tap's cask by full name, tapping it first if needed
+just run upgrade                 # all outdated formulae and casks, or name some
 just run reinstall jq
 just run uninstall jq            # also: --cask, --force, --ignore-dependencies
 just run autoremove              # drop dependencies nothing needs
@@ -42,7 +43,7 @@ just run link jq                 # also: unlink; link --force, --overwrite
 just run cleanup                 # also: --prune=30, --scrub, --prune-prefix
 ```
 
-Update brw itself with `brew upgrade --cask brw`. Each release signs `checksums.txt` with Sigstore. To check a release by hand:
+Update brw itself with `brw update && brw upgrade brw`, or `brew upgrade --cask brw`. Each release signs `checksums.txt` with Sigstore. To check a release by hand:
 
 ```sh
 cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
@@ -50,7 +51,11 @@ cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Commands take `--prefix` and default to Homebrew's prefix for this machine. Casks come from Homebrew's API only, not from other taps.
+Commands take `--prefix` and default to Homebrew's prefix for this machine.
+
+### Taps
+
+brw can't run a tap's Ruby, so it reads a tap's casks from `api/cask.json` in the tap: the `casks` array of `brew info --json=v2 --variations --cask <tap>/<cask>...`. brw skips any entry whose `ruby_source_checksum` no longer matches the cask file. Formulae from taps aren't supported.
 
 ## Development
 
@@ -64,6 +69,7 @@ just conformance    # compare the read-only commands with the real brew (slow)
 just conformance-install    # install with brew and brw, compare the prefixes
 just conformance-uninstall  # the same for upgrade, reinstall, cleanup, link and uninstall
 just conformance-cask-install  # install, adopt and uninstall casks with brew and brw in scratch app folders, compare
+just conformance-tap  # install, update and upgrade a tap's cask with brew and brw, compare
 just clean
 ```
 

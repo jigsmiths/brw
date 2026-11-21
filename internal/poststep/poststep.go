@@ -29,7 +29,14 @@ type Context struct {
 	OS      string // darwin or linux, for the on guards
 	User    string
 	Log     io.Writer
+
+	// For a cask's steps, which have its own bases in place of a formula's.
+	Token  string
+	Staged string // the cask's version folder in the Caskroom, absolute
+	Arch   string // arm or intel
 }
+
+func (c Context) cask() bool { return c.Token != "" }
 
 type pathSpec struct {
 	Base    string `json:"base"`
@@ -77,6 +84,7 @@ type step struct {
 	AllowFailure   bool  `json:"allow_failure"`
 	SuppressStderr bool  `json:"suppress_stderr"`
 	Overwrite      *bool `json:"overwrite"`
+	Uninstall      bool  `json:"uninstall"` // a cask's symlink to remove on uninstall
 }
 
 var supported = []string{
@@ -127,6 +135,39 @@ func Run(c Context, raw []json.RawMessage) error {
 		}
 		if err := r.do(s); err != nil {
 			return fmt.Errorf("post_install step %d (%s): %w", i+1, s.Type, err)
+		}
+	}
+	return nil
+}
+
+// Uninstall undoes a cask's steps as brew does: it removes each symlink a step
+// marked uninstall made, if it still leads where the step pointed it. Nothing
+// else is undone.
+func Uninstall(c Context, raw []json.RawMessage) error {
+	r := &runner{c: c, guards: map[string]bool{}}
+	for i, b := range raw {
+		var s step
+		if err := json.Unmarshal(b, &s); err != nil {
+			return fmt.Errorf("step %d: %w", i+1, err)
+		}
+		if s.Type != "symlink" || !s.Uninstall || s.Source == nil {
+			continue
+		}
+		_, rel, err := r.target(s.Target)
+		if err != nil {
+			return fmt.Errorf("step %d: %w", i+1, err)
+		}
+		want := r.expand(s.Source.Path)
+		if s.Source.Base != "relative" {
+			if want, err = r.resolve(*s.Source); err != nil {
+				return fmt.Errorf("step %d: %w", i+1, err)
+			}
+		}
+		if got, err := r.c.Root.Readlink(rel); err != nil || got != want {
+			continue
+		}
+		if err := r.c.Root.Remove(rel); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -184,6 +225,20 @@ func (r *runner) expand(s string) string {
 
 func (r *runner) token(name string) (string, bool) {
 	c := r.c
+	if c.cask() {
+		switch name {
+		case "token", "name":
+			return c.Token, true
+		case "arch":
+			return c.Arch, true
+		case "staged_path", "caskroom_path":
+			p, err := r.base(name, "")
+			return p, err == nil
+		case "formula_name", "prefix", "opt_prefix", "bin", "sbin", "lib", "libexec", "share", "pkgshare", "var", "etc",
+			"pkgetc", "rack", "bash_completion", "zsh_completion", "fish_completion", "pwsh_completion":
+			return "", false
+		}
+	}
 	switch name {
 	case "HOMEBREW_PREFIX":
 		return c.Prefix, true
@@ -214,6 +269,17 @@ func (r *runner) token(name string) (string, bool) {
 // base is the directory a base name stands for.
 func (r *runner) base(name, formula string) (string, error) {
 	c := r.c
+	if c.cask() {
+		switch name {
+		case "homebrew_prefix":
+			return c.Prefix, nil
+		case "staged_path":
+			return c.Staged, nil
+		case "caskroom_path":
+			return filepath.Join(c.Prefix, "Caskroom", c.Token), nil
+		}
+		return "", fmt.Errorf("unsupported base %q for a cask", name)
+	}
 	keg := filepath.Join(c.Prefix, c.Keg)
 	switch name {
 	case "homebrew_prefix":
