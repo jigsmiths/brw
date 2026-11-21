@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-// This test installs formulae with brew into two fresh copies of a brew
-// checkout, upgrades, reinstalls, cleans up, links, unlinks and removes them with brew in one and brw in the other and
-// compares the prefixes after each step. It needs the checkout described in
-// conformance_install_test.go and BRW_CONFORMANCE_UNINSTALL=1.
+// This test installs formulae with brew into two copies of a brew checkout,
+// then upgrades, reinstalls, cleans up, links, unlinks and removes them with
+// brew in one and brw in the other, comparing after each step. It needs the
+// checkout described in conformance_install_test.go and BRW_CONFORMANCE_UNINSTALL=1.
 
 // oniguruma comes in as the dependency of jq.
 var uninstallSet = []string{"jq", "minio", "cayley", "sbtenv", "rustup"}

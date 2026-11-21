@@ -15,7 +15,7 @@ const (
 	tConst
 	tLabel // key: in a hash or keyword arguments
 	tSym
-	tStr // parts in tok.parts
+	tStr
 	tWords
 	tSyms
 	tInt
@@ -36,7 +36,7 @@ type token struct {
 	s        string
 	parts    []strPart
 	words    []string
-	spaceBef bool // whitespace before the token
+	spaceBef bool
 	line     int
 }
 

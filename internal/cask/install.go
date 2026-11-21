@@ -212,10 +212,9 @@ const (
 	skipLink                        // a formula's link
 )
 
-// checkTargets fails before anything is downloaded when an app or binary
-// would land on something already there, other than the owned targets of the
-// version it replaces. It says what to do with each binary: one whose target a
-// formula has linked is skipped with brew's warning.
+// checkTargets fails before any download when a target is taken by something
+// other than the replaced version. A binary whose target a formula links is
+// skipped with brew's warning.
 func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bool) ([]linkAction, error) {
 	for _, m := range p.apps {
 		if _, err := in.appRel(m.target); err != nil {

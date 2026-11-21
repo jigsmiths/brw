@@ -63,7 +63,6 @@ func OpenDryRun(dir string, journal io.Writer) (*Root, error) {
 	return r, err
 }
 
-// Close releases the root.
 func (r *Root) Close() error { return r.root.Close() }
 
 // WriteFile atomically creates name and syncs it to disk; ErrExists if it exists.
@@ -71,10 +70,9 @@ func (r *Root) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	return r.write(name, bytes.NewReader(data), perm)
 }
 
-// WriteFrom creates name from src; ErrExists if it exists, and the parent must
-// exist. It is for unpacking into staging: the file is made in place and not
-// synced (fsync costs about 8ms a file on APFS, and brew skips it too). A failed
-// write removes the file. A zero mtime leaves the current time.
+// WriteFrom creates name in an existing parent for unpacking into staging. It
+// skips fsync (about 8ms a file on APFS; brew skips it too) and removes the file
+// on failure. A zero mtime leaves the current time.
 func (r *Root) WriteFrom(name string, src io.Reader, perm fs.FileMode, mtime time.Time) (err error) {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -675,7 +673,6 @@ func (r *Root) RemoveStaging(name string) error {
 	return r.log("removestaging %s", rel)
 }
 
-// makeWritable gives the owner write access to dir and the directories below it.
 func (r *Root) makeWritable(dir string) error {
 	fi, err := r.root.Lstat(dir)
 	if err != nil || !fi.IsDir() {

@@ -42,27 +42,27 @@ setup:
 clean:
     rm -rf bin
 
-# Install the same formulae with brew and brw, then compare (needs ~/.brw-oracle/hb)
+# Compare installing formulae with brew (needs ~/.brw-oracle/hb)
 conformance-install:
     BRW_CONFORMANCE_INSTALL=1 go test ./cmd/brw -run TestConformanceInstall -count=1 -v -timeout 20m
 
-# Install the same casks with brew and brw into scratch prefixes and app folders, then compare (needs ~/.brw-oracle/hb)
+# Compare installing and removing casks with brew (needs ~/.brw-oracle/hb)
 conformance-cask-install:
     BRW_CONFORMANCE_CASK_INSTALL=1 go test ./cmd/brw -run TestConformanceCaskInstall -count=1 -v -timeout 20m
 
-# Install an old brw from a local copy of jigsmiths/tap with brew and brw, release a newer one, update and upgrade, compare (needs ~/.brw-oracle/hb)
+# Compare installing and upgrading a tap's cask with brew (needs ~/.brw-oracle/hb)
 conformance-tap:
     BRW_CONFORMANCE_TAP=1 go test ./cmd/brw -run TestConformanceTapCask -count=1 -v -timeout 30m
 
-# Remove formulae with brew and with brw and compare the prefixes (needs ~/.brw-oracle/hb)
+# Compare removing formulae with brew (needs ~/.brw-oracle/hb)
 conformance-uninstall:
     BRW_CONFORMANCE_UNINSTALL=1 go test ./cmd/brw -run TestConformanceUninstall -count=1 -v -timeout 20m
 
-# Age kegs in two prefixes, then compare brew and brw update and upgrade (needs ~/.brw-oracle/hb)
+# Compare update and upgrade with brew (needs ~/.brw-oracle/hb)
 conformance-upgrade:
     BRW_CONFORMANCE_UPGRADE=1 go test ./cmd/brw -run TestConformanceUpgrade -count=1 -v -timeout 30m
 
-# Install everything brew has installed here into a scratch prefix and check it (needs ~/.brw-oracle/hb)
+# Install everything brew has here into a scratch prefix (needs ~/.brw-oracle/hb)
 conformance-full:
     BRW_CONFORMANCE_FULL=1 go test ./cmd/brw -run TestConformanceFull -count=1 -v -timeout 60m
 

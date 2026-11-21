@@ -12,7 +12,6 @@ import (
 	"strings"
 )
 
-// sandboxExec runs a command under a macOS sandbox profile.
 var sandboxExec = "/usr/bin/sandbox-exec"
 
 // secretName matches the variables brew keeps from what it sandboxes.
@@ -188,11 +187,8 @@ func (in *Installer) removeCompletions(token string, g generator) {
 	}
 }
 
-// sandboxed runs env with the arguments under a profile that denies the
-// network, writes outside temporary folders and reads of personal files, and
-// returns what it prints. As in brew, the command gets a temporary folder as
-// its home and working folder, and none of the variables that look secret.
-// Without sandbox-exec it runs unsandboxed, warning once, as brew does.
+// sandboxed runs argv as brew does: a temporary home and working folder, no
+// secret-looking variables, and unsandboxed with one warning when sandbox-exec is missing.
 func (in *Installer) sandboxed(ctx context.Context, argv []string) ([]byte, error) {
 	tmp, err := os.MkdirTemp("", "brw-sandbox") //fsx:allow scratch space outside the prefix
 	if err != nil {
@@ -218,8 +214,7 @@ func (in *Installer) sandboxed(ctx context.Context, argv []string) ([]byte, erro
 	return in.exec(ctx, sandboxExec, append([]string{"-p", profile}, argv...)...)
 }
 
-// personalPaths are those brew's sandbox keeps from what it runs, under the
-// home folder.
+// personalPaths, under home, are what brew's sandbox hides from what it runs.
 var personalPaths = []string{
 	".ssh", ".gitconfig", ".git-credentials", ".config/gh", ".netrc",
 	".aws", ".azure", ".boto", ".docker", ".config/fish", ".config/gcloud", ".config/huggingface",
@@ -237,10 +232,8 @@ var personalPaths = []string{
 	"Library/CloudStorage", "Dropbox", "Google Drive", "OneDrive",
 }
 
-// sandboxProfile is brw's form of the profile brew runs cask artifact steps
-// under. The generator needs no write outside temporary folders, since brw
-// writes what it prints. A personal path holding one the generator needs
-// stays readable, as in brew.
+// sandboxProfile mirrors brew's cask sandbox, but allows writes only to temporary
+// folders since brw writes the output itself. A personal path holding a needed one stays readable.
 func sandboxProfile(home string, needed []string) string {
 	var b strings.Builder
 	b.WriteString("(version 1)\n(allow default)\n(deny network*)\n(deny file-write*)\n")

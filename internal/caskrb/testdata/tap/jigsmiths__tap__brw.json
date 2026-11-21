@@ -1,136 +1,30 @@
 {
- "token": "brw",
- "full_token": "jigsmiths/tap/brw",
- "old_tokens": [],
- "tap": "jigsmiths/tap",
- "name": [
-  "brw"
- ],
- "desc": "Homebrew-compatible package client written in Go",
- "homepage": "https://github.com/jigsmiths/brw",
- "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_arm64.tar.gz",
- "url_specs": {},
- "version": "0.21.0",
- "autobump": true,
- "no_autobump_message": null,
- "skip_livecheck": true,
- "installed": null,
- "installed_time": null,
- "bundle_version": null,
- "bundle_short_version": null,
- "pinned": false,
- "pinned_version": null,
- "outdated": false,
- "sha256": "4d25c115fdebcdde5bf85ca326cafff74a8b761da1edfb8599dd56eb7b0d5f00",
- "artifacts": [
-  {
-   "binary": [
-    "brw"
-   ],
-   "target": "$HOMEBREW_PREFIX/bin/brw"
-  },
-  {
-   "postflight_steps": [
-    {
-     "steps": [
-      {
-       "command": {
-        "path": "/usr/bin/xattr"
-       },
-       "type": "run",
-       "args": [
-        "-dr",
-        "com.apple.quarantine",
-        "{{staged_path}}/brw"
-       ]
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "zap": []
-  }
- ],
- "caveats": null,
- "caveats_rosetta": null,
- "depends_on": {},
- "conflicts_with": null,
- "container": null,
- "rename": [],
- "auto_updates": null,
- "deprecated": false,
- "deprecation_date": null,
- "deprecation_reason": null,
- "deprecation_replacement_formula": null,
- "deprecation_replacement_cask": null,
- "deprecate_args": null,
- "disabled": false,
- "disable_date": null,
- "disable_reason": null,
- "disable_replacement_formula": null,
- "disable_replacement_cask": null,
- "disable_args": null,
- "tap_git_head": "352ec5402a7551318ac887f26bddf69cae84b4be",
- "languages": [],
- "ruby_source_path": "Casks/brw.rb",
- "ruby_source_checksum": {
-  "sha256": "97de3b36c4bf12ee8aa21f288d0a6a4a04cb411814cd36d020fbf5869c7c2c02"
- },
- "variations": {
-  "golden_gate": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz",
-   "sha256": "eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"
-  },
-  "tahoe": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz",
-   "sha256": "eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"
-  },
-  "sequoia": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz",
-   "sha256": "eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"
-  },
-  "sonoma": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz",
-   "sha256": "eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"
-  },
-  "ventura": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz",
-   "sha256": "eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"
-  },
-  "monterey": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz",
-   "sha256": "eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"
-  },
-  "big_sur": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz",
-   "sha256": "eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"
-  },
-  "x86_64_linux": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_linux_amd64.tar.gz",
-   "sha256": "f31a4ee9966410478d74701bfc78ac7f32151469bc0ed84ce166970c4862667e"
-  },
-  "arm64_linux": {
-   "url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_linux_arm64.tar.gz",
-   "sha256": "c587d370d8898e6e4738af9cec885afc1b52d85fdb430281a7991d3918070686"
-  }
- },
- "supported_platforms": [
-  "golden_gate",
-  "arm64_golden_gate",
-  "tahoe",
-  "arm64_tahoe",
-  "sequoia",
-  "arm64_sequoia",
-  "sonoma",
-  "arm64_sonoma",
-  "ventura",
-  "arm64_ventura",
-  "monterey",
-  "arm64_monterey",
-  "big_sur",
-  "arm64_big_sur",
-  "x86_64_linux",
-  "arm64_linux"
- ]
+"artifacts": [{"binary":["brw"],"target":"$HOMEBREW_PREFIX/bin/brw"},{"postflight_steps":[{"steps":[{"command":{"path":"/usr/bin/xattr"},"type":"run","args":["-dr","com.apple.quarantine","{{staged_path}}/brw"]}]}]},{"zap":[]}],
+"auto_updates": null,
+"caveats": null,
+"caveats_rosetta": null,
+"conflicts_with": null,
+"container": null,
+"depends_on": {},
+"deprecated": false,
+"deprecation_date": null,
+"deprecation_reason": null,
+"deprecation_replacement_cask": null,
+"deprecation_replacement_formula": null,
+"desc": "Homebrew-compatible package client written in Go",
+"disable_date": null,
+"disable_reason": null,
+"disable_replacement_cask": null,
+"disable_replacement_formula": null,
+"disabled": false,
+"homepage": "https://github.com/jigsmiths/brw",
+"languages": [],
+"name": ["brw"],
+"rename": [],
+"sha256": "4d25c115fdebcdde5bf85ca326cafff74a8b761da1edfb8599dd56eb7b0d5f00",
+"url": "https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_arm64.tar.gz",
+"url_specs": {},
+"version": "0.21.0",
+"supported_platforms": ["golden_gate","arm64_golden_gate","tahoe","arm64_tahoe","sequoia","arm64_sequoia","sonoma","arm64_sonoma","ventura","arm64_ventura","monterey","arm64_monterey","big_sur","arm64_big_sur","x86_64_linux","arm64_linux"],
+"variations": {"golden_gate":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz","sha256":"eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"},"tahoe":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz","sha256":"eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"},"sequoia":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz","sha256":"eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"},"sonoma":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz","sha256":"eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"},"ventura":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz","sha256":"eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"},"monterey":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz","sha256":"eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"},"big_sur":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_darwin_amd64.tar.gz","sha256":"eb8cbc08c8812e0d40ed2864f2b6003236b1d45a6aeffa9ab581b5bc65f5e083"},"x86_64_linux":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_linux_amd64.tar.gz","sha256":"f31a4ee9966410478d74701bfc78ac7f32151469bc0ed84ce166970c4862667e"},"arm64_linux":{"url":"https://github.com/jigsmiths/brw/releases/download/v0.21.0/brw_linux_arm64.tar.gz","sha256":"c587d370d8898e6e4738af9cec885afc1b52d85fdb430281a7991d3918070686"}}
 }

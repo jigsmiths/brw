@@ -12,7 +12,6 @@ import (
 	"syscall"
 )
 
-// Cask is an installed cask.
 type Cask struct {
 	Token    string
 	Version  string // of the latest install

@@ -316,7 +316,6 @@ func (r *runner) base(name, formula string) (string, error) {
 	return "", fmt.Errorf("unsupported base %q", name)
 }
 
-// resolve gives the absolute path a spec stands for.
 func (r *runner) resolve(s pathSpec) (string, error) {
 	p := r.expand(s.Path)
 	switch s.Base {

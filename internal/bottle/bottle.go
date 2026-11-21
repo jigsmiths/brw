@@ -25,7 +25,6 @@ const auth = "Bearer QQ=="
 
 const defaultWorkers = 4
 
-// Request names the bottle to fetch.
 type Request struct {
 	Name       string
 	PkgVersion string // version and revision, such as 2.56.0_1
@@ -38,8 +37,7 @@ type Request struct {
 type Result struct {
 	Path string          // the tarball
 	Tab  json.RawMessage // the sh.brew.tab annotation of the bottle's manifest
-	// SBOMSupplement is the sh.brew.sbom.supplement annotation of the manifest,
-	// empty when it has none.
+	// SBOMSupplement is the manifest's sh.brew.sbom.supplement annotation, if any.
 	SBOMSupplement json.RawMessage
 }
 
@@ -48,13 +46,11 @@ type Fetcher struct {
 	HTTP    *http.Client
 	Dir     string
 	Workers int // simultaneous downloads in FetchAll; 4 if zero
-	// Progress, if set, is told, under the label "name (version)", how much of a bottle has been downloaded, and how
-	// much there is in all (-1 if unknown). It is called from several goroutines
-	// and not for a bottle that is already in the cache.
+	// Progress gets the label "name (version)" and total -1 when unknown. It is
+	// called concurrently, and not for cached bottles.
 	Progress func(name string, done, total int64)
 }
 
-// progressReader reports the bytes read through it.
 type progressReader struct {
 	r           io.Reader
 	name        string
@@ -97,10 +93,8 @@ func (r Request) stem() string {
 	return s
 }
 
-// Fetch returns the bottle, downloading it unless a copy that still matches its
-// checksum is in the cache. What the manifest says about it is kept beside it, so
-// a cached bottle needs no request; an entry that lacks that is completed from
-// the manifest alone.
+// Fetch reuses a cached bottle that still matches its checksum. Manifest
+// annotations are cached beside it, so a cached bottle needs no request.
 func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 	stem := filepath.Join(f.Dir, req.stem())
 	path, tabPath, suppPath := stem+".tar.gz", stem+".tab.json", stem+".sbom.json"
@@ -134,7 +128,6 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 	return Result{Path: path, Tab: ann.tab, SBOMSupplement: ann.supplement}, nil
 }
 
-// verified says whether the file is there and has the checksum.
 func verified(path, want string) bool {
 	file, err := os.Open(path)
 	if err != nil {

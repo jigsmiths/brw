@@ -29,7 +29,6 @@ var oldCasks = []struct{ token, path, commit, version string }{
 	{"otty", "Casks/o/otty.rb", "51fb3a5fe0fae37046830edc2e1635adf8f59f38", "1.6.2"},
 }
 
-// completionDirs are where casks' generated completions go.
 var completionDirs = []string{"etc/bash_completion.d", "share/zsh/site-functions", "share/fish/vendor_completions.d", "share/pwsh/completions"}
 
 // compareCompletions reports completion files whose contents differ.

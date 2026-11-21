@@ -12,15 +12,14 @@ import (
 	"time"
 )
 
-// This test installs every formula that brew has installed on this machine into
-// a scratch prefix and checks the result. It needs BRW_CONFORMANCE_FULL=1.
+// This test installs every formula brew has installed here into a scratch
+// prefix and checks the result. It needs BRW_CONFORMANCE_FULL=1.
 //
-// On macOS the prefix is a copy of the oracle checkout (see conformance_install_test.go),
-// brew installs the same formulae into a second copy, and the two are compared.
-// On Linux, where there is no brew, the prefix is $BRW_FULL_PREFIX and the names
-// come from the file $BRW_FULL_NAMES, one per line, and $BRW_BIN is a built brw;
-// just conformance-linux runs that in a container. Formulae brw cannot install are listed with the reason and left
-// out. A report goes to $BRW_FULL_REPORT, or full-report.txt next to the checkout.
+// On macOS brew installs the same formulae into a second copy of the oracle
+// checkout and the two are compared. On Linux (just conformance-linux) the
+// prefix is $BRW_FULL_PREFIX, names come from $BRW_FULL_NAMES and $BRW_BIN is a
+// built brw. Formulae brw cannot install are skipped with the reason, in a
+// report at $BRW_FULL_REPORT or full-report.txt next to the checkout.
 
 func TestConformanceFull(t *testing.T) {
 	if os.Getenv("BRW_CONFORMANCE_FULL") == "" {

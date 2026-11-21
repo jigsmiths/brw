@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-// value is a Ruby value; the types below are all of them, and Ruby's nil is a nil value.
+// value is a Ruby value. Ruby's nil is a nil value.
 type value interface{ rubyValue() }
 
 type (
@@ -59,7 +59,7 @@ func (v ver) MarshalJSON() ([]byte, error)    { return json.Marshal(string(v)) }
 func (r *regex) MarshalJSON() ([]byte, error) { return json.Marshal("(?-mix:" + r.src + ")") }
 func (tmplV) MarshalJSON() ([]byte, error)    { return json.Marshal("{{version}}") }
 
-// MarshalJSON writes the elements; the slice is never nil, so empty is [].
+// MarshalJSON writes an empty array as [], not null.
 func (a *arr) MarshalJSON() ([]byte, error) {
 	if a.v == nil {
 		return []byte("[]"), nil
@@ -107,10 +107,8 @@ func (h *hash) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// put sets a key named by a string, as most of brew's hashes are keyed.
 func (h *hash) put(k string, v value) { h.set(rstr(k), v) }
 
-// strs makes a Ruby array of strings.
 func strs(ss []string) *arr {
 	a := &arr{v: []value{}}
 	for _, s := range ss {
@@ -161,27 +159,9 @@ func str(v value) string {
 		return strconv.FormatBool(bool(x))
 	case tmplV:
 		return "{{version}}"
-	case *arr:
-		parts := make([]string, len(x.v))
-		for i, e := range x.v {
-			parts[i] = inspect(e)
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
 	}
-	return fmt.Sprint(v)
-}
-
-func inspect(v value) string {
-	switch x := v.(type) {
-	case rstr, ver:
-		b, _ := json.Marshal(str(x))
-		return string(b)
-	case sym:
-		return ":" + string(x)
-	case nil:
-		return "nil"
-	}
-	return str(v)
+	fail("%T as a string", v)
+	return ""
 }
 
 func truthy(v value) bool {
@@ -239,8 +219,6 @@ type interp struct {
 	ctx  []dsl
 }
 
-type nextSignal struct{ v value }
-
 func (in *interp) run(body []node, s *scope) value {
 	var last value
 	for _, n := range body {
@@ -249,7 +227,7 @@ func (in *interp) run(body []node, s *scope) value {
 	return last
 }
 
-func (in *interp) callBlock(p *proc, args ...value) (out value) {
+func (in *interp) callBlock(p *proc, args ...value) value {
 	s := &scope{vars: map[string]value{}, parent: p.env}
 	for i, n := range p.b.params {
 		if i < len(args) {
@@ -267,15 +245,6 @@ func (in *interp) callBlock(p *proc, args ...value) (out value) {
 			}
 		}
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			if ns, ok := r.(nextSignal); ok {
-				out = ns.v
-				return
-			}
-			panic(r)
-		}
-	}()
 	return in.run(p.b.body, s)
 }
 
@@ -309,18 +278,6 @@ func (in *interp) eval(n node, s *scope) value {
 		return in.constant(strings.Join(x.path, "::"))
 	case *assignN:
 		v := in.eval(x.v, s)
-		switch x.op {
-		case "||=":
-			if old, ok := s.lookup(x.name); ok && truthy(old) {
-				return old
-			}
-		case "+=":
-			old, _ := s.lookup(x.name)
-			v = binop("+", old, v)
-		case "-=":
-			old, _ := s.lookup(x.name)
-			v = binop("-", old, v)
-		}
 		s.assign(x.name, v)
 		return v
 	case *ifN:
@@ -384,7 +341,7 @@ func (in *interp) eval(n node, s *scope) value {
 
 func (in *interp) constant(name string) value {
 	switch name {
-	case "MacOS", "OS", "Hardware::CPU", "Formatter", "ENV", "Pathname", "File", "Dir":
+	case "MacOS", "OS", "Hardware::CPU", "ENV", "Pathname", "File", "Dir":
 		return special(name)
 	case "HOMEBREW_PREFIX":
 		return rstr("$HOMEBREW_PREFIX")
@@ -404,16 +361,6 @@ func (in *interp) evalCall(c *callN, s *scope) value {
 			if v, ok := s.lookup(c.name); ok {
 				return v
 			}
-		}
-		switch c.name {
-		case "__next", "__return", "__break":
-			var v value
-			if len(c.args) > 0 {
-				v = in.eval(c.args[0], s)
-			}
-			panic(nextSignal{v})
-		case "__seq":
-			return in.run(c.args, s)
 		}
 	}
 	var recv value
@@ -459,12 +406,6 @@ func binop(op string, l, r value) value {
 		return rbool(eq(l, r))
 	case "!=":
 		return rbool(!eq(l, r))
-	case "=~":
-		re, ok := r.(*regex)
-		if !ok {
-			fail("=~")
-		}
-		return rbool(compile(re).MatchString(str(l)))
 	case "..", "...":
 		a, ok1 := l.(rint)
 		b, ok2 := r.(rint)
@@ -478,12 +419,6 @@ func binop(op string, l, r value) value {
 		switch op {
 		case "+":
 			return rstr(str(a) + str(r))
-		case "*":
-			if n, ok := r.(rint); ok {
-				return rstr(strings.Repeat(str(a), int(n)))
-			}
-		case "<", ">", "<=", ">=":
-			return rbool(cmpOp(op, strings.Compare(str(a), str(r))))
 		case "/": // Pathname#/
 			return rstr(path.Join(str(a), str(r)))
 		}
@@ -492,35 +427,11 @@ func binop(op string, l, r value) value {
 		if !ok {
 			fail("int %s %T", op, r)
 		}
-		switch op {
-		case "+":
-			return a + b
-		case "-":
-			return a - b
-		case "*":
-			return a * b
-		case "/":
-			if b == 0 {
-				fail("division by zero")
-			}
-			return a / b
-		case "%":
-			if b == 0 {
-				fail("division by zero")
-			}
-			return a % b
-		case "<", ">", "<=", ">=":
-			return rbool(cmpOp(op, cmpInt(int64(a), int64(b))))
-		}
+		return rbool(cmpOp(op, cmpInt(int64(a), int64(b))))
 	case *arr:
 		if op == "<<" {
 			a.v = append(a.v, r)
 			return a
-		}
-		if op == "+" {
-			if b, ok := r.(*arr); ok {
-				return &arr{append(append([]value{}, a.v...), b.v...)}
-			}
 		}
 	case *macVer:
 		b := toMacVer(r)
@@ -560,15 +471,9 @@ func cmpOp(op string, c int) bool {
 func index(recv value, args []value) value {
 	switch x := recv.(type) {
 	case special:
-		switch x {
-		case "Dir":
-			// globs staged files when brew loads the cask; none exist before install
+		if x == "Dir" {
+			// Dir[] globs staged files when brew loads the cask; none exist before install
 			return &arr{}
-		case "ENV":
-			if v, ok := lookupEnv(str(args[0])); ok {
-				return rstr(v)
-			}
-			return nil
 		}
 	case *arr:
 		if len(args) == 1 {
@@ -589,11 +494,6 @@ func index(recv value, args []value) value {
 				return x.v[i]
 			}
 		}
-	case *hash:
-		if len(args) == 1 {
-			v, _ := x.get(args[0])
-			return v
-		}
 	case rstr, ver:
 		s := str(x)
 		if len(args) == 1 {
@@ -607,12 +507,6 @@ func index(recv value, args []value) value {
 					return nil
 				}
 				return rstr(r[a])
-			case *regex:
-				loc := compile(a).FindStringIndex(s)
-				if loc == nil {
-					return nil
-				}
-				return rstr(s[loc[0]:loc[1]])
 			case *rangeV:
 				r := []rune(s)
 				lo, hi := a.bounds(len(r))
@@ -623,14 +517,6 @@ func index(recv value, args []value) value {
 			}
 		}
 		if len(args) == 2 {
-			if re, ok := args[0].(*regex); ok {
-				m := compile(re).FindStringSubmatch(s)
-				g, _ := args[1].(rint)
-				if m == nil || g < 0 || int(g) >= len(m) {
-					return nil
-				}
-				return rstr(m[g])
-			}
 			if a, ok := args[0].(rint); ok {
 				b, _ := args[1].(rint)
 				r := []rune(s)
@@ -691,21 +577,14 @@ func toRegexOrString(v value) (*regexp.Regexp, string, bool) {
 // rubySub converts a Ruby replacement (\1, \0) to Go's ($1).
 func rubySub(s string) string {
 	s = strings.ReplaceAll(s, "$", "$$")
-	return regexp.MustCompile(`\\(\d)`).ReplaceAllString(s, "${$1}")
+	return rubyGroupRef.ReplaceAllString(s, "${$1}")
 }
 
 func (in *interp) method(recv value, name string, args []value, blk *proc) value {
 	switch x := recv.(type) {
 	case caskRef:
-		switch name {
-		case "token", "to_s":
-			return rstr(x.b.token)
-		case "url":
+		if name == "url" {
 			return x.b.url
-		case "version":
-			return x.b.version
-		case "name":
-			return strs(x.b.names)
 		}
 	case ver:
 		if v, ok := versionMethod(x, name, args); ok {
@@ -714,72 +593,25 @@ func (in *interp) method(recv value, name string, args []value, blk *proc) value
 		return in.method(rstr(x), name, args, blk)
 	case tmplV:
 		switch name {
-		case "to_s":
-			return rstr("{{version}}")
 		case "major", "major_minor", "minor", "patch", "csv", "before_comma", "after_comma":
 			return rstr("{{version." + name + "}}")
 		}
 	case rstr:
-		return in.strMethod(string(x), name, args, blk)
+		return strMethod(string(x), name, args)
 	case *arr:
 		return in.arrMethod(x, name, args, blk)
-	case *hash:
-		switch name {
-		case "[]", "fetch":
-			v, _ := x.get(args[0])
-			return v
-		case "key?":
-			_, ok := x.get(args[0])
-			return rbool(ok)
-		case "merge":
-			h := &hash{keys: append([]value{}, x.keys...), vals: append([]value{}, x.vals...)}
-			if o, ok := args[0].(*hash); ok {
-				for i, k := range o.keys {
-					h.set(k, o.vals[i])
-				}
-			}
-			return h
-		}
-	case rint:
-		switch name {
-		case "to_s":
-			return rstr(str(x))
-		case "to_i":
-			return x
-		}
-	case sym:
-		switch name {
-		case "to_s":
-			return rstr(x)
-		case "to_sym":
-			return x
-		}
-	case nil:
-		switch name {
-		case "to_s":
-			return rstr("")
-		case "nil?", "blank?":
-			return rbool(true)
-		case "present?":
-			return rbool(false)
-		}
 	case special:
 		return in.specialMethod(x, name, args)
-	case *macVer:
-		switch name {
-		case "to_s", "to_str":
-			return rstr(x.v)
-		}
-	}
-	if name == "nil?" {
-		return rbool(false)
-	}
-	if name == "freeze" || name == "itself" {
-		return recv
 	}
 	fail("method %s on %T", name, recv)
 	return nil
 }
+
+var (
+	majorMinorPatch = regexp.MustCompile(`^([^.,:]+)(?:.([^.,:]+)(?:.([^.,:]+))?)?`)
+	dividers        = regexp.MustCompile(`[.\-_]`)
+	rubyGroupRef    = regexp.MustCompile(`\\(\d)`)
+)
 
 func versionMethod(v ver, name string, args []value) (value, bool) {
 	s := string(v)
@@ -789,9 +621,8 @@ func versionMethod(v ver, name string, args []value) (value, bool) {
 		}
 		return ver(f())
 	}
-	mmp := regexp.MustCompile(`^([^.,:]+)(?:.([^.,:]+)(?:.([^.,:]+))?)?`)
 	part := func(i int) string {
-		m := mmp.FindStringSubmatch(s)
+		m := majorMinorPatch.FindStringSubmatch(s)
 		if m == nil {
 			return ""
 		}
@@ -837,7 +668,7 @@ func versionMethod(v ver, name string, args []value) (value, bool) {
 			return p[1]
 		}), true
 	case "no_dividers":
-		return wrap(func() string { return regexp.MustCompile(`[.\-_]`).ReplaceAllString(s, "") }), true
+		return wrap(func() string { return dividers.ReplaceAllString(s, "") }), true
 	case "chomp":
 		return wrap(func() string {
 			if len(args) > 0 {
@@ -865,75 +696,25 @@ func versionMethod(v ver, name string, args []value) (value, bool) {
 	return nil, false
 }
 
-func (in *interp) strMethod(s string, name string, args []value, blk *proc) value {
-	if len(args) == 0 {
-		switch name {
-		case "include?", "delete", "delete_prefix", "delete_suffix", "tr", "match?", "+", "==", "concat",
-			"ljust", "rjust", "count", "[]", "slice", "split", "gsub", "sub":
-			if name != "split" {
-				fail("String#%s without an argument", name)
-			}
-		}
-	}
+func strMethod(s string, name string, args []value) value {
 	switch name {
-	case "to_s", "to_str", "strip_heredoc":
+	case "to_s":
 		return rstr(s)
-	case "to_sym":
-		return sym(s)
-	case "to_i":
-		n, _ := strconv.ParseInt(regexp.MustCompile(`^-?\d+`).FindString(strings.TrimSpace(s)), 10, 64)
-		return rint(n)
-	case "upcase":
-		return rstr(strings.ToUpper(s))
 	case "downcase":
 		return rstr(strings.ToLower(s))
-	case "capitalize":
-		if s == "" {
-			return rstr(s)
-		}
-		return rstr(strings.ToUpper(s[:1]) + strings.ToLower(s[1:]))
-	case "strip":
-		return rstr(strings.TrimSpace(s))
-	case "chomp":
-		if len(args) > 0 {
-			return rstr(strings.TrimSuffix(s, str(args[0])))
-		}
-		return rstr(strings.TrimSuffix(strings.TrimSuffix(s, "\n"), "\r"))
 	case "length", "size":
 		return rint(len([]rune(s)))
-	case "empty?":
-		return rbool(s == "")
-	case "blank?":
-		return rbool(strings.TrimSpace(s) == "")
 	case "present?":
 		return rbool(strings.TrimSpace(s) != "")
-	case "presence":
-		if strings.TrimSpace(s) == "" {
-			return nil
-		}
-		return rstr(s)
-	case "start_with?":
-		for _, a := range args {
-			if strings.HasPrefix(s, str(a)) {
-				return rbool(true)
-			}
-		}
-		return rbool(false)
-	case "end_with?":
-		for _, a := range args {
-			if strings.HasSuffix(s, str(a)) {
-				return rbool(true)
-			}
-		}
-		return rbool(false)
-	case "include?":
-		return rbool(strings.Contains(s, str(args[0])))
-	case "delete":
-		return rstr(strings.NewReplacer(splitChars(str(args[0]))...).Replace(s))
+	case "dirname": // Pathname#dirname
+		return rstr(path.Dir(s))
+	}
+	if len(args) == 0 {
+		fail("String#%s without an argument", name)
+	}
+	switch name {
 	case "delete_prefix":
 		return rstr(strings.TrimPrefix(s, str(args[0])))
-	case "delete_suffix":
-		return rstr(strings.TrimSuffix(s, str(args[0])))
 	case "tr":
 		if len(args) < 2 {
 			fail("String#tr needs two arguments")
@@ -978,50 +759,17 @@ func (in *interp) strMethod(s string, name string, args []value, blk *proc) valu
 		}
 		return rstr(re.ReplaceAllString(s, rubySub(repl)))
 	case "split":
-		var parts []string
-		switch {
-		case len(args) == 0:
-			parts = strings.Fields(s)
-		default:
-			n := -1
-			if len(args) > 1 {
-				limit, ok := args[1].(rint)
-				if !ok {
-					fail("String#split limit %T", args[1])
-				}
-				n = int(limit)
-			}
-			if re, ok := args[0].(*regex); ok {
-				parts = compile(re).Split(s, n)
-			} else {
-				parts = strings.SplitN(s, str(args[0]), n)
-			}
-			if n < 0 {
-				for len(parts) > 0 && parts[len(parts)-1] == "" {
-					parts = parts[:len(parts)-1]
-				}
-			}
+		if len(args) != 1 {
+			fail("String#split with a limit")
+		}
+		if _, ok := args[0].(*regex); ok {
+			fail("String#split on a regex")
+		}
+		parts := strings.Split(s, str(args[0]))
+		for len(parts) > 0 && parts[len(parts)-1] == "" { // Ruby drops trailing empty fields
+			parts = parts[:len(parts)-1]
 		}
 		return strs(parts)
-	case "match?":
-		re, lit, isRe := toRegexOrString(args[0])
-		if isRe {
-			return rbool(re.MatchString(s))
-		}
-		return rbool(strings.Contains(s, lit))
-	case "[]", "slice":
-		return index(rstr(s), args)
-	case "+", "concat":
-		return rstr(s + str(args[0]))
-	case "%":
-		fail("format")
-	case "==":
-		return rbool(eq(rstr(s), args[0]))
-	case "then":
-		if blk == nil {
-			fail("String#then without a block")
-		}
-		return in.callBlock(blk, rstr(s))
 	case "ljust", "rjust":
 		w, ok := args[0].(rint)
 		if !ok {
@@ -1041,35 +789,15 @@ func (in *interp) strMethod(s string, name string, args []value, blk *proc) valu
 			return rstr(s + fill)
 		}
 		return rstr(fill + s)
-	case "dirname":
-		return rstr(path.Dir(s))
-	case "basename":
-		return rstr(path.Base(s))
-	case "join":
+	case "join": // Pathname#join
 		parts := []string{s}
 		for _, a := range args {
 			parts = append(parts, str(a))
 		}
 		return rstr(path.Join(parts...))
-	case "count":
-		return rint(strings.Count(s, str(args[0])))
-	case "chars":
-		var cs []string
-		for _, r := range s {
-			cs = append(cs, string(r))
-		}
-		return strs(cs)
 	}
 	fail("String#%s", name)
 	return nil
-}
-
-func splitChars(set string) []string {
-	var out []string
-	for _, r := range expandTr(set) {
-		out = append(out, string(r), "")
-	}
-	return out
 }
 
 func expandTr(s string) string {
@@ -1129,64 +857,17 @@ func (in *interp) arrMethod(a *arr, name string, args []value, blk *proc) value 
 			in.callBlock(blk, e)
 		}
 		return a
-	case "each_with_index", "with_index":
+	case "each_with_index":
+		if blk != nil {
+			fail("Array#each_with_index with a block")
+		}
 		pairs := &arr{}
 		for i, e := range a.v {
 			pairs.v = append(pairs.v, &arr{[]value{e, rint(i)}})
 		}
-		if blk == nil {
-			return pairs
-		}
-		for _, p := range pairs.v {
-			in.callBlock(blk, p)
-		}
-		return a
-	case "[]":
-		return index(a, args)
+		return pairs
 	case "size", "length", "count":
 		return rint(len(a.v))
-	case "empty?":
-		return rbool(len(a.v) == 0)
-	case "include?":
-		if len(args) == 0 {
-			fail("Array#include? without an argument")
-		}
-		for _, e := range a.v {
-			if eq(e, args[0]) {
-				return rbool(true)
-			}
-		}
-		return rbool(false)
-	case "compact":
-		out := &arr{}
-		for _, e := range a.v {
-			if e != nil {
-				out.v = append(out.v, e)
-			}
-		}
-		return out
-	case "flatten":
-		out := &arr{}
-		var walk func(v []value)
-		walk = func(v []value) {
-			for _, e := range v {
-				if x, ok := e.(*arr); ok {
-					walk(x.v)
-				} else {
-					out.v = append(out.v, e)
-				}
-			}
-		}
-		walk(a.v)
-		return out
-	case "to_a":
-		return a
-	case "reverse":
-		out := &arr{}
-		for _, v := range slices.Backward(a.v) {
-			out.v = append(out.v, v)
-		}
-		return out
 	}
 	fail("Array#%s", name)
 	return nil
@@ -1234,7 +915,7 @@ func compareMac(a, b string) int {
 }
 
 func (in *interp) specialMethod(x special, name string, args []value) value {
-	if f := in.flight(); f != nil && x == "File" && name != "expand_path" && name != "join" && name != "basename" {
+	if f := in.flight(); f != nil && x == "File" && name != "expand_path" {
 		return f.file(in, nil, name, args)
 	}
 	arg := func() string {
@@ -1244,8 +925,6 @@ func (in *interp) specialMethod(x special, name string, args []value) value {
 		return str(args[0])
 	}
 	switch string(x) + "." + name {
-	case "File.basename":
-		return rstr(path.Base(arg()))
 	case "MacOS.version":
 		return &macVer{in.plat.macos}
 	case "Hardware::CPU.intel?":
@@ -1256,34 +935,20 @@ func (in *interp) specialMethod(x special, name string, args []value) value {
 		return rbool(in.plat.os == "macos")
 	case "OS.linux?":
 		return rbool(in.plat.os == "linux")
-	case "Formatter.url":
-		return rstr(arg())
-	case "ENV.fetch", "ENV.[]":
+	case "ENV.fetch":
 		if v, ok := lookupEnv(arg()); ok {
 			return rstr(v)
 		}
 		if len(args) > 1 {
 			return args[1]
 		}
-		if name == "fetch" {
-			fail("ENV.fetch of unset %s", str(args[0]))
-		}
-		return nil
+		fail("ENV.fetch of unset %s", str(args[0]))
 	case "Pathname.new":
 		return rstr(arg())
 	case "Dir.home":
 		return rstr("/$HOME")
-	case "Dir.[]", "Dir.glob":
-		// globs the staged files when brew loads the cask; none exist before install
-		return &arr{}
 	case "File.expand_path":
 		return rstr(expandHome(arg()))
-	case "File.join":
-		parts := make([]string, len(args))
-		for i, a := range args {
-			parts[i] = str(a)
-		}
-		return rstr(path.Join(parts...))
 	}
 	fail("%s.%s", x, name)
 	return nil

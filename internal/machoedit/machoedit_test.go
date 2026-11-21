@@ -162,7 +162,6 @@ func TestParseRejects(t *testing.T) {
 	}
 }
 
-// commandsAfter returns the bytes of every load command after the first n.
 func untouched(t *testing.T, before, after []byte) {
 	t.Helper()
 	if !bytes.Equal(before[textOffset:], after[textOffset:]) {

@@ -233,7 +233,6 @@ type PkgVersion struct {
 
 var pkgPattern = regexp.MustCompile(`^(.+?)(?:_([0-9]+))?$`)
 
-// NewPkg builds a PkgVersion from a formula's version and revision.
 func NewPkg(version string, revision int) (PkgVersion, error) {
 	v, err := Parse(version)
 	return PkgVersion{v, revision}, err

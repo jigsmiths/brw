@@ -83,7 +83,6 @@ func (s Source) MarshalJSON() ([]byte, error) {
 // VersionScheme is the formula's version scheme when the keg was installed.
 func (r *Receipt) VersionScheme() int { return r.Source.scheme }
 
-// ParseReceipt decodes an INSTALL_RECEIPT.json.
 func ParseReceipt(b []byte) (*Receipt, error) {
 	var r Receipt
 	if err := json.Unmarshal(b, &r); err != nil {

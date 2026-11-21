@@ -14,7 +14,6 @@ import (
 	"strings"
 )
 
-// homebrewKeyID names the key Homebrew signs its listings with.
 const homebrewKeyID = "homebrew-1"
 
 // homebrewPEM is the public key from Homebrew/brew's Library/Homebrew/api.
@@ -82,8 +81,7 @@ func verify(doc []byte, key *rsa.PublicKey) ([]byte, error) {
 	return nil, fmt.Errorf("signature key %s not found", homebrewKeyID)
 }
 
-// decodeBase64URL reads URL-safe base64 with or without padding, as Homebrew's
-// listings have it.
+// Homebrew's listings use URL-safe base64 with or without padding.
 func decodeBase64URL(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(strings.TrimRight(s, "="))
 }

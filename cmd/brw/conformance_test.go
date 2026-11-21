@@ -217,7 +217,7 @@ func TestConformanceSearchCasks(t *testing.T) {
 			same(t, "search --cask "+q, got, lines(want))
 			continue
 		}
-		// Text searches: brew adds spelling suggestions, so brw's answer may be a subset.
+		// brew adds spelling suggestions to text searches.
 		for token := range strings.FieldsSeq(got) {
 			if !slices.Contains(want, token) {
 				t.Errorf("search --cask %q: brw found %s, brew did not", q, token)
@@ -275,7 +275,6 @@ func infoBlocks(out string) map[string]map[string][]string {
 	return blocks
 }
 
-// isSubsequence reports whether every line of sub appears in lines, in order.
 func isSubsequence(sub, lines []string) bool {
 	i := 0
 	for _, l := range lines {
