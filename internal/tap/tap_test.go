@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,30 +36,10 @@ func write(t *testing.T, path, content string) {
 	}
 }
 
-// publish writes a cask and the listing entry brew would generate for it.
+// publish writes a cask file.
 func publish(t *testing.T, dir, token, version string) {
 	t.Helper()
-	rb := fmt.Sprintf("cask %q do\n  version %q\nend\n", token, version)
-	write(t, filepath.Join(dir, "Casks", token+".rb"), rb)
-	writeListing(t, dir, entryJSON(token, version, rb))
-}
-
-func entryJSON(token, version, rb string) string {
-	sum := sha256.Sum256([]byte(rb))
-	return fmt.Sprintf(`{"token": %q, "tap": "someone/else", "version": %q, "ruby_source_path": "Casks/%s.rb", "ruby_source_checksum": {"sha256": %q}}`,
-		token, version, token, hex.EncodeToString(sum[:]))
-}
-
-func writeListing(t *testing.T, dir string, entries ...string) {
-	t.Helper()
-	list := "["
-	for i, e := range entries {
-		if i > 0 {
-			list += ","
-		}
-		list += e
-	}
-	write(t, filepath.Join(dir, "api", "cask.json"), list+"]")
+	write(t, filepath.Join(dir, "Casks", token+".rb"), fmt.Sprintf("cask %q do\n  version %q\nend\n", token, version))
 }
 
 // origin makes a tap repository to clone from.
@@ -120,26 +102,42 @@ func TestList(t *testing.T) {
 func TestCasks(t *testing.T) {
 	dir := t.TempDir()
 	tp := Tap{Name: "jigsmiths/tap", Dir: dir}
-	if got, err := tp.Casks(); err != nil || got != nil {
-		t.Errorf("without a listing: %v, %v", got, err)
+	if got, err := tp.Casks("arm64_tahoe"); err != nil || got != nil {
+		t.Errorf("without casks: %v, %v", got, err)
 	}
-	rb := "cask \"tool\" do\nend\n"
-	write(t, filepath.Join(dir, "Casks", "tool.rb"), rb)
-	write(t, filepath.Join(dir, "Casks", "stale.rb"), "changed since the listing")
-	writeListing(t, dir, entryJSON("tool", "1.0", rb), entryJSON("stale", "1.0", "as listed"), entryJSON("gone", "1.0", "x"))
-	got, err := tp.Casks()
+	rb := "cask \"tool\" do\n  arch arm: \"arm64\", intel: \"amd64\"\n  version \"1.0\"\n  url \"https://example.com/tool-#{arch}.zip\"\nend\n"
+	write(t, filepath.Join(dir, "Casks", "t", "tool.rb"), rb)
+	write(t, filepath.Join(dir, "Casks", "ruby.rb"), "cask \"ruby\" do\n  def helper\n  end\nend\n")
+	write(t, filepath.Join(dir, "Formula", "lib.rb"), "class Lib < Formula\nend\n")
+	got, err := tp.Casks("arm64_tahoe")
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A cask brw cannot evaluate is left out, as a formula is.
 	if len(got) != 1 || got[0].Token != "tool" {
 		t.Fatalf("Casks = %+v, want just tool", got)
 	}
-	if got[0].Tap != "jigsmiths/tap" || got[0].SourceFile != filepath.Join(dir, "Casks", "tool.rb") {
-		t.Errorf("tap %q, source file %q", got[0].Tap, got[0].SourceFile)
+	c := got[0]
+	sum := sha256.Sum256([]byte(rb))
+	if c.Tap != "jigsmiths/tap" || c.FullToken != "jigsmiths/tap/tool" || c.SourceFile != filepath.Join(dir, "Casks", "t", "tool.rb") ||
+		c.RubySourcePath != "Casks/t/tool.rb" || c.RubySourceChecksum.SHA256 != hex.EncodeToString(sum[:]) {
+		t.Errorf("source: %+v", c)
 	}
-	write(t, filepath.Join(dir, "api", "cask.json"), "{")
-	if _, err := tp.Casks(); err == nil {
-		t.Error("a garbled listing should be an error")
+	if c.Version != "1.0" || c.URL != "https://example.com/tool-arm64.zip" {
+		t.Errorf("evaluated for arm64_tahoe: %q %q", c.Version, c.URL)
+	}
+	if intel, _ := tp.Casks("sonoma"); len(intel) != 1 || intel[0].URL != "https://example.com/tool-amd64.zip" {
+		t.Errorf("evaluated for sonoma: %+v", intel)
+	}
+
+	if _, err := tp.Cask("ruby", "arm64_tahoe"); err == nil || !strings.Contains(err.Error(), "def") {
+		t.Errorf("Cask(ruby) = %v, want why it cannot be read", err)
+	}
+	if _, err := tp.Cask("missing", "arm64_tahoe"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Cask(missing) = %v, want not found", err)
+	}
+	if one, err := tp.Cask("tool", "arm64_tahoe"); err != nil || one.FullToken != "jigsmiths/tap/tool" {
+		t.Errorf("Cask(tool) = %+v, %v", one, err)
 	}
 }
 
@@ -172,11 +170,11 @@ func TestCloneAndPull(t *testing.T) {
 	if err != nil || !changed {
 		t.Fatalf("Pull = %v, %v", changed, err)
 	}
-	casks, err := tp.Casks()
+	casks, err := tp.Casks("arm64_tahoe")
 	if err != nil || len(casks) != 1 || casks[0].Version != "2.0" {
 		t.Fatalf("after pull: %+v, %v", casks, err)
 	}
-	// brew's receipt records the tap's HEAD, not the commit the listing names.
+	// brew's receipt records the tap's HEAD.
 	if head := strings.TrimSpace(git(t, tp.Dir, "rev-parse", "HEAD")); casks[0].TapGitHead != head {
 		t.Errorf("TapGitHead = %q, want %q", casks[0].TapGitHead, head)
 	}

@@ -1,6 +1,5 @@
-// Package tap reads and updates the taps of a Homebrew prefix. brw cannot run a
-// tap's Ruby, so it uses the casks a tap lists in api/cask.json, in the API's
-// format, as brew info --json=v2 --variations writes it.
+// Package tap reads and updates the taps of a Homebrew prefix. A tap's casks
+// are read from its cask files, as brew reads them.
 package tap
 
 import (
@@ -18,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/caskrb"
 )
 
 // Tap is a tapped repository.
@@ -71,39 +71,74 @@ func List(prefix string) ([]Tap, error) {
 	return out, nil
 }
 
-// Casks are the casks the tap lists whose cask file is as it was when the
-// listing was generated. A tap without a listing has none.
-func (t Tap) Casks() ([]api.Cask, error) {
-	b, err := os.ReadFile(filepath.Join(t.Dir, "api", "cask.json"))
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
+// Casks are the tap's casks as brew loads them on the platform tag, such as
+// "arm64_tahoe". A cask file brw cannot evaluate is left out; Cask says why.
+func (t Tap) Casks(tag string) ([]api.Cask, error) {
+	files, err := t.caskFiles()
 	if err != nil {
 		return nil, err
 	}
-	listed, err := api.ParseCasks(b)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", t.Name, err)
-	}
-	// brew records the tap's HEAD; without git, the listing's commit stands in.
 	head, _ := run(context.Background(), t.Dir, "rev-parse", "HEAD")
 	var out []api.Cask
-	for _, c := range listed {
-		if head != "" {
-			c.TapGitHead = head
-		}
-		file := filepath.Join(t.Dir, filepath.Clean("/"+c.RubySourcePath))
-		rb, err := os.ReadFile(file)
+	for _, f := range files {
+		c, err := t.load(f, tag, head)
 		if err != nil {
 			continue
 		}
-		if sum := sha256.Sum256(rb); hex.EncodeToString(sum[:]) != c.RubySourceChecksum.SHA256 {
-			continue
-		}
-		c.Tap, c.SourceFile = t.Name, file
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// Cask loads the tap's cask called token, or says why brw cannot.
+func (t Tap) Cask(token, tag string) (api.Cask, error) {
+	files, err := t.caskFiles()
+	if err != nil {
+		return api.Cask{}, err
+	}
+	for _, f := range files {
+		if strings.EqualFold(strings.TrimSuffix(filepath.Base(f), ".rb"), token) {
+			head, _ := run(context.Background(), t.Dir, "rev-parse", "HEAD")
+			return t.load(f, tag, head)
+		}
+	}
+	return api.Cask{}, fmt.Errorf("%s has no cask %s: %w", t.Name, token, fs.ErrNotExist)
+}
+
+// caskFiles are the files under the tap's Casks folder, where brew looks.
+func (t Tap) caskFiles() ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(filepath.Join(t.Dir, "Casks"), func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if p == filepath.Join(t.Dir, "Casks") && errors.Is(err, fs.ErrNotExist) {
+				return filepath.SkipDir
+			}
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(p, ".rb") {
+			files = append(files, p)
+		}
+		return nil
+	})
+	return files, err
+}
+
+// load evaluates a cask file and records where it came from, as brew's
+// receipt does: the tap's HEAD, the file and its checksum.
+func (t Tap) load(file, tag, head string) (api.Cask, error) {
+	rb, err := os.ReadFile(file)
+	if err != nil {
+		return api.Cask{}, err
+	}
+	c, err := caskrb.Load(rb, tag)
+	if err != nil {
+		return api.Cask{}, fmt.Errorf("%s/%s: %w", t.Name, strings.TrimSuffix(filepath.Base(file), ".rb"), err)
+	}
+	rel, _ := filepath.Rel(t.Dir, file)
+	sum := sha256.Sum256(rb)
+	c.Tap, c.FullToken, c.TapGitHead, c.SourceFile = t.Name, t.Name+"/"+c.Token, head, file
+	c.RubySourcePath, c.RubySourceChecksum.SHA256 = filepath.ToSlash(rel), hex.EncodeToString(sum[:])
+	return c, nil
 }
 
 // Remote is where the tap was cloned from, or "" when it cannot be read.

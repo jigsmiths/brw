@@ -55,7 +55,7 @@ Commands take `--prefix` and default to Homebrew's prefix for this machine.
 
 ### Taps
 
-brw can't run a tap's Ruby, so it reads a tap's casks from `api/cask.json` in the tap: the `casks` array of `brew info --json=v2 --variations --cask <tap>/<cask>...`. brw skips any entry whose `ruby_source_checksum` no longer matches the cask file. Formulae from taps aren't supported.
+brw reads a tap's cask files as brew does, with an evaluator for the cask DSL instead of Ruby. A `preflight` or `postflight` block becomes the install steps it amounts to (commands, file writes and existence checks); brw refuses a cask whose Ruby it can't translate. Formulae from taps aren't supported.
 
 Like brew, brw only loads casks from taps you trust, and shares brew's trust store (`$XDG_CONFIG_HOME/homebrew/trust.json`, else `~/.homebrew/trust.json`). `brw trust jigsmiths/tap` trusts a tap, `brw untrust` removes it, and `brw trust` lists what's trusted. Installing a cask by its full name trusts that cask. `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` turns the check off.
 

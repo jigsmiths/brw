@@ -1,0 +1,92 @@
+{
+ "token": "aerospace-swipe",
+ "full_token": "acsandmann/tap/aerospace-swipe",
+ "old_tokens": [],
+ "tap": "acsandmann/tap",
+ "name": [
+  "Aerospace Swipe"
+ ],
+ "desc": "Trackpad gesture support for AeroSpace window manager",
+ "homepage": "https://github.com/acsandmann/aerospace-swipe",
+ "url": "https://github.com/acsandmann/aerospace-swipe/releases/download/v0.0.6/AerospaceSwipe-0.0.6.zip",
+ "url_specs": {},
+ "version": "0.0.6",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": null,
+ "bundle_short_version": null,
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "a328dd70172574a84afdc7554a0b95c75600dcecabb16853703214d8cc90cac6",
+ "artifacts": [
+  {
+   "uninstall_preflight": null
+  },
+  {
+   "app": [
+    "AerospaceSwipe.app"
+   ],
+   "target": "/Applications/AerospaceSwipe.app"
+  },
+  {
+   "postflight": null
+  },
+  {
+   "zap": [
+    {
+     "trash": [
+      "~/Library/LaunchAgents/com.acsandmann.swipe.plist"
+     ]
+    }
+   ]
+  }
+ ],
+ "caveats": null,
+ "caveats_rosetta": null,
+ "depends_on": {},
+ "conflicts_with": null,
+ "container": null,
+ "rename": [],
+ "auto_updates": null,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": false,
+ "disable_date": null,
+ "disable_reason": null,
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": null,
+ "tap_git_head": "40e656620e4cffd953169ce4c47eaf01db02151c",
+ "languages": [],
+ "ruby_source_path": "Casks/aerospace-swipe.rb",
+ "ruby_source_checksum": {
+  "sha256": "632520a39facbad9af8441021aeae4a684d1720e2430168b9048b3aa419c174d"
+ },
+ "variations": {},
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey",
+  "big_sur",
+  "arm64_big_sur",
+  "x86_64_linux",
+  "arm64_linux"
+ ]
+}

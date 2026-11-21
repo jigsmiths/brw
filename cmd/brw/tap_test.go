@@ -2,11 +2,7 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,32 +21,34 @@ func gitIn(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// publishTapCask commits a version of a cask to a tap repository, with the
-// listing brew would generate for it.
+// publishTapCask commits a version of an app cask to a tap repository, as the
+// cask file a tap would have for it.
 func publishTapCask(t *testing.T, repo string, c map[string]any, version string) {
 	t.Helper()
-	token := c["token"].(string)
-	rb := fmt.Sprintf("cask %q do\n  version %q\nend\n", token, version)
-	sum := sha256.Sum256([]byte(rb))
-	entry := map[string]any{}
-	maps.Copy(entry, c)
-	entry["tap"], entry["full_token"], entry["version"] = "jigsmiths/tap", "jigsmiths/tap/"+token, version
-	entry["ruby_source_path"] = "Casks/" + token + ".rb"
-	entry["ruby_source_checksum"] = map[string]string{"sha256": hex.EncodeToString(sum[:])}
-	listing, err := json.Marshal([]any{entry})
-	if err != nil {
+	writeTapCask(t, repo, c["token"].(string), fmt.Sprintf(`cask %q do
+  version %q
+  sha256 %q
+
+  url %q
+  name "App"
+
+  app "App.app"
+  binary "tool"
+end
+`, c["token"], version, c["sha256"], c["url"]))
+	gitIn(t, repo, "commit", "-q", "-m", c["token"].(string)+" "+version)
+}
+
+func writeTapCask(t *testing.T, repo, token, rb string) {
+	t.Helper()
+	path := filepath.Join(repo, "Casks", token+".rb")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for path, body := range map[string][]byte{"Casks/" + token + ".rb": []byte(rb), "api/cask.json": listing} {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, path)), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(repo, path), body, 0o644); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(path, []byte(rb), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	gitIn(t, repo, "add", "-A")
-	gitIn(t, repo, "commit", "-q", "-m", token+" "+version)
 }
 
 // tapStore serves an app cask from a tap repository rather than the API.
@@ -225,17 +223,17 @@ func TestInstallByFullNameFromAnUnknownTap(t *testing.T) {
 	}
 }
 
-func TestInstallByFullNameFromATapWithoutAListing(t *testing.T) {
+func TestInstallByFullNameSaysWhyACaskCannotBeRead(t *testing.T) {
 	e, prefix, origin, _ := tapStore(t)
-	gitIn(t, origin, "rm", "-q", "api/cask.json")
-	gitIn(t, origin, "commit", "-q", "-m", "no listing")
+	writeTapCask(t, origin, "app", "cask \"app\" do\n  version \"1.0\"\n  postflight do\n    FileUtils.mv \"a\", \"b\"\n  end\nend\n")
+	gitIn(t, origin, "commit", "-q", "-m", "ruby brw cannot read")
 	stderr := &bytes.Buffer{}
 	e.err = stderr
 	if _, err := runCmd(t, e, "install", "-prefix", prefix, "jigsmiths/tap/app"); err == nil {
-		t.Error("installed a cask its tap does not list")
+		t.Fatal("installed a cask brw cannot read")
 	}
-	if !strings.Contains(stderr.String(), "api/cask.json") {
-		t.Errorf("stderr should say the tap lists no casks for brw: %q", stderr)
+	if w := stderr.String(); !strings.Contains(w, "jigsmiths/tap/app") || !strings.Contains(w, "FileUtils") {
+		t.Errorf("stderr should name the cask and what brw cannot read: %q", w)
 	}
 }
 

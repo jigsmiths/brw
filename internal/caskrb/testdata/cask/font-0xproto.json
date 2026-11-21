@@ -1,0 +1,128 @@
+{
+ "token": "font-0xproto",
+ "full_token": "font-0xproto",
+ "old_tokens": [],
+ "tap": "homebrew/cask",
+ "name": [
+  "0xProto"
+ ],
+ "desc": null,
+ "homepage": "https://github.com/0xType/0xProto",
+ "url": "https://github.com/0xType/0xProto/releases/download/2.502/0xProto_2_502.zip",
+ "url_specs": {},
+ "version": "2.502",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": null,
+ "bundle_short_version": null,
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "402d046b6056111ae5b974892fe2d6d921c66a64681980ec81db051de05851e7",
+ "artifacts": [
+  {
+   "font": [
+    "fonts/0xProto-Bold.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/0xProto-Bold.otf"
+  },
+  {
+   "font": [
+    "fonts/0xProto-Italic.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/0xProto-Italic.otf"
+  },
+  {
+   "font": [
+    "fonts/0xProto-Regular.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/0xProto-Regular.otf"
+  },
+  {
+   "font": [
+    "fonts/No-Ligatures/0xProto-Bold-NL.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/0xProto-Bold-NL.otf"
+  },
+  {
+   "font": [
+    "fonts/No-Ligatures/0xProto-Italic-NL.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/0xProto-Italic-NL.otf"
+  },
+  {
+   "font": [
+    "fonts/No-Ligatures/0xProto-Regular-NL.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/0xProto-Regular-NL.otf"
+  },
+  {
+   "font": [
+    "fonts/ZxProto/ZxProto-Bold.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/ZxProto-Bold.otf"
+  },
+  {
+   "font": [
+    "fonts/ZxProto/ZxProto-Italic.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/ZxProto-Italic.otf"
+  },
+  {
+   "font": [
+    "fonts/ZxProto/ZxProto-Regular.otf"
+   ],
+   "target": "/$HOME/Library/Fonts/ZxProto-Regular.otf"
+  },
+  {
+   "zap": []
+  }
+ ],
+ "caveats": null,
+ "caveats_rosetta": null,
+ "depends_on": {},
+ "conflicts_with": null,
+ "container": null,
+ "rename": [],
+ "auto_updates": null,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": false,
+ "disable_date": null,
+ "disable_reason": null,
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": null,
+ "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
+ "languages": [],
+ "ruby_source_path": "Casks/font/font-0/font-0xproto.rb",
+ "ruby_source_checksum": {
+  "sha256": "6274369f799d463da82f320f01bbabc09b9d942a0b5e3ca0c8c1951846b76389"
+ },
+ "variations": {},
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey",
+  "big_sur",
+  "arm64_big_sur",
+  "x86_64_linux",
+  "arm64_linux"
+ ]
+}

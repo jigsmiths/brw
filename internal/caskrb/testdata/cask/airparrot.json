@@ -1,0 +1,106 @@
+{
+ "token": "airparrot",
+ "full_token": "airparrot",
+ "old_tokens": [],
+ "tap": "homebrew/cask",
+ "name": [
+  "AirParrot"
+ ],
+ "desc": "Tool to wirelessly mirror the screen or stream media files",
+ "homepage": "https://www.airsquirrels.com/airparrot/",
+ "url": "https://download.airsquirrels.com/AirParrot3/Mac/AirParrot-3.1.10.dmg",
+ "url_specs": {},
+ "version": "3.1.10",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": null,
+ "bundle_short_version": null,
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "0422517b786f7666f145762fa2cb16a51f104594eb4b2fae13578b265cde5523",
+ "artifacts": [
+  {
+   "uninstall": [
+    {
+     "quit": "com.squirrels.AirParrot-3",
+     "kext": [
+      "/Library/Extensions/AirParrotDriver.kext",
+      "/Library/Extensions/APExtFramebuffer.kext",
+      "/System/Library/Extensions/AirParrotDriver.kext",
+      "/System/Library/Extensions/APExtFramebuffer.kext",
+      "com.squirrels.driver.AirParrotSpeakers"
+     ]
+    }
+   ]
+  },
+  {
+   "app": [
+    "AirParrot 3.app"
+   ],
+   "target": "/Applications/AirParrot 3.app"
+  },
+  {
+   "zap": [
+    {
+     "trash": [
+      "~/Library/Application Support/AirParrot 3",
+      "~/Library/Application Support/com.apple.sharedfilelist/com.apple.LSSharedFileList.ApplicationRecentDocuments/com.squirrels.airparrot-3.sfl*",
+      "~/Library/Caches/com.squirrels.AirParrot-3",
+      "~/Library/HTTPStorages/com.squirrels.AirParrot-3*",
+      "~/Library/Preferences/com.squirrels.AirParrot-*.plist"
+     ]
+    }
+   ]
+  }
+ ],
+ "caveats": "airparrot requires a kernel extension to work.\nIf the installation fails, retry after you enable it in:\n  System Settings → Privacy & Security\n\nFor more information, refer to vendor documentation or this Apple Technical Note:\n  https://developer.apple.com/library/content/technotes/tn2459/_index.html\n",
+ "caveats_rosetta": null,
+ "depends_on": {
+  "macos": {
+   ">=": [
+    "12"
+   ]
+  }
+ },
+ "conflicts_with": null,
+ "container": null,
+ "rename": [],
+ "auto_updates": true,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": false,
+ "disable_date": null,
+ "disable_reason": null,
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": null,
+ "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
+ "languages": [],
+ "ruby_source_path": "Casks/a/airparrot.rb",
+ "ruby_source_checksum": {
+  "sha256": "110f750612352e74b04957e2158d500abb317f1b796caf2dd20ba5f0f5958f5f"
+ },
+ "variations": {},
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey"
+ ]
+}

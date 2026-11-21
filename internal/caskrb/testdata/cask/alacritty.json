@@ -1,0 +1,158 @@
+{
+ "token": "alacritty",
+ "full_token": "alacritty",
+ "old_tokens": [],
+ "tap": "homebrew/cask",
+ "name": [
+  "Alacritty"
+ ],
+ "desc": "GPU-accelerated terminal emulator",
+ "homepage": "https://github.com/alacritty/alacritty/",
+ "url": "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg",
+ "url_specs": {},
+ "version": "0.17.0",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": null,
+ "bundle_short_version": null,
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "ad8d7de35fb38e43184776cac6dfee05ca325caa0b6639a06a55e54e4b026620",
+ "artifacts": [
+  {
+   "app": [
+    "Alacritty.app"
+   ],
+   "target": "/Applications/Alacritty.app"
+  },
+  {
+   "binary": [
+    "$APPDIR/Alacritty.app/Contents/MacOS/alacritty"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/alacritty"
+  },
+  {
+   "binary": [
+    "$APPDIR/Alacritty.app/Contents/Resources/61/alacritty",
+    {
+     "target": "~/.terminfo/61/alacritty"
+    }
+   ],
+   "target": "/$HOME/.terminfo/61/alacritty"
+  },
+  {
+   "binary": [
+    "$APPDIR/Alacritty.app/Contents/Resources/61/alacritty-direct",
+    {
+     "target": "~/.terminfo/61/alacritty-direct"
+    }
+   ],
+   "target": "/$HOME/.terminfo/61/alacritty-direct"
+  },
+  {
+   "manpage": [
+    "$APPDIR/Alacritty.app/Contents/Resources/alacritty-msg.1.gz"
+   ],
+   "target": "$HOMEBREW_PREFIX/share/man/man1/alacritty-msg.1.gz"
+  },
+  {
+   "manpage": [
+    "$APPDIR/Alacritty.app/Contents/Resources/alacritty.1.gz"
+   ],
+   "target": "$HOMEBREW_PREFIX/share/man/man1/alacritty.1.gz"
+  },
+  {
+   "manpage": [
+    "$APPDIR/Alacritty.app/Contents/Resources/alacritty.5.gz"
+   ],
+   "target": "$HOMEBREW_PREFIX/share/man/man5/alacritty.5.gz"
+  },
+  {
+   "manpage": [
+    "$APPDIR/Alacritty.app/Contents/Resources/alacritty-bindings.5.gz"
+   ],
+   "target": "$HOMEBREW_PREFIX/share/man/man5/alacritty-bindings.5.gz"
+  },
+  {
+   "bash_completion": [
+    "$APPDIR/Alacritty.app/Contents/Resources/completions/alacritty.bash"
+   ],
+   "target": "$HOMEBREW_PREFIX/etc/bash_completion.d/alacritty"
+  },
+  {
+   "zsh_completion": [
+    "$APPDIR/Alacritty.app/Contents/Resources/completions/_alacritty"
+   ],
+   "target": "$HOMEBREW_PREFIX/share/zsh/site-functions/_alacritty"
+  },
+  {
+   "fish_completion": [
+    "$APPDIR/Alacritty.app/Contents/Resources/completions/alacritty.fish"
+   ],
+   "target": "$HOMEBREW_PREFIX/share/fish/vendor_completions.d/alacritty.fish"
+  },
+  {
+   "zap": [
+    {
+     "trash": [
+      "~/Library/Preferences/org.alacritty.plist",
+      "~/Library/Saved Application State/org.alacritty.savedState"
+     ]
+    }
+   ]
+  }
+ ],
+ "caveats": null,
+ "caveats_rosetta": null,
+ "depends_on": {
+  "macos": {}
+ },
+ "conflicts_with": null,
+ "container": null,
+ "rename": [],
+ "auto_updates": null,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": true,
+ "disable_date": "2026-09-01",
+ "disable_reason": "fails_gatekeeper_check",
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": {
+  "date": "2026-09-01",
+  "because": "fails_gatekeeper_check",
+  "replacement_formula": null,
+  "replacement_cask": null
+ },
+ "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
+ "languages": [],
+ "ruby_source_path": "Casks/a/alacritty.rb",
+ "ruby_source_checksum": {
+  "sha256": "31ff741a81fdad8a0176d86bcd5d81f51477f9725768c90bb3b986f5f45187a0"
+ },
+ "variations": {},
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey",
+  "big_sur",
+  "arm64_big_sur"
+ ]
+}

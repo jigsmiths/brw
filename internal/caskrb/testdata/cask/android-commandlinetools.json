@@ -1,0 +1,193 @@
+{
+ "token": "android-commandlinetools",
+ "full_token": "android-commandlinetools",
+ "old_tokens": [],
+ "tap": "homebrew/cask",
+ "name": [
+  "Android SDK Command-line Tools"
+ ],
+ "desc": "Command-line tools for building and debugging Android apps",
+ "homepage": "https://developer.android.com/studio",
+ "url": "https://dl.google.com/android/repository/commandlinetools-mac_arm64-15859902_latest.zip",
+ "url_specs": {},
+ "version": "15859902",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": null,
+ "bundle_short_version": null,
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "835b62a26162b229b441d1f6d4680383815a270809eb33522c0d480fa5002c4e",
+ "artifacts": [
+  {
+   "artifact": [
+    "cmdline-tools",
+    {
+     "target": "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest"
+    }
+   ],
+   "target": "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/apkanalyzer"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/apkanalyzer"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/avdmanager"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/avdmanager"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/d8"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/d8"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/lint"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/lint"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/profgen"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/profgen"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/r8"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/r8"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/resourceshrinker"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/resourceshrinker"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/retrace"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/retrace"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/screenshot2"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/screenshot2"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/sdkmanager"
+  },
+  {
+   "binary": [
+    "$HOMEBREW_PREFIX/share/android-commandlinetools/cmdline-tools/latest/bin/android"
+   ],
+   "target": "$HOMEBREW_PREFIX/bin/android"
+  },
+  {
+   "zap": [
+    {
+     "trash": [
+      "~/.android",
+      "$HOMEBREW_PREFIX/share/android-commandlinetools"
+     ]
+    }
+   ]
+  }
+ ],
+ "caveats": "Default Android SDK root is $HOMEBREW_PREFIX/share/android-commandlinetools\n\nandroid-commandlinetools requires Java. You can install the latest version with:\n  brew install --cask temurin\n",
+ "caveats_rosetta": null,
+ "depends_on": {},
+ "conflicts_with": null,
+ "container": null,
+ "rename": [],
+ "auto_updates": null,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": false,
+ "disable_date": null,
+ "disable_reason": null,
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": null,
+ "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
+ "languages": [],
+ "ruby_source_path": "Casks/a/android-commandlinetools.rb",
+ "ruby_source_checksum": {
+  "sha256": "81c359976b3962c902aebbc6ad1f09c9f4d5baaefa1e0e9bd0c2eb3f18745252"
+ },
+ "variations": {
+  "golden_gate": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-mac_x86_64-15859902_latest.zip",
+   "sha256": "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"
+  },
+  "tahoe": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-mac_x86_64-15859902_latest.zip",
+   "sha256": "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"
+  },
+  "sequoia": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-mac_x86_64-15859902_latest.zip",
+   "sha256": "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"
+  },
+  "sonoma": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-mac_x86_64-15859902_latest.zip",
+   "sha256": "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"
+  },
+  "ventura": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-mac_x86_64-15859902_latest.zip",
+   "sha256": "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"
+  },
+  "monterey": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-mac_x86_64-15859902_latest.zip",
+   "sha256": "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"
+  },
+  "big_sur": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-mac_x86_64-15859902_latest.zip",
+   "sha256": "c5a6378ab5cf7e0d5701921405115befff13e9ff7417fb588389338f8bd050f3"
+  },
+  "x86_64_linux": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip",
+   "sha256": "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
+  },
+  "arm64_linux": {
+   "url": "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip",
+   "sha256": "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
+  }
+ },
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey",
+  "big_sur",
+  "arm64_big_sur",
+  "x86_64_linux",
+  "arm64_linux"
+ ]
+}

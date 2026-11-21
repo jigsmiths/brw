@@ -1,0 +1,129 @@
+{
+ "token": "cave-story",
+ "full_token": "cave-story",
+ "old_tokens": [],
+ "tap": "homebrew/cask",
+ "name": [
+  "Cave Story",
+  "Doukutsu",
+  "洞窟物語"
+ ],
+ "desc": "Action-adventure game reminiscent of classic 8- and 16-bit games",
+ "homepage": "https://www.cavestory.org/",
+ "url": "https://www.cavestory.org/downloads/cavestory_010_r2.dmg",
+ "url_specs": {},
+ "version": "0.1.0,2",
+ "autobump": true,
+ "no_autobump_message": null,
+ "skip_livecheck": false,
+ "installed": null,
+ "installed_time": null,
+ "bundle_version": null,
+ "bundle_short_version": null,
+ "pinned": false,
+ "pinned_version": null,
+ "outdated": false,
+ "sha256": "30e32c5123b984d0733a1e1e510a1255d511e69b694c4227119c69161ba1dc55",
+ "artifacts": [
+  {
+   "app": [
+    "Doukutsu.app",
+    {
+     "target": "Cave Story.app"
+    }
+   ],
+   "target": "/Applications/Cave Story.app"
+  },
+  {
+   "zap": [
+    {
+     "trash": "~/Library/Preferences/com.nakiwo.Doukutsu.plist"
+    }
+   ]
+  }
+ ],
+ "caveats": null,
+ "caveats_rosetta": true,
+ "depends_on": {
+  "macos": {}
+ },
+ "conflicts_with": null,
+ "container": null,
+ "rename": [],
+ "auto_updates": null,
+ "deprecated": false,
+ "deprecation_date": null,
+ "deprecation_reason": null,
+ "deprecation_replacement_formula": null,
+ "deprecation_replacement_cask": null,
+ "deprecate_args": null,
+ "disabled": false,
+ "disable_date": null,
+ "disable_reason": null,
+ "disable_replacement_formula": null,
+ "disable_replacement_cask": null,
+ "disable_args": null,
+ "tap_git_head": "47e8ab54ad4c24379f9be8f57ece17118f4f60e4",
+ "languages": [
+  "en",
+  "ja"
+ ],
+ "ruby_source_path": "Casks/c/cave-story.rb",
+ "ruby_source_checksum": {
+  "sha256": "e198a4888660d5a9b42b6f207dc1cbaf1c3ffe2a13882f8849a17b28af1b422b"
+ },
+ "language_variations": [
+  {
+   "languages": [
+    "en"
+   ],
+   "default": true,
+   "value": "en-US"
+  },
+  {
+   "languages": [
+    "ja"
+   ],
+   "default": false,
+   "value": "ja-JP-mac",
+   "url": "https://www.nakiwo.com/downloads/doukutsu0_2_0.dmg",
+   "version": "0.2.0",
+   "sha256": "fb90f6851e0351c0f8bce52f0cd22f2b26007b9f98543311377c41f6cabb472a",
+   "artifacts": [
+    {
+     "app": [
+      "Doukutsu.app",
+      {
+       "target": "洞窟物語.app"
+      }
+     ],
+     "target": "/Applications/洞窟物語.app"
+    },
+    {
+     "zap": [
+      {
+       "trash": "~/Library/Preferences/com.nakiwo.Doukutsu.plist"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "variations": {},
+ "supported_platforms": [
+  "golden_gate",
+  "arm64_golden_gate",
+  "tahoe",
+  "arm64_tahoe",
+  "sequoia",
+  "arm64_sequoia",
+  "sonoma",
+  "arm64_sonoma",
+  "ventura",
+  "arm64_ventura",
+  "monterey",
+  "arm64_monterey",
+  "big_sur",
+  "arm64_big_sur"
+ ]
+}

@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
@@ -134,31 +134,29 @@ func (e *env) tapCask(ctx context.Context, prefix, tapName, token string) (*api.
 			return nil, fmt.Errorf("could not tap %s: %w", tapName, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(t.Dir, "api", "cask.json")); err != nil {
-		return nil, fmt.Errorf("%s does not list its casks in api/cask.json, which brw needs to install %s/%s", tapName, tapName, token)
-	}
-	casks, err := t.Casks()
+	tag, err := platform.Tag(e.host)
 	if err != nil {
 		return nil, err
 	}
-	i := slices.IndexFunc(casks, func(c api.Cask) bool {
-		return strings.EqualFold(c.Token, token) || slices.Contains(c.OldTokens, token)
-	})
-	if i < 0 {
+	c, err := t.Cask(token, tag)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot read %s/%s: %w", tapName, token, err)
 	}
 	store, err := trust.Load(trust.Path())
 	if err != nil {
 		return nil, err
 	}
-	added, err := store.Trust(trust.KindCask, trust.Reference(tapName, t.Remote())+"/"+strings.ToLower(casks[i].Token))
+	added, err := store.Trust(trust.KindCask, trust.Reference(tapName, t.Remote())+"/"+strings.ToLower(c.Token))
 	if err != nil {
 		return nil, err
 	}
 	if added {
-		_, _ = fmt.Fprintf(e.err, "==> Trusted cask %s/%s\n", tapName, casks[i].Token)
+		_, _ = fmt.Fprintf(e.err, "==> Trusted cask %s/%s\n", tapName, c.Token)
 	}
-	return &casks[i], nil
+	return &c, nil
 }
 
 func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) error {

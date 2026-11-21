@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	osexec "os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -61,8 +60,7 @@ func TestConformanceTapCask(t *testing.T) {
 	brewIn(mine, "update", "--quiet")
 
 	// origin stands in for github.com/jigsmiths/homebrew-tap. Each release
-	// commits the cask file, then the listing brew generates from it, as the
-	// tap's workflow does. brew's prefix is tapped from origin and follows it.
+	// commits the cask file; brew's prefix is tapped from origin and follows it.
 	origin := filepath.Join(work, "origin")
 	theirTap := tap.Dir(theirs, "jigsmiths/tap")
 	commit := func(msg string) {
@@ -79,24 +77,6 @@ func TestConformanceTapCask(t *testing.T) {
 	release := func(commitID, version string) {
 		writeTapFile(t, origin, "Casks/brw.rb", fetchTapFile(t, commitID, "Casks/brw.rb"))
 		commit("brw " + version)
-		follow()
-		// The tap's workflow trusts the tap; here that would also trust it for
-		// the comparison, so the listing is made without asking for trust.
-		cmd := osexec.Command(filepath.Join(theirs, "bin", "brew"), "info", "--json=v2", "--variations", "--cask", "jigsmiths/tap/brw")
-		cmd.Env = append(append(os.Environ(), env...), "HOMEBREW_NO_REQUIRE_TAP_TRUST=1")
-		var stderr strings.Builder
-		cmd.Stderr = &stderr
-		gen, err := cmd.Output()
-		var info struct{ Casks []json.RawMessage }
-		if err != nil || json.Unmarshal(gen, &info) != nil {
-			t.Fatalf("brew info: %v\n%s\n%s", err, gen, stderr.String())
-		}
-		listing, err := json.Marshal(info.Casks)
-		if err != nil {
-			t.Fatal(err)
-		}
-		writeTapFile(t, origin, "api/cask.json", listing)
-		commit("listing for brw " + version)
 		follow()
 	}
 	sh(t, "", nil, "git", "init", "-q", "-b", "main", origin)
