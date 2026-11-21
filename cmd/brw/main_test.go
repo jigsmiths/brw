@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/cellar"
@@ -56,6 +57,22 @@ func TestWithRootJournalFile(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(journal); string(got) != "write a/b\n" {
 		t.Errorf("journal = %q", got)
+	}
+}
+
+func TestRunHelp(t *testing.T) {
+	commands := []string{"list", "search", "info", "install", "reinstall", "upgrade", "uninstall", "autoremove",
+		"leaves", "link", "unlink", "cleanup", "pin", "unpin", "version", "update", "deps", "uses", "outdated", "tag"}
+	for _, cmd := range []string{"help", "--help", "-h"} {
+		var out bytes.Buffer
+		if err := run(&env{out: &out}, cmd, nil); err != nil {
+			t.Fatalf("run(%s): %v", cmd, err)
+		}
+		for _, c := range commands {
+			if !strings.Contains(out.String(), "brw "+c) {
+				t.Errorf("run(%s) help does not mention %q", cmd, c)
+			}
+		}
 	}
 }
 

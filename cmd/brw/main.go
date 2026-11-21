@@ -13,7 +13,31 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-const usage = "usage: brw list|search|info|install|reinstall|upgrade|uninstall|autoremove|leaves|link|unlink|cleanup|pin|unpin|version|update|deps|uses|outdated|tag [flags]"
+const usage = `Example usage:
+  brw search TEXT|/REGEX/
+  brw info [FORMULA|CASK...]
+  brw install FORMULA|CASK...
+  brw reinstall FORMULA...
+  brw update
+  brw upgrade [FORMULA...]
+  brw uninstall FORMULA|CASK...
+  brw autoremove
+  brw list [FORMULA|CASK...]
+  brw leaves
+  brw outdated
+  brw deps FORMULA
+  brw uses FORMULA
+  brw link FORMULA...
+  brw unlink FORMULA...
+  brw pin FORMULA...
+  brw unpin FORMULA...
+  brw cleanup [FORMULA|CASK...]
+  brw version
+  brw tag
+
+Further help:
+  brw help
+  brw COMMAND -h`
 
 // env is everything a command needs from the outside world.
 type env struct {
@@ -39,7 +63,7 @@ func (e *env) kegs(prefix string) ([]cellar.Keg, error) {
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, usage)
-		os.Exit(2)
+		os.Exit(1)
 	}
 	host := platform.Current(macVersion())
 	e := newEnv(host)
@@ -56,6 +80,9 @@ func newEnv(host platform.Host) *env {
 
 func run(e *env, cmd string, args []string) error {
 	switch cmd {
+	case "help", "--help", "-h":
+		_, err := fmt.Fprintln(e.out, usage)
+		return err
 	case "list":
 		return list(e, args)
 	case "search":
