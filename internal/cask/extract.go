@@ -11,7 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -198,22 +201,30 @@ func unpackDmg(ctx context.Context, file, dir string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(mnt) }() //fsx:allow mount point outside the prefix
-	cmd := exec.CommandContext(ctx, "hdiutil", "attach", "-plist", "-nobrowse", "-readonly", "-mountrandom", mnt, file)
-	cmd.Stdin = strings.NewReader("qn\n") // declines a licence agreement
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		if len(bytes.TrimSpace(out)) > 0 {
-			return fmt.Errorf("%s: a disk image with a licence agreement: %w", filepath.Base(file), ErrUnsupported)
+	defer func() {
+		_ = os.Remove(filepath.Join(mnt, "mount")) //fsx:allow mount point outside the prefix
+		_ = os.Remove(mnt)                         //fsx:allow mount point outside the prefix
+	}()
+	var out []byte
+	var diskutilErr error
+	eject := detach
+	if diskutilImages() {
+		if out, diskutilErr = attachDiskutil(ctx, file, mnt); diskutilErr == nil {
+			eject = ejectDiskutil
 		}
-		return fmt.Errorf("hdiutil attach %s: %w: %s", file, err, bytes.TrimSpace(stderr.Bytes()))
+	}
+	if out == nil {
+		if out, err = attachHdiutil(ctx, file, mnt); err != nil {
+			if diskutilErr != nil && !errors.Is(err, ErrUnsupported) {
+				err = fmt.Errorf("%w (after %w)", err, diskutilErr)
+			}
+			return err
+		}
 	}
 	mounts := mountPoints(out)
 	defer func() {
 		for _, m := range mounts {
-			err = errors.Join(err, detach(m))
+			err = errors.Join(err, eject(m))
 		}
 	}()
 	if len(mounts) == 0 {
@@ -225,6 +236,100 @@ func unpackDmg(ctx context.Context, file, dir string) (err error) {
 		}
 	}
 	return run(ctx, "chmod", "-R", "u+w", dir)
+}
+
+// attachDiskutil attaches the image at mnt/mount as brew does and returns the
+// plist. It fails on an image with a licence agreement, which it cancels with
+// nothing to read, leaving hdiutil to refuse it.
+func attachDiskutil(ctx context.Context, file, mnt string) ([]byte, error) {
+	mount := filepath.Join(mnt, "mount")
+	if err := os.Mkdir(mount, 0o755); err != nil { //fsx:allow mount point outside the prefix
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, "diskutil", "image", "attach", "--plist", "--readOnly", "--nobrowse", "--mountPoint", mount, file)
+	cmd.Env = append(os.Environ(), "PAGER=true")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		_ = os.Remove(mount) //fsx:allow mount point outside the prefix
+		return nil, fmt.Errorf("diskutil image attach %s: %w: %s", file, err, bytes.TrimSpace(stderr.Bytes()))
+	}
+	return out, nil
+}
+
+func attachHdiutil(ctx context.Context, file, mnt string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "hdiutil", "attach", "-plist", "-nobrowse", "-readonly", "-mountrandom", mnt, file)
+	cmd.Stdin = strings.NewReader("qn\n") // declines a licence agreement
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		if len(bytes.TrimSpace(out)) > 0 {
+			return nil, fmt.Errorf("%s: a disk image with a licence agreement: %w", filepath.Base(file), ErrUnsupported)
+		}
+		return nil, fmt.Errorf("hdiutil attach %s: %w: %s", file, err, bytes.TrimSpace(stderr.Bytes()))
+	}
+	return out, nil
+}
+
+// ejectDiskutil is brew's eject: the APFS stores behind the volume, or the
+// volume itself, then a forced unmount on the last try.
+func ejectDiskutil(mount string) error {
+	var err error
+	for try := range 3 {
+		if !mounted(mount) {
+			return nil
+		}
+		if try < 2 {
+			err = ejectStores(mount)
+		} else {
+			err = diskutil("unmount", "force", mount)
+		}
+		if err == nil {
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
+	return err
+}
+
+// mounted is whether a volume is mounted at path: its device differs from
+// its parent's. The folder stays after its volume goes, which can happen
+// before brw ejects it when another attach of the same image shares the disk.
+func mounted(path string) bool {
+	fi, err := os.Stat(path)
+	parent, perr := os.Stat(filepath.Dir(path))
+	if err != nil || perr != nil {
+		return false
+	}
+	a, okA := fi.Sys().(*syscall.Stat_t)
+	b, okB := parent.Sys().(*syscall.Stat_t)
+	return okA && okB && a.Dev != b.Dev
+}
+
+func ejectStores(mount string) error {
+	info, err := exec.Command("diskutil", "info", "-plist", mount).Output()
+	if err != nil {
+		return fmt.Errorf("diskutil info %s: %w", mount, err)
+	}
+	stores := plistStrings(info, "APFSPhysicalStore")
+	if len(stores) == 0 {
+		stores = []string{mount}
+	}
+	for _, s := range stores {
+		if err := diskutil("eject", s); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func diskutil(args ...string) error {
+	if out, err := exec.Command("diskutil", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("diskutil %s: %w: %s", strings.Join(args, " "), err, bytes.TrimSpace(out))
+	}
+	return nil
 }
 
 func copyVolume(ctx context.Context, volume, dir string) error {
@@ -254,6 +359,9 @@ func copyVolume(ctx context.Context, volume, dir string) error {
 func detach(mount string) error {
 	var err error
 	for try := range 3 {
+		if !mounted(mount) {
+			return nil
+		}
 		args := []string{"detach", "-quiet", mount}
 		if try == 2 {
 			args = []string{"detach", "-quiet", "-force", mount}
@@ -268,8 +376,11 @@ func detach(mount string) error {
 	return err
 }
 
-// mountPoints reads the mount-point strings from hdiutil's plist.
-func mountPoints(plist []byte) []string {
+// mountPoints reads the mount-point strings from an attach plist.
+func mountPoints(plist []byte) []string { return plistStrings(plist, "mount-point") }
+
+// plistStrings reads the strings under key, wherever it is in the plist.
+func plistStrings(plist []byte, key string) []string {
 	var mounts []string
 	d := xml.NewDecoder(bytes.NewReader(plist))
 	d.Strict = false
@@ -287,7 +398,7 @@ func mountPoints(plist []byte) []string {
 			case "key":
 				lastKey = string(t)
 			case "string":
-				if lastKey == "mount-point" {
+				if lastKey == key {
 					mounts = append(mounts, string(t))
 					lastKey = ""
 				}
@@ -296,6 +407,26 @@ func mountPoints(plist []byte) []string {
 			element = ""
 		}
 	}
+}
+
+// diskutilImages is whether to attach disk images with diskutil, as brew does
+// from macOS 27.2, where hdiutil attach is deprecated and fails now and then.
+var diskutilImages = sync.OnceValue(func() bool {
+	out, err := exec.Command("sw_vers", "-productVersion").Output()
+	return err == nil && macAtLeast(strings.TrimSpace(string(out)), 27, 2)
+})
+
+func macAtLeast(version string, major, minor int) bool {
+	parts := strings.Split(version, ".")
+	ma, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return false
+	}
+	mi := 0
+	if len(parts) > 1 {
+		mi, _ = strconv.Atoi(parts[1])
+	}
+	return ma > major || ma == major && mi >= minor
 }
 
 func run(ctx context.Context, name string, args ...string) error {
