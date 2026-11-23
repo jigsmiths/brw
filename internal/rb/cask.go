@@ -1,4 +1,5 @@
-package caskrb
+// Package rb evaluates Homebrew's Ruby cask files without Ruby.
+package rb
 
 import (
 	"encoding/json"
@@ -31,10 +32,10 @@ var (
 	lookupEnv = os.LookupEnv
 )
 
-// Load evaluates a cask file as brew loads it on the platform tag, such as
+// LoadCask evaluates a cask file as brew loads it on the platform tag, such as
 // "arm64_tahoe". Paths use the API's placeholders, such as $HOMEBREW_PREFIX.
 // A Ruby flight block becomes the install steps it amounts to.
-func Load(src []byte, tag string) (api.Cask, error) {
+func LoadCask(src []byte, tag string) (api.Cask, error) {
 	c, err := evaluate(src, tag)
 	if err != nil {
 		return api.Cask{}, err

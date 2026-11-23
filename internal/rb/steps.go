@@ -1,4 +1,4 @@
-package caskrb
+package rb
 
 import (
 	"strconv"
