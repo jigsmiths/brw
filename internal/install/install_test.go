@@ -536,6 +536,20 @@ func TestInstallSkipsPostInstallWhenThereAreNoSteps(t *testing.T) {
 	if err != nil || results[0].PostInstallErr != nil {
 		t.Errorf("%v, %v", results, err)
 	}
+	if e.exists("libexec") {
+		t.Error("made the prefix's libexec without a post_install to run")
+	}
+}
+
+// brew makes the prefix's libexec before a post_install runs, for steps that link into it.
+func TestInstallMakesThePrefixLibexecForPostInstall(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.install(e.item(jq, true, false, steps(t, `[{"type":"touch","path":{"base":"var","path":"x"}}]`))); err != nil {
+		t.Fatal(err)
+	}
+	if !e.exists("libexec") {
+		t.Error("no libexec in the prefix")
+	}
 }
 
 func TestInstallRestoresBottledEtcAndVar(t *testing.T) {
