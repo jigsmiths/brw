@@ -469,7 +469,7 @@ func printCaveats(e *env, plan *install.Plan, results []install.Result, prefix s
 			continue
 		}
 		text := info.Caveats(it.Formula, prefix)
-		if it.KegOnly && (it.Linked == nil || !*it.Linked) {
+		if it.KegOnly && !it.Link {
 			if text != "" {
 				text += "\n"
 			}

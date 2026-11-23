@@ -301,11 +301,7 @@ func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs)
 		in.logf("    %s: %s", abs, result.Size)
 	}
 	k := link.Keg{Name: f.Name, Version: it.PkgVersion, Aliases: aliases}
-	link := !it.KegOnly
-	if it.Linked != nil { // an upgrade does what the old keg had
-		link = *it.Linked
-	}
-	if !link {
+	if !it.Link {
 		result.LinkErr = in.Linker.Optlink(k)
 	} else if result.LinkErr = in.Linker.Link(k); result.LinkErr == nil {
 		result.Linked = true
@@ -362,9 +358,8 @@ func (in *Installer) leaveOldKegs(it Item) (*oldKegs, error) {
 		}
 		return lk
 	}
-	wasLinked := it.Linked != nil && *it.Linked
 	relink := func() {
-		if !wasLinked {
+		if !it.Link {
 			return
 		}
 		if err := in.Linker.Link(keg(current)); err != nil {
