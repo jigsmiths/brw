@@ -1,9 +1,11 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -89,6 +91,10 @@ const maxPulls = 8
 func (e *env) pullTap(ctx context.Context, t tap.Tap) (bool, error) {
 	if e.pull != nil {
 		return e.pull(ctx, t)
+	}
+	api := cmp.Or(e.githubAPI, tap.GitHubAPI)
+	if tap.Unchanged(ctx, http.DefaultClient, api, t) {
+		return false, nil
 	}
 	return tap.Pull(ctx, t)
 }
