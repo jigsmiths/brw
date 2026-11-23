@@ -288,7 +288,12 @@ func (f *Fetcher) get(ctx context.Context, url, accept string) (*http.Response, 
 	if accept != "" {
 		req.Header.Set("Accept", accept)
 	}
-	resp, err := f.client().Do(req)
+	c := f.client()
+	if req.URL.Scheme == "file" {
+		// as brew's curl reads them, with the file's time as Last-Modified
+		c = &http.Client{Transport: http.NewFileTransport(http.Dir("/"))}
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err
 	}

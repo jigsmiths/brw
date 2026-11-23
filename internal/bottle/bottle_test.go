@@ -398,6 +398,39 @@ func TestFetchSourceKeepsTheServersTime(t *testing.T) {
 	}
 }
 
+// brew's curl reads file:// URLs too; meta packages use file:///dev/null.
+func TestFetchSourceReadsAFileURL(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "tool.tar.gz")
+	when := time.Date(2026, 10, 26, 14, 49, 20, 0, time.UTC)
+	if err := os.WriteFile(src, []byte("binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(src, when, when); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte("binary"))
+	path, err := fetcher(t).FetchSource(context.Background(), "tool", "1.0", "file://"+src, hex.EncodeToString(sum[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || !fi.ModTime().Equal(when) || filepath.Base(path) != "tool--1.0--tool.tar.gz" {
+		t.Errorf("%s: %v, %v", path, fi.ModTime(), err)
+	}
+
+	empty := sha256.Sum256(nil)
+	path, err = fetcher(t).FetchSource(context.Background(), "meta", "1.0", "file:///dev/null", hex.EncodeToString(empty[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Size() != 0 || filepath.Base(path) != "meta--1.0--null" {
+		t.Errorf("%s: %v", path, err)
+	}
+
+	if _, err := fetcher(t).FetchSource(context.Background(), "tool", "1.0", "file://"+src+".missing", hex.EncodeToString(sum[:])); err == nil {
+		t.Error("a missing file was fetched")
+	}
+}
+
 // A tap's bottle outside GitHub Packages has no manifest: brew reads the tab
 // from the bottle's own receipt, and sends no registry token.
 func TestFetchAPlainBottleReadsItsOwnReceipt(t *testing.T) {

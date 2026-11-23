@@ -213,7 +213,7 @@ func (d *instanceDSL) call(in *interp, s *scope, c *callN, args []value, kw *has
 		return in.run(c.block.body, &scope{vars: map[string]value{}, parent: s}), true
 	}
 	if p, ok := formulaPath(d.prefix(), d.root+"/opt/"+f.name, f.name, d.root, c.name); ok && len(args) == 0 {
-		return rstr(p), true
+		return pathV(p), true
 	}
 	switch c.name {
 	case "name":
@@ -250,7 +250,7 @@ func (r formulaRef) method(name string) value {
 	if !ok {
 		fail("Formula[%q].%s", r.name, name)
 	}
-	return rstr(p)
+	return pathV(p)
 }
 
 type serviceB struct {
@@ -335,7 +335,7 @@ func (sv *serviceB) call(in *interp, s *scope, c *callN, args []value, kw *hash)
 	case serviceSetters[c.name]:
 		v := arg()
 		switch v.(type) {
-		case rstr, ver:
+		case rstr, ver, pathV:
 			v = rstr(str(v))
 		}
 		sv.put(c.name, v)
@@ -353,7 +353,7 @@ func runParam(v value) value {
 			out.v = append(out.v, rstr(str(e)))
 		}
 		return out
-	case rstr, ver:
+	case rstr, ver, pathV:
 		return rstr(str(x))
 	}
 	fail("service run %v", v)

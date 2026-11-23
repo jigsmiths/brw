@@ -115,6 +115,32 @@ end
 	}
 }
 
+// The file:///dev/null meta packages rely on Pathname#+ joining.
+func TestPathnamePlusJoins(t *testing.T) {
+	src := toolHead + `    (bin+"meta").write "m"
+    (prefix + "/elsewhere").to_s
+    (share+"a"+"b").write "ab"
+    (Pathname.new(prefix) + "c").write "c"
+    (lib/"d").write "bin" + "dir"
+  end
+end
+`
+	_, keg, _, err := installInto(t, src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"bin", "bin/meta", "c", "lib", "lib/d", "share", "share/a", "share/a/b"}
+	if got := tree(t, keg); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("keg:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if b, _ := os.ReadFile(filepath.Join(keg, "lib/d")); string(b) != "bindir" {
+		t.Errorf("lib/d = %q", b)
+	}
+	if got := pathPlus("/p/bin", "/elsewhere"); got != "/elsewhere" {
+		t.Errorf("pathPlus with an absolute path = %q", got)
+	}
+}
+
 func TestGenerateCompletionsRunsTheProgram(t *testing.T) {
 	src := toolHead + `    bin.install "tool"
     generate_completions_from_executable(bin/"tool", "completion")

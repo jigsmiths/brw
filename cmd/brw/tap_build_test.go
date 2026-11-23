@@ -91,6 +91,22 @@ func TestInstallATapFormulaFromItsDownload(t *testing.T) {
 	}
 }
 
+// A meta package, as siderolabs/tap/sidero-tools is: its download is
+// file:///dev/null and its install writes a script.
+func TestInstallAMetaPackageFromDevNull(t *testing.T) {
+	e, prefix, origin, _ := tapBottleStore(t)
+	writeTapFormula(t, origin, "meta", "class Meta < Formula\n    desc \"Meta Package\"\n    version \"1.1.0\"\n"+
+		"    url \"file:///dev/null\"\n    sha256 \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n\n"+
+		"    def install\n        (bin+\"meta\").write <<-EOS\n            #!/bin/sh\n\n            echo \"installed!\"\n        EOS\n    end\nend\n")
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/meta"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	b, err := os.ReadFile(filepath.Join(prefix, "Cellar/meta/1.1.0/bin/meta"))
+	if want := "            #!/bin/sh\n\n            echo \"installed!\"\n"; err != nil || string(b) != want {
+		t.Errorf("bin/meta = %q, %v; want %q", b, err, want)
+	}
+}
+
 func TestABuildStagesResourcesAndAppliesPatches(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	url, sum := reg.AddSource("tool-1.0.tar.gz", installtest.Tarball(t, map[string]string{

@@ -22,6 +22,7 @@ type (
 	rbool  bool
 	sym    string
 	ver    string
+	pathV  string // a Pathname, whose + joins where a String's appends
 	regex  struct{ src string }
 	hash   struct {
 		keys []value
@@ -43,6 +44,7 @@ func (rfloat) rubyValue()  {}
 func (rbool) rubyValue()   {}
 func (sym) rubyValue()     {}
 func (ver) rubyValue()     {}
+func (pathV) rubyValue()   {}
 func (*regex) rubyValue()  {}
 func (*hash) rubyValue()   {}
 func (*arr) rubyValue()    {}
@@ -56,6 +58,7 @@ func (*guardV) rubyValue() {}
 
 func (s sym) MarshalJSON() ([]byte, error)    { return json.Marshal(string(s)) }
 func (v ver) MarshalJSON() ([]byte, error)    { return json.Marshal(string(v)) }
+func (p pathV) MarshalJSON() ([]byte, error)  { return json.Marshal(string(p)) }
 func (r *regex) MarshalJSON() ([]byte, error) { return json.Marshal("(?-mix:" + r.src + ")") }
 func (tmplV) MarshalJSON() ([]byte, error)    { return json.Marshal("{{version}}") }
 
@@ -149,6 +152,8 @@ func str(v value) string {
 	case sym:
 		return string(x)
 	case ver:
+		return string(x)
+	case pathV:
 		return string(x)
 	case rint:
 		return strconv.FormatInt(int64(x), 10)
@@ -577,12 +582,16 @@ func binop(op string, l, r value) value {
 		return &rangeV{int64(a), int64(b), op == "..."}
 	}
 	switch a := l.(type) {
+	case pathV:
+		if op == "+" || op == "/" {
+			return pathPlus(string(a), str(r))
+		}
 	case rstr, ver:
 		switch op {
 		case "+":
 			return rstr(str(a) + str(r))
 		case "/":
-			return rstr(path.Join(str(a), str(r)))
+			return pathPlus(str(a), str(r))
 		}
 	case rint:
 		b, ok := r.(rint)
@@ -601,6 +610,14 @@ func binop(op string, l, r value) value {
 	}
 	fail("operator %s on %T", op, l)
 	return nil
+}
+
+// pathPlus is Pathname#+: an absolute other replaces the path.
+func pathPlus(p, other string) pathV {
+	if strings.HasPrefix(other, "/") {
+		return pathV(path.Clean(other))
+	}
+	return pathV(path.Join(p, other))
 }
 
 func cmpInt(a, b int64) int {
@@ -765,13 +782,16 @@ func rubySub(s string) string {
 
 func (in *interp) method(recv value, name string, args []value, blk *proc) value {
 	if in.build != nil {
-		if s, ok := recv.(rstr); ok {
-			if v, ok := in.build.pathMethod(in, string(s), name, args, blk); ok {
+		switch s := recv.(type) {
+		case rstr, pathV:
+			if v, ok := in.build.pathMethod(in, str(s), name, args, blk); ok {
 				return v
 			}
 		}
 	}
 	switch x := recv.(type) {
+	case pathV:
+		return in.method(rstr(x), name, args, blk)
 	case caskRef:
 		if name == "url" {
 			return x.b.url
@@ -1189,7 +1209,7 @@ func (in *interp) specialMethod(x special, name string, args []value, blk *proc)
 		}
 		fail("ENV.fetch of unset %s", str(args[0]))
 	case "Pathname.new":
-		return rstr(arg())
+		return pathV(arg())
 	case "Dir.home":
 		return rstr("/$HOME")
 	case "Process.uid":

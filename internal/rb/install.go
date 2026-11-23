@@ -537,7 +537,7 @@ func (b *builder) call(in *interp, s *scope, c *callN, args []value, kw *hash) (
 	case c.name == "generate_completions_from_executable":
 		b.completions(in, args, kw)
 	case c.name == "buildpath":
-		return rstr(b.env.Buildpath), true
+		return pathV(b.env.Buildpath), true
 	case c.name == "cd":
 		if len(args) != 1 || c.block == nil {
 			fail("cd without a block")
