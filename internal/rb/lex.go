@@ -1,4 +1,4 @@
-package caskrb
+package rb
 
 import (
 	"fmt"
@@ -17,6 +17,7 @@ const (
 	tSym
 	tStr
 	tWords
+	tWordsI // %W[...]
 	tSyms
 	tInt
 	tFloat
@@ -32,12 +33,13 @@ type strPart struct {
 }
 
 type token struct {
-	k        kind
-	s        string
-	parts    []strPart
-	words    []string
-	spaceBef bool
-	line     int
+	k         kind
+	s         string
+	parts     []strPart
+	words     []string
+	wordParts [][]strPart // %W words, which may interpolate
+	spaceBef  bool
+	line      int
 }
 
 var keywords = map[string]bool{
@@ -45,6 +47,7 @@ var keywords = map[string]bool{
 	"case": true, "when": true, "def": true, "nil": true, "true": true, "false": true, "self": true,
 	"and": true, "or": true, "not": true, "return": true, "next": true, "while": true, "begin": true,
 	"rescue": true, "ensure": true, "yield": true, "until": true, "in": true, "break": true,
+	"class": true, "module": true,
 }
 
 type lexer struct {
@@ -194,6 +197,14 @@ func (l *lexer) run() error {
 				l.i++
 			}
 			l.emit(token{k: tSym, s: string(l.src[st:l.i]), spaceBef: space})
+		case c == '%' && l.peek(1) == 'W' && strings.ContainsRune("[({<|!/", l.peek(2)):
+			open := l.peek(2)
+			l.i += 3
+			parts, err := l.str(open, closer(open), true)
+			if err != nil {
+				return err
+			}
+			l.emit(token{k: tWordsI, wordParts: splitWords(parts), spaceBef: space})
 		case c == '%' && (l.peek(1) == 'w' || l.peek(1) == 'i' || l.peek(1) == 'r' || l.peek(1) == 'q' || l.peek(1) == 'Q') && strings.ContainsRune("[({<|!/", l.peek(2)):
 			typ := l.peek(1)
 			open := l.peek(2)
@@ -321,6 +332,15 @@ func (l *lexer) regexAllowed(space bool) bool {
 
 func (l *lexer) number(space bool) {
 	st := l.i
+	if l.peek(0) == '0' && strings.ContainsRune("xXoObB", l.peek(1)) {
+		// 0x1f, 0o755, 0b101: the parser reads the prefix
+		l.i += 2
+		for l.i < len(l.src) && (isIdent(l.src[l.i])) {
+			l.i++
+		}
+		l.emit(token{k: tInt, s: strings.ReplaceAll(string(l.src[st:l.i]), "_", ""), spaceBef: space})
+		return
+	}
 	isFloat := false
 	for l.i < len(l.src) && (unicode.IsDigit(l.src[l.i]) || l.src[l.i] == '_' || (l.src[l.i] == '.' && unicode.IsDigit(l.peek(1)) && !isFloat)) {
 		if l.src[l.i] == '.' {
@@ -367,6 +387,41 @@ func (l *lexer) ident(space bool) error {
 		l.emit(token{k: tIdent, s: s, spaceBef: space})
 	}
 	return nil
+}
+
+// splitWords splits a %W literal at its unescaped whitespace.
+func splitWords(parts []strPart) [][]strPart {
+	var words [][]strPart
+	var cur []strPart
+	flush := func() {
+		if len(cur) > 0 {
+			words = append(words, cur)
+			cur = nil
+		}
+	}
+	for _, p := range parts {
+		if p.isExpr {
+			cur = append(cur, p)
+			continue
+		}
+		start := -1
+		for i, r := range p.lit {
+			if unicode.IsSpace(r) {
+				if start >= 0 {
+					cur = append(cur, strPart{lit: p.lit[start:i]})
+					start = -1
+				}
+				flush()
+			} else if start < 0 {
+				start = i
+			}
+		}
+		if start >= 0 {
+			cur = append(cur, strPart{lit: p.lit[start:]})
+		}
+	}
+	flush()
+	return words
 }
 
 func joinLit(parts []strPart) string {

@@ -2,16 +2,21 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/tap"
 	"github.com/jigsmiths/brw/internal/trust"
+	"github.com/jigsmiths/brw/internal/version"
 )
 
 // apiClient returns the formula API client, warning on stderr when it falls
@@ -30,13 +35,14 @@ func (e *env) apiClient() (*api.Client, error) {
 	return &warned, nil
 }
 
-// index loads the formula listing, using the cache when offline.
-func (e *env) index(ctx context.Context) (*api.Index, error) {
-	idx, _, err := e.indexAndClient(ctx)
+// index loads the formula listing, using the cache when offline, with the
+// formulae the prefix's taps list. An empty prefix reads no taps.
+func (e *env) index(ctx context.Context, prefix string) (*api.Index, error) {
+	idx, _, err := e.indexAndClient(ctx, prefix)
 	return idx, err
 }
 
-func (e *env) indexAndClient(ctx context.Context) (*api.Index, *api.Client, error) {
+func (e *env) indexAndClient(ctx context.Context, prefix string) (*api.Index, *api.Client, error) {
 	c, err := e.apiClient()
 	if err != nil {
 		return nil, nil, err
@@ -45,7 +51,173 @@ func (e *env) indexAndClient(ctx context.Context) (*api.Index, *api.Client, erro
 	if err != nil {
 		return nil, nil, err
 	}
-	return api.NewIndex(formulae), c, nil
+	idx := api.NewIndex(formulae)
+	if prefix != "" {
+		if err := e.addTapFormulae(idx, prefix); err != nil {
+			return nil, nil, err
+		}
+	}
+	return idx, c, nil
+}
+
+// addTapFormulae adds the formulae of the prefix's taps that brew would load:
+// those of a trusted tap, or trusted one by one. They are evaluated when
+// first looked up.
+func (e *env) addTapFormulae(idx *api.Index, prefix string) error {
+	taps, err := tap.List(prefix)
+	if err != nil || len(taps) == 0 {
+		return err
+	}
+	store, err := trust.Load(trust.Path())
+	if err != nil {
+		return err
+	}
+	migrations, err := tap.ReverseMigrations(taps)
+	if err != nil {
+		return err
+	}
+	tag, err := platform.Tag(e.host)
+	if err != nil {
+		return err
+	}
+	for _, t := range taps {
+		if t.Name == "homebrew/core" {
+			continue // read from the API, as brew does unless told not to
+		}
+		files, err := t.FormulaFiles()
+		if err != nil {
+			e.warnOnce(fmt.Sprintf("brw: warning: %v", err))
+			continue
+		}
+		names := slices.Sorted(maps.Keys(files))
+		if len(names) == 0 {
+			continue
+		}
+		trusted := func(string) bool { return true }
+		if trust.Required() {
+			remote := t.Remote()
+			if !store.TapTrusted(t.Name, remote) {
+				trusted = func(n string) bool { return store.FormulaTrusted(t.Name, remote, n) }
+				if !store.PartlyTrusted(t.Name, remote) {
+					idx.SkipTap(t.Name, func(tap string) { e.warnOnce(untrustedTapWarning(tap)) })
+				}
+			}
+		}
+		alt, err := t.AltNames()
+		if err != nil {
+			e.warnOnce(fmt.Sprintf("brw: warning: %v", err))
+		}
+		idx.AddTap(t.Name, names, alt, func(name string) (api.Formula, json.RawMessage, error) {
+			if !trusted(name) {
+				full := t.Name + "/" + name
+				return api.Formula{}, nil, fmt.Errorf("refusing to load formula %s from untrusted tap %s; run `brw trust --formula %s` or `brw trust %s` to trust it", full, t.Name, full, t.Name)
+			}
+			return t.Formula(name, tag, migrations)
+		})
+	}
+	return nil
+}
+
+// ambiguous is brew's error for a bare name that several taps have and the
+// API does not.
+func ambiguous(idx *api.Index, name string) error {
+	full := idx.TapsWith(name)
+	if len(full) < 2 {
+		return nil
+	}
+	return fmt.Errorf("formulae found in multiple taps: %s; use the full name, such as %s", strings.Join(full, ", "), full[0])
+}
+
+// unreadable is why a tap formula a name stands for could not be evaluated,
+// or nil when there is none.
+func unreadable(idx *api.Index, name string) error {
+	full := []string{name}
+	if !strings.Contains(name, "/") {
+		full = idx.TapsWith(name)
+	}
+	for _, f := range full {
+		if err := idx.LoadError(f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// installedResolution is brew info's choice for a bare name: the formula the
+// newest installed keg came from, when that is another tap's. shadows is the
+// tap of the formula it replaces.
+func installedResolution(idx *api.Index, kegs []cellar.Keg, f *api.Formula) (*api.Formula, string) {
+	var latest *cellar.Keg
+	for i, k := range kegs {
+		if k.Name == f.Name && (latest == nil || olderVersion(latest.Version, k.Version)) {
+			latest = &kegs[i]
+		}
+	}
+	if latest == nil || latest.Receipt == nil || latest.Receipt.Source.Tap == "" || latest.Receipt.Source.Tap == f.Tap {
+		return f, ""
+	}
+	other, ok := idx.LookupFrom(latest.Receipt.Source.Tap, f.Name)
+	if !ok {
+		return f, ""
+	}
+	return other, f.Tap
+}
+
+func olderVersion(a, b string) bool {
+	va, errA := version.ParsePkg(a)
+	vb, errB := version.ParsePkg(b)
+	if errA != nil || errB != nil {
+		return a < b
+	}
+	return va.Compare(vb) < 0
+}
+
+// caskOverTapFormula is brew's load_formula_or_cask for a bare name that
+// found f: a formula from a tap other than core gives way to a cask of that
+// name, with brew's warning.
+func (e *env) caskOverTapFormula(name string, f *api.Formula, casks func() (*api.CaskIndex, error)) (*api.Cask, error) {
+	if !f.FromTap() || strings.Contains(name, "/") {
+		return nil, nil
+	}
+	idx, err := casks()
+	if err != nil {
+		return nil, err
+	}
+	c, ok := idx.Lookup(name)
+	if !ok {
+		return nil, nil
+	}
+	_, _ = fmt.Fprintf(e.err, "brw: warning: Treating %s as a cask. For the formula, use %s or specify the `--formula` flag. "+
+		"To silence this message, use the `--cask` flag.\n", name, f.FullName)
+	return c, nil
+}
+
+func untrustedTapWarning(name string) string {
+	return fmt.Sprintf("brw: warning: Skipping %s because it is not trusted. Run `brw trust %s` to trust it.", name, name)
+}
+
+// warnings are printed once per command, though both listings may meet them.
+type warnings struct {
+	mu   sync.Mutex
+	seen map[string]bool
+}
+
+func (e *env) warnOnce(msg string) {
+	w := e.warned
+	if w == nil {
+		_, _ = fmt.Fprintln(e.err, msg)
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.seen[msg] {
+		return
+	}
+	if w.seen == nil {
+		w.seen = map[string]bool{}
+	}
+	w.seen[msg] = true
+	_, _ = fmt.Fprintln(e.err, msg)
 }
 
 // caskIndex loads the cask listing, using the cache when offline, with the
@@ -97,8 +269,8 @@ func (e *env) addTapCasks(idx *api.CaskIndex, t tap.Tap, store *trust.Store) {
 		idx.AddTap(casks)
 		return
 	}
-	if !store.HasCasksFrom(t.Name, remote) {
-		_, _ = fmt.Fprintf(e.err, "brw: warning: Skipping %s because it is not trusted. Run `brw trust %s` to trust it.\n", t.Name, t.Name)
+	if !store.PartlyTrusted(t.Name, remote) {
+		e.warnOnce(untrustedTapWarning(t.Name))
 		return
 	}
 	idx.AddTap(slices.DeleteFunc(casks, func(c api.Cask) bool { return !store.CaskTrusted(t.Name, remote, c.Token) }))

@@ -1,0 +1,93 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [
+        "mongodb-enterprise"
+      ],
+      "conflicts_with_reasons": [
+        null
+      ],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "High-performance, schema-free, document-oriented database",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://www.mongodb.com/",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": null,
+      "link_overwrite": [],
+      "name": "mongodb-community",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [
+        {
+          "description": "Configures MongoDB to allow test commands such as failpoints",
+          "option": "--with-enable-test-commands"
+        },
+        {
+          "description": "Build without mongodb-database-tools support",
+          "option": "--without-mongodb-database-tools"
+        },
+        {
+          "description": "Build without mongosh support",
+          "option": "--without-mongosh"
+        }
+      ],
+      "patches": [],
+      "post_install_defined": true,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [
+        "mongodb-database-tools",
+        "mongosh"
+      ],
+      "requirements": [],
+      "revision": 0,
+      "service": {
+        "name": {
+          "macos": "sh.brew.mongodb-community"
+        }
+      },
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "8e057ec463a52cfdea4b1b8f5d5108a622d9116dfff76332854b3627db772833",
+          "revision": null,
+          "tag": null,
+          "url": "https://fastdl.mongodb.org/osx/mongodb-macos-arm64-9.0.8.tgz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "9.0.8"
+      }
+    }
+  ]
+}

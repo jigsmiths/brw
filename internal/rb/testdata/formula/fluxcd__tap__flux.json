@@ -1,0 +1,93 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "CLI for GitOps continuous delivery",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://fluxcd.io/",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": null,
+      "link_overwrite": [],
+      "name": "flux",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "c0a8dc285c568905ae38e25074985f3181c82a3c8d66316959561f27a626909d",
+          "revision": null,
+          "tag": null,
+          "url": "https://github.com/fluxcd/flux2/releases/download/v2.10.1/flux_2.10.1_darwin_arm64.tar.gz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "variations": {
+        "arm64_linux": {
+          "urls": {
+            "stable": {
+              "checksum": "da18ddb25c9614405d9e2f13ad014fd660bfcbe7218674cabf9325db73f811e2",
+              "revision": null,
+              "tag": null,
+              "url": "https://github.com/fluxcd/flux2/releases/download/v2.10.1/flux_2.10.1_linux_arm64.tar.gz",
+              "using": null
+            }
+          }
+        },
+        "x86_64_linux": {
+          "urls": {
+            "stable": {
+              "checksum": "da18ddb25c9614405d9e2f13ad014fd660bfcbe7218674cabf9325db73f811e2",
+              "revision": null,
+              "tag": null,
+              "url": "https://github.com/fluxcd/flux2/releases/download/v2.10.1/flux_2.10.1_linux_arm64.tar.gz",
+              "using": null
+            }
+          }
+        }
+      },
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "2.10.1"
+      }
+    }
+  ]
+}

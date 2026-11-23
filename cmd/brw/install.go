@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
@@ -19,6 +20,7 @@ import (
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/progress"
+	"github.com/jigsmiths/brw/internal/rb"
 	"github.com/jigsmiths/brw/internal/tap"
 	"github.com/jigsmiths/brw/internal/trust"
 )
@@ -72,25 +74,58 @@ type resolved struct {
 func (e *env) resolve(ctx context.Context, prefix string, names []string, formulaOnly, caskOnly bool) (resolved, error) {
 	var r resolved
 	var err error
+	unknown, total := 0, len(names)
+	failed, err := e.trustNamed(ctx, prefix, names, formulaOnly, caskOnly)
+	if err != nil {
+		return r, err
+	}
+	unknown += len(failed)
+	names = slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(failed, n) })
 	if !caskOnly {
-		if r.idx, r.client, err = e.indexAndClient(ctx); err != nil {
+		if r.idx, r.client, err = e.indexAndClient(ctx, prefix); err != nil {
 			return r, err
+		}
+		// tapping a dependency's tap can bring in formulae that name further taps
+		for missing := untappedTaps(r.idx, prefix, names); len(missing) > 0; missing = untappedTaps(r.idx, prefix, names) {
+			for _, name := range missing {
+				if _, err := e.ensureTap(ctx, prefix, name); err != nil {
+					return r, err
+				}
+			}
+			if r.idx, r.client, err = e.indexAndClient(ctx, prefix); err != nil {
+				return r, err
+			}
 		}
 	}
 	var casks *api.CaskIndex
-	unknown := 0
+	loadCasks := func() (*api.CaskIndex, error) {
+		if casks == nil {
+			var err error
+			casks, err = e.caskIndex(ctx, prefix)
+			return casks, err
+		}
+		return casks, nil
+	}
 	for _, name := range names {
 		if r.idx != nil {
-			if _, ok := r.idx.Lookup(name); ok {
+			if f, ok := r.idx.Lookup(name); ok {
+				if !formulaOnly {
+					c, err := e.caskOverTapFormula(name, f, loadCasks)
+					if err != nil {
+						return r, err
+					}
+					if c != nil {
+						r.casks = append(r.casks, *c)
+						continue
+					}
+				}
 				r.formulae = append(r.formulae, name)
 				continue
 			}
 		}
 		if !formulaOnly {
-			if casks == nil {
-				if casks, err = e.caskIndex(ctx, prefix); err != nil {
-					return r, err
-				}
+			if _, err := loadCasks(); err != nil {
+				return r, err
 			}
 			if tapName, token, ok := tap.Split(name); ok && !strings.HasPrefix(tapName, "homebrew/") {
 				c, err := e.tapCask(ctx, prefix, tapName, token)
@@ -119,21 +154,103 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 		unknown++
 	}
 	if unknown > 0 {
-		r.failures = append(r.failures, fmt.Errorf("%d of %d names are neither a formula nor a cask", unknown, len(names)))
+		r.failures = append(r.failures, fmt.Errorf("%d of %d names are neither a formula nor a cask", unknown, total))
 	}
 	return r, nil
+}
+
+// untappedTaps are the taps, sorted, that the dependencies of the named
+// formulae and of theirs name but the prefix has not tapped.
+func untappedTaps(idx *api.Index, prefix string, names []string) []string {
+	seen := map[string]bool{}
+	var missing []string
+	queue := slices.Clone(names)
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		if tapName, _, ok := tap.Split(name); ok && !strings.HasPrefix(tapName, "homebrew/") {
+			if _, err := os.Stat(tap.Dir(prefix, tapName)); err != nil {
+				if !slices.Contains(missing, tapName) {
+					missing = append(missing, tapName)
+				}
+				continue
+			}
+		}
+		if f, ok := idx.Lookup(name); ok {
+			queue = append(queue, f.Dependencies...)
+		}
+	}
+	slices.Sort(missing)
+	return missing
+}
+
+// ensureTap is the tap called name, cloned first when the prefix lacks it, as brew does.
+func (e *env) ensureTap(ctx context.Context, prefix, name string) (tap.Tap, error) {
+	t := tap.Tap{Name: name, Dir: tap.Dir(prefix, name)}
+	if _, err := os.Stat(t.Dir); err == nil {
+		return t, nil
+	}
+	_, _ = fmt.Fprintf(e.err, "==> Tapping %s\n", name)
+	t, err := tap.Clone(ctx, prefix, name, e.tapRemoteURL(name))
+	if err != nil {
+		return t, fmt.Errorf("could not tap %s: %w", name, err)
+	}
+	return t, nil
+}
+
+// trustNamed taps the tap of each full name and trusts what it names, as brew
+// does for names given to install before it loads anything: the tap's formula
+// of that name, else its cask. failed are the names whose tap could not be
+// tapped, already reported.
+func (e *env) trustNamed(ctx context.Context, prefix string, names []string, formulaOnly, caskOnly bool) (failed []string, err error) {
+	var store *trust.Store
+	for _, name := range names {
+		tapName, token, ok := tap.Split(name)
+		if !ok || strings.HasPrefix(tapName, "homebrew/") {
+			continue
+		}
+		t, err := e.ensureTap(ctx, prefix, tapName)
+		if err != nil {
+			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
+			failed = append(failed, name)
+			continue
+		}
+		var kind trust.Kind
+		switch {
+		case !caskOnly && t.HasFormula(token):
+			kind = trust.KindFormula
+		case !formulaOnly && t.HasCask(token):
+			kind = trust.KindCask
+		default:
+			continue
+		}
+		if store == nil {
+			if store, err = trust.Load(trust.Path()); err != nil {
+				return nil, err
+			}
+		}
+		added, err := store.Trust(kind, trust.Reference(tapName, t.Remote())+"/"+strings.ToLower(token))
+		if err != nil {
+			return nil, err
+		}
+		if added {
+			_, _ = fmt.Fprintf(e.err, "==> Trusted %s %s/%s\n", map[trust.Kind]string{trust.KindFormula: "formula", trust.KindCask: "cask"}[kind], tapName, token)
+		}
+	}
+	return failed, nil
 }
 
 // tapCask finds a cask by full name, tapping its tap first when it is not
 // there, as brew does. Naming it so trusts it, as brew records. It is nil
 // when the tap does not have the cask.
 func (e *env) tapCask(ctx context.Context, prefix, tapName, token string) (*api.Cask, error) {
-	t := tap.Tap{Name: tapName, Dir: tap.Dir(prefix, tapName)}
-	if _, err := os.Stat(t.Dir); err != nil {
-		_, _ = fmt.Fprintf(e.err, "==> Tapping %s\n", tapName)
-		if t, err = tap.Clone(ctx, prefix, tapName, e.tapRemoteURL(tapName)); err != nil {
-			return nil, fmt.Errorf("could not tap %s: %w", tapName, err)
-		}
+	t, err := e.ensureTap(ctx, prefix, tapName)
+	if err != nil {
+		return nil, err
 	}
 	tag, err := platform.Tag(e.host)
 	if err != nil {
@@ -207,9 +324,58 @@ func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) er
 		return errors.Join(append(failures, err)...)
 	}
 	err = withRoot(prefix, journal, func(root *fsx.Root) error {
-		return runInstall(e, root, prefix, filepath.Join(client.CacheDir, "downloads"), plan)
+		return runInstall(e, root, prefix, filepath.Join(client.CacheDir, "downloads"), plan, withBuilds(e, prefix, idx, client))
 	})
 	return errors.Join(append(failures, err)...)
+}
+
+// withBuilds lets the installer build a tap formula that has no bottle for
+// this host, as brew does: from its formula file, recording this machine.
+func withBuilds(e *env, prefix string, idx *api.Index, client *api.Client) func(*install.Installer) {
+	return func(in *install.Installer) {
+		tag, _ := platform.Tag(e.host)
+		in.Version = homebrewVersion(prefix)
+		in.BuiltOn = buildSystem()
+		in.MacVersion = strings.TrimPrefix(in.BuiltOn.OSVersion, "macOS ")
+		in.SDK = sdkPath()
+		in.LoadSource = func(f *api.Formula) (install.Source, error) {
+			file := filepath.Join(tap.Dir(prefix, f.Tap), filepath.FromSlash(f.RubySourcePath))
+			code, err := os.ReadFile(file)
+			if err != nil {
+				return install.Source{}, err
+			}
+			rf, err := rb.LoadFormula(code, f.Name, tag)
+			if err != nil {
+				return install.Source{}, err
+			}
+			return install.Source{Formula: rf, Path: file, Code: code}, nil
+		}
+		in.DepInfo = func(fullName string) (pkgVersion, license, url, sha string) {
+			d, ok := idx.Lookup(fullName)
+			if !ok {
+				return "", "", "", ""
+			}
+			pkgVersion, license = pkgVersionOf(d.Versions.Stable, d.Revision), d.License
+			bottleTag, ok := platform.Select(e.host, d.BottleTags())
+			if !ok {
+				return pkgVersion, license, "", ""
+			}
+			var file api.BottleFile
+			var err error
+			if d.FromTap() {
+				file, err = idx.TapBottle(d.FullName, bottleTag)
+			} else {
+				var files map[string]api.BottleFile
+				if files, err = client.Bottles(map[string]string{d.Name: bottleTag}); err == nil {
+					file = files[d.Name]
+				}
+			}
+			if err != nil {
+				return pkgVersion, license, "", ""
+			}
+			return pkgVersion, license, file.URL, file.SHA256
+		}
+	}
 }
 
 // runInstall carries out a plan and reports what went wrong. opts adjust the

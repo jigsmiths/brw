@@ -1,0 +1,135 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {
+        "stable": {
+          "files": {
+            "arm64_golden_gate": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "2de1344370b147bef6e7e86ad708798381ee62f8832f1b94020b73948660e9de",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:2de1344370b147bef6e7e86ad708798381ee62f8832f1b94020b73948660e9de"
+            },
+            "arm64_linux": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "f840457847410bca99793975a5800888bfd09d8434d9bf85171fdd0b2fee6cd7",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:f840457847410bca99793975a5800888bfd09d8434d9bf85171fdd0b2fee6cd7"
+            },
+            "arm64_sequoia": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "96301e5356fdc3b29a198b42020b3eba440e646ba621d7e067937465b5f2769e",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:96301e5356fdc3b29a198b42020b3eba440e646ba621d7e067937465b5f2769e"
+            },
+            "arm64_sonoma": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "96301e5356fdc3b29a198b42020b3eba440e646ba621d7e067937465b5f2769e",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:96301e5356fdc3b29a198b42020b3eba440e646ba621d7e067937465b5f2769e"
+            },
+            "arm64_tahoe": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "92118951b09600786d5557f153e6e37920758f9a61242059bc022056554d3354",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:92118951b09600786d5557f153e6e37920758f9a61242059bc022056554d3354"
+            },
+            "arm64_ventura": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "96301e5356fdc3b29a198b42020b3eba440e646ba621d7e067937465b5f2769e",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:96301e5356fdc3b29a198b42020b3eba440e646ba621d7e067937465b5f2769e"
+            },
+            "sonoma": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "92118951b09600786d5557f153e6e37920758f9a61242059bc022056554d3354",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:92118951b09600786d5557f153e6e37920758f9a61242059bc022056554d3354"
+            },
+            "ventura": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "9a959c1c602064858b64d1d173a0bb98c1b044fc6d973d3ce77852a5c554f0b9",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:9a959c1c602064858b64d1d173a0bb98c1b044fc6d973d3ce77852a5c554f0b9"
+            },
+            "x86_64_linux": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "1f8008ef7b62aa1069c98033fed971c441efc5aa33cdc827ba2299ffd7df01a2",
+              "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:1f8008ef7b62aa1069c98033fed971c441efc5aa33cdc827ba2299ffd7df01a2"
+            }
+          },
+          "rebuild": 0,
+          "root_url": "https://ghcr.io/v2/shivammathur/php"
+        }
+      },
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [
+        "m4"
+      ],
+      "deprecate_args": {
+        "because": "versioned_formula",
+        "date": "2023-12-14",
+        "replacement_cask": null,
+        "replacement_formula": null
+      },
+      "deprecated": true,
+      "deprecation_date": "2023-12-14",
+      "deprecation_reason": "versioned_formula",
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Automatic configure script builder",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://www.gnu.org/software/autoconf/",
+      "keg_only": true,
+      "keg_only_reason": {
+        "explanation": "",
+        "reason": ":versioned_formula"
+      },
+      "license": "GPL-3.0-or-later AND (GPL-3.0-or-later WITH Autoconf-exception-3.0)",
+      "link_overwrite": [],
+      "name": "autoconf@2.69",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "954bd69b391edc12d6a4a51a2dd1476543da5c6bbf05a95b59dc0dd6fd4c2969",
+          "revision": null,
+          "tag": null,
+          "url": "https://ftpmirror.gnu.org/autoconf/autoconf-2.69.tar.gz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [
+        "perl"
+      ],
+      "uses_from_macos_bounds": [
+        {}
+      ],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": true,
+        "head": null,
+        "stable": "2.69"
+      }
+    }
+  ]
+}

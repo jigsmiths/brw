@@ -59,13 +59,18 @@ func Names(idx *api.Index, query string, shown func(*api.Formula) bool) ([]strin
 		if shown != nil && !shown(f) {
 			continue
 		}
-		if match(f.Name) {
-			names[f.Name] = true
+		full, tapPrefix := f.Name, ""
+		if f.Tap != "" && f.Tap != "homebrew/core" {
+			tapPrefix = f.Tap + "/"
+			full = tapPrefix + f.Name
+		}
+		if match(full) {
+			names[full] = true
 		}
 		for _, a := range f.Aliases {
-			if match(a) {
+			if a = tapPrefix + a; match(a) {
 				names[a] = true
-				canonical[a] = f.Name
+				canonical[a] = full
 			}
 		}
 	}
@@ -149,7 +154,11 @@ func Descriptions(idx *api.Index, query string) ([]Match, error) {
 	var out []Match
 	for _, f := range idx.Formulae() {
 		if f.Desc != "" && match(f.Desc) {
-			out = append(out, Match{f.Name, f.Desc})
+			name := f.Name
+			if f.Tap != "" && f.Tap != "homebrew/core" {
+				name = f.Tap + "/" + f.Name
+			}
+			out = append(out, Match{name, f.Desc})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

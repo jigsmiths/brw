@@ -25,20 +25,31 @@ var brewReceipts = []struct {
 	name, tab, receipt, stable string
 	onRequest                  bool
 	time                       int64
+	tap, path, tapGitHead      string // a tap formula's; the API's when empty
+	deps                       []Dependency
 }{
-	{"jq", "pour-jq.tab.json", "pour-jq.receipt.json", "1.8.2", true, 1791753509},
-	{"oniguruma", "pour-onig.tab.json", "pour-onig.receipt.json", "6.9.10", false, 1791753508},
+	{name: "jq", tab: "pour-jq.tab.json", receipt: "pour-jq.receipt.json", stable: "1.8.2", onRequest: true, time: 1791753509},
+	{name: "oniguruma", tab: "pour-onig.tab.json", receipt: "pour-onig.receipt.json", stable: "6.9.10", time: 1791753508},
+	{name: "autoconf@2.69", tab: "pour-autoconf.tab.json", receipt: "pour-autoconf.receipt.json", stable: "2.69", onRequest: true, time: 1795419431,
+		tap: "shivammathur/php", path: "/prefix/Library/Taps/shivammathur/homebrew-php/Formula/autoconf@2.69.rb",
+		tapGitHead: "6093a3693ebb6966226eb02a88ddfd0ffd51ce20", deps: []Dependency{{FullName: "m4", Version: "1.4.21",
+			PkgVersion: "1.4.21", DeclaredDirectly: true, CompatibilityVersion: json.RawMessage("1")}}},
 }
 
 func TestPourReceiptMatchesBrewByteForByte(t *testing.T) {
 	for _, tt := range brewReceipts {
 		t.Run(tt.name, func(t *testing.T) {
-			r, err := NewPourReceipt(read(t, tt.tab), Pour{
-				OnRequest: tt.onRequest, Time: time.Unix(tt.time, 0), Aliases: nil,
-				Stable: tt.stable, Tap: "homebrew/core", Path: "/cache/api/internal/packages.arm64_golden_gate.jws.json",
-			})
+			p := Pour{OnRequest: tt.onRequest, Time: time.Unix(tt.time, 0), Aliases: nil,
+				Stable: tt.stable, Tap: "homebrew/core", Path: "/cache/api/internal/packages.arm64_golden_gate.jws.json"}
+			if tt.tap != "" {
+				p.Tap, p.Path, p.TapGitHead = tt.tap, tt.path, tt.tapGitHead
+			}
+			r, err := NewPourReceipt(read(t, tt.tab), p)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tt.deps != nil {
+				r.RuntimeDependencies = tt.deps // as the installer writes them once the bottle is relocated
 			}
 			got, err := r.Marshal()
 			if err != nil {

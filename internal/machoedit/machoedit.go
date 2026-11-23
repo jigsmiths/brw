@@ -23,7 +23,9 @@ const (
 
 	magic64 = 0xfeedfacf
 
-	mhDylib = 6
+	mhExecute = 2
+	mhDylib   = 6
+	mhBundle  = 8
 
 	lcSegment64 = 0x19
 	lcIDDylib   = 0xd
@@ -100,6 +102,12 @@ func (f *File) Bytes() []byte { return f.data }
 
 // IsDylib reports whether the file is a dynamic library, the only kind with an ID.
 func (f *File) IsDylib() bool { return le.Uint32(f.data[12:]) == mhDylib }
+
+// IsExecutable reports whether the file is a program (MH_EXECUTE).
+func (f *File) IsExecutable() bool { return le.Uint32(f.data[12:]) == mhExecute }
+
+// IsBundle reports whether the file is a loadable bundle (MH_BUNDLE).
+func (f *File) IsBundle() bool { return le.Uint32(f.data[12:]) == mhBundle }
 
 // str reads the string a load command points at with its offset field, which
 // is at 8 in both dylib_command and rpath_command.
@@ -184,6 +192,18 @@ func (f *File) ChangeRpath(old, path string) error {
 		}
 	}
 	return fmt.Errorf("%w: %s", ErrNotFound, old)
+}
+
+// DeleteRpath removes the first rpath equal to path, as install_name_tool
+// -delete_rpath does.
+func (f *File) DeleteRpath(path string) error {
+	for _, c := range f.cmds {
+		if c.cmd == lcRpath && f.str(c) == path {
+			le.PutUint32(f.data[16:], le.Uint32(f.data[16:])-1) // before replace parses the commands again
+			return f.replace(c, nil)
+		}
+	}
+	return fmt.Errorf("%w: %s", ErrNotFound, path)
 }
 
 // dylibCommand builds a command like c, of the same kind and with the same

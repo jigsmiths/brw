@@ -21,8 +21,9 @@ type Kind string
 
 // The kinds brw reads and writes, by brew's keys.
 const (
-	KindTap  Kind = "trustedtaps"
-	KindCask Kind = "trustedcasks"
+	KindTap     Kind = "trustedtaps"
+	KindFormula Kind = "trustedformulae"
+	KindCask    Kind = "trustedcasks"
 )
 
 // Path is the trust store brew uses: in $XDG_CONFIG_HOME/homebrew, else
@@ -147,11 +148,26 @@ func (s *Store) TapTrusted(name, remote string) bool {
 
 // CaskTrusted says whether a tap's cask is trusted, by its tap or by itself.
 func (s *Store) CaskTrusted(name, remote, token string) bool {
+	return s.itemTrusted(KindCask, name, remote, token)
+}
+
+// FormulaTrusted says whether a tap's formula is trusted, by its tap or by itself.
+func (s *Store) FormulaTrusted(name, remote, formula string) bool {
+	return s.itemTrusted(KindFormula, name, remote, formula)
+}
+
+// PartlyTrusted says whether any single formula or cask of the tap is
+// trusted, which brew counts as the tap being partly trusted.
+func (s *Store) PartlyTrusted(name, remote string) bool {
+	return s.hasFrom(KindCask, name, remote) || s.hasFrom(KindFormula, name, remote)
+}
+
+func (s *Store) itemTrusted(kind Kind, name, remote, token string) bool {
 	if s.TapTrusted(name, remote) {
 		return true
 	}
 	name, token = strings.ToLower(name), strings.ToLower(token)
-	entries := s.entries[string(KindCask)]
+	entries := s.entries[string(kind)]
 	if slices.Contains(entries, name+"/"+token) || slices.Contains(entries, Reference(name, remote)+"/"+token) {
 		return true
 	}
@@ -164,12 +180,10 @@ func (s *Store) CaskTrusted(name, remote, token string) bool {
 	})
 }
 
-// HasCasksFrom says whether any single cask of the tap is trusted, which
-// brew counts as the tap being partly trusted.
-func (s *Store) HasCasksFrom(name, remote string) bool {
+func (s *Store) hasFrom(kind Kind, name, remote string) bool {
 	ref := Reference(name, remote) + "/"
 	full := strings.ToLower(name) + "/"
-	return slices.ContainsFunc(s.entries[string(KindCask)], func(e string) bool {
+	return slices.ContainsFunc(s.entries[string(kind)], func(e string) bool {
 		return strings.HasPrefix(e, ref) || strings.HasPrefix(e, full)
 	})
 }

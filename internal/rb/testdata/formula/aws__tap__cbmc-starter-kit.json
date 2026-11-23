@@ -1,0 +1,88 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {
+        "stable": {
+          "files": {
+            "arm64_sonoma": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "e2187b06cdb6355c4d01af5c8c1dd4f5dc6129e9abe1a05b7f4e3575b718bfd5",
+              "url": "https://github.com/model-checking/cbmc-starter-kit/releases/download/starterkit-2.11/cbmc-starter-kit-2.11.arm64_sonoma.bottle.tar.gz"
+            },
+            "x86_64_linux": {
+              "cellar": ":any_skip_relocation",
+              "sha256": "cfe1968943d6bab67d175772732b2a4af7ce8c898189ce460c03de71779b8b17",
+              "url": "https://github.com/model-checking/cbmc-starter-kit/releases/download/starterkit-2.11/cbmc-starter-kit-2.11.x86_64_linux.bottle.tar.gz"
+            }
+          },
+          "rebuild": 0,
+          "root_url": "https://github.com/model-checking/cbmc-starter-kit/releases/download/starterkit-2.11"
+        }
+      },
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [
+        "python@3.10"
+      ],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Templates for writing CBMC proofs for C code",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://github.com/model-checking/cbmc-starter-kit",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": "MIT-0",
+      "link_overwrite": [],
+      "name": "cbmc-starter-kit",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": null,
+          "revision": "3ebf47c9eeda4b6875b46cb301c5f805fc9e437a",
+          "tag": "starterkit-2.11",
+          "url": "https://github.com/model-checking/cbmc-starter-kit.git",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": true,
+        "head": null,
+        "stable": "2.11"
+      }
+    }
+  ]
+}

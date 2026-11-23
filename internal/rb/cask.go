@@ -1,4 +1,5 @@
-package caskrb
+// Package rb evaluates Homebrew's Ruby cask files without Ruby.
+package rb
 
 import (
 	"encoding/json"
@@ -20,10 +21,21 @@ type platform struct {
 	os    string // macos or linux
 	arch  string // arm or intel
 	macos string // "27", "10.15"; empty on Linux
+	// host is the machine itself when it differs from the simulated platform:
+	// brew simulates only on_* blocks for formulae, not OS or Hardware::CPU.
+	host *platform
 }
 
-// ErrUnsupported is returned for a cask file that uses Ruby brw does not evaluate.
-var ErrUnsupported = errors.New("unsupported cask file")
+func (p *platform) real() *platform {
+	if p.host != nil {
+		return p.host
+	}
+	return p
+}
+
+// ErrUnsupported is returned for a cask or formula file that uses Ruby brw
+// does not evaluate.
+var ErrUnsupported = errors.New("unsupported Ruby")
 
 // today and lookupEnv are what a cask can read from the machine; tests pin them.
 var (
@@ -31,10 +43,10 @@ var (
 	lookupEnv = os.LookupEnv
 )
 
-// Load evaluates a cask file as brew loads it on the platform tag, such as
+// LoadCask evaluates a cask file as brew loads it on the platform tag, such as
 // "arm64_tahoe". Paths use the API's placeholders, such as $HOMEBREW_PREFIX.
 // A Ruby flight block becomes the install steps it amounts to.
-func Load(src []byte, tag string) (api.Cask, error) {
+func LoadCask(src []byte, tag string) (api.Cask, error) {
 	c, err := evaluate(src, tag)
 	if err != nil {
 		return api.Cask{}, err
@@ -256,7 +268,8 @@ func (b *caskB) pick(arm, intel value, plat *platform) value {
 	return intel
 }
 
-func (b *caskB) onCondition(name string, args []value, plat *platform) (bool, bool) {
+// onCondition evaluates an on_* block's condition on plat, which may be simulated.
+func onCondition(name string, args []value, plat *platform) (bool, bool) {
 	switch name {
 	case "on_arm":
 		return plat.arch == "arm", true
@@ -481,7 +494,7 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 		}
 		return nil
 	}
-	if ok, isOn := b.onCondition(c.name, args, plat); isOn {
+	if ok, isOn := onCondition(c.name, args, plat); isOn {
 		if c.block == nil {
 			fail("%s without block", c.name)
 		}
@@ -616,7 +629,7 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 		if c.block == nil {
 			fail("language without block")
 		}
-		lb := langBlock{p: &proc{c.block, s}}
+		lb := langBlock{p: &proc{b: c.block, env: s}}
 		for _, a := range args {
 			lb.codes = append(lb.codes, str(a))
 		}
@@ -655,7 +668,7 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 	case "caveats":
 		if c.block != nil {
 			in.ctx = append(in.ctx, &caveatsDSL{b: b})
-			v := in.callBlock(&proc{c.block, s})
+			v := in.callBlock(&proc{b: c.block, env: s})
 			in.ctx = in.ctx[:len(in.ctx)-1]
 			if v != nil && v != sym("__builtin") {
 				b.custom = append(b.custom, caveatText(str(v)))

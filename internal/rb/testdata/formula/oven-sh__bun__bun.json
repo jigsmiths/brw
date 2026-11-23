@@ -1,0 +1,69 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Incredibly fast JavaScript runtime, bundler, transpiler and package manager - all in one.",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://bun.sh/",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": "MIT",
+      "link_overwrite": [],
+      "name": "bun",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "b5d6bc2e13caf14e57c89661e89efd073ff16165b41bfe43882616410609cd10",
+          "revision": null,
+          "tag": null,
+          "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.5/bun-darwin-aarch64.zip",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "1.4.5"
+      }
+    }
+  ]
+}

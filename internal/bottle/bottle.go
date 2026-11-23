@@ -1,7 +1,10 @@
-// Package bottle downloads bottles from GitHub Packages and checks them.
+// Package bottle downloads bottles, from GitHub Packages or a tap's own
+// root_url, and checks them.
 package bottle
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -107,6 +110,9 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 		}
 	}
 
+	if !strings.Contains(req.File.URL, "/blobs/") {
+		return f.fetchPlain(ctx, req, path, tabPath, suppPath, haveBottle)
+	}
 	ann, err := f.annotations(ctx, req)
 	if err != nil {
 		return Result{}, err
@@ -126,6 +132,74 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 	return Result{Path: path, Tab: ann.tab, SBOMSupplement: ann.supplement}, nil
+}
+
+// FetchSource downloads a formula's source, such as a release archive, into
+// the cache under name and version, reusing one that still matches sha256.
+func (f *Fetcher) FetchSource(ctx context.Context, name, version, url, sha256 string) (string, error) {
+	base := url[strings.LastIndex(url, "/")+1:]
+	if i := strings.IndexAny(base, "?#"); i >= 0 {
+		base = base[:i]
+	}
+	path := filepath.Join(f.Dir, name+"--"+version+"--"+base)
+	if verified(path, sha256) {
+		return path, nil
+	}
+	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
+		return "", err
+	}
+	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url, SHA256: sha256}, path)
+}
+
+// fetchPlain fetches a bottle served outside a registry, as a tap's root_url
+// may be. It has no manifest, so its tab is its own INSTALL_RECEIPT.json, as
+// brew reads it, and no registry token is sent.
+func (f *Fetcher) fetchPlain(ctx context.Context, req Request, path, tabPath, suppPath string, haveBottle bool) (Result, error) {
+	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
+		return Result{}, err
+	}
+	if !haveBottle {
+		if err := f.download(ctx, req.Name+" ("+req.PkgVersion+")", req.File, path); err != nil {
+			return Result{}, err
+		}
+	}
+	tab, err := tabInBottle(path, req.Name+"/"+req.PkgVersion+"/INSTALL_RECEIPT.json")
+	if err != nil {
+		return Result{}, fmt.Errorf("%s: %w", req.Name, err)
+	}
+	if err := writeAtomic(tabPath, tab); err != nil {
+		return Result{}, err
+	}
+	if err := writeAtomic(suppPath, nil); err != nil {
+		return Result{}, err
+	}
+	return Result{Path: path, Tab: tab}, nil
+}
+
+// tabInBottle reads one file from a bottle.
+func tabInBottle(path, name string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return nil, err
+	}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return nil, fmt.Errorf("the bottle has no %s", name)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimPrefix(h.Name, "./") == name {
+			return io.ReadAll(io.LimitReader(tr, 1<<20))
+		}
+	}
 }
 
 func verified(path, want string) bool {
@@ -206,6 +280,10 @@ func (f *Fetcher) download(ctx context.Context, name string, file api.BottleFile
 	if got := hex.EncodeToString(h.Sum(nil)); got != file.SHA256 {
 		return fmt.Errorf("%s: sha256 is %s, want %s", file.URL, got, file.SHA256)
 	}
+	// keep the server's time, as curl --remote-time does for brew
+	if when, err := http.ParseTime(resp.Header.Get("Last-Modified")); err == nil {
+		_ = os.Chtimes(tmp.Name(), when, when) //fsx:allow download cache
+	}
 	return os.Rename(tmp.Name(), path) //fsx:allow download cache
 }
 
@@ -214,7 +292,9 @@ func (f *Fetcher) get(ctx context.Context, url, accept string) (*http.Response, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", auth)
+	if strings.Contains(url, "/blobs/") || strings.Contains(url, "/manifests/") {
+		req.Header.Set("Authorization", auth) // a registry's; a plain download gets none
+	}
 	if accept != "" {
 		req.Header.Set("Accept", accept)
 	}

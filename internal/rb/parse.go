@@ -1,27 +1,37 @@
-package caskrb
+package rb
 
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // node is a node of the syntax tree.
 type node interface{ node() }
 
-func (*litN) node()    {}
-func (*strN) node()    {}
-func (*symN) node()    {}
-func (*regexN) node()  {}
-func (*arrN) node()    {}
-func (*hashN) node()   {}
-func (*constN) node()  {}
-func (*callN) node()   {}
-func (*indexN) node()  {}
-func (*binN) node()    {}
-func (*notN) node()    {}
-func (*negN) node()    {}
-func (*ifN) node()     {}
-func (*assignN) node() {}
+func (*litN) node()     {}
+func (*strN) node()     {}
+func (*symN) node()     {}
+func (*regexN) node()   {}
+func (*arrN) node()     {}
+func (*hashN) node()    {}
+func (*constN) node()   {}
+func (*callN) node()    {}
+func (*indexN) node()   {}
+func (*binN) node()     {}
+func (*notN) node()     {}
+func (*negN) node()     {}
+func (*ifN) node()      {}
+func (*assignN) node()  {}
+func (*setN) node()     {}
+func (*classN) node()   {}
+func (*defN) node()     {}
+func (*caseN) node()    {}
+func (*returnN) node()  {}
+func (*splatN) node()   {}
+func (*rescueN) node()  {}
+func (*symProcN) node() {}
+func (*beginN) node()   {}
 
 type (
 	litN   struct{ v value }
@@ -61,6 +71,42 @@ type (
 	assignN struct {
 		name string
 		v    node
+	}
+	// setN assigns to an index or attribute: ENV["X"] = v, obj.attr = v.
+	setN struct {
+		target node // *indexN or *callN
+		v      node
+	}
+	classN struct {
+		name, super string
+		body        []node
+	}
+	param struct {
+		name string
+		def  node // default, or nil
+		kw   bool
+	}
+	defN struct {
+		name   string
+		self   bool // def self.name
+		params []param
+		body   []node
+	}
+	when  struct{ pats, body []node }
+	caseN struct {
+		subject node // nil for a bare case
+		whens   []when
+		els     []node
+	}
+	returnN struct{ v node }
+	splatN  struct{ x node }
+	// rescueN is `x rescue fallback`.
+	rescueN struct{ x, fallback node }
+	// symProcN is a block argument such as &:to_s.
+	symProcN struct{ name string }
+	beginN   struct {
+		body, rescue, ensure []node
+		rescues              bool
 	}
 )
 
@@ -129,29 +175,75 @@ func (p *parser) stmts(end ...string) []node {
 }
 
 func (p *parser) stmt() node {
-	n := p.expr()
+	n := p.andOr()
 	for {
 		switch {
+		case p.isKw("rescue"):
+			p.i++
+			n = &rescueN{n, p.andOr()}
 		case p.isKw("if"):
 			p.i++
-			n = &ifN{cond: p.expr(), then: []node{n}}
+			n = &ifN{cond: p.andOr(), then: []node{n}}
 		case p.isKw("unless"):
 			p.i++
-			n = &ifN{cond: &notN{p.expr()}, then: []node{n}}
+			n = &ifN{cond: &notN{p.andOr()}, then: []node{n}}
 		default:
 			return n
 		}
 	}
 }
 
-func (p *parser) expr() node {
-	if p.cur().k == tIdent && p.at(1).k == tOp && p.at(1).s == "=" {
-		name := p.next().s
-		p.next()
+// andOr joins expressions with the low-precedence and and or.
+func (p *parser) andOr() node {
+	n := p.notExpr()
+	for p.isKw("and") || p.isKw("or") {
+		op := map[string]string{"and": "&&", "or": "||"}[p.next().s]
 		p.skipNL()
-		return &assignN{name: name, v: p.expr()}
+		n = &binN{op, n, p.notExpr()}
 	}
-	return p.ternary()
+	return n
+}
+
+// notExpr is an expression that may start with the keyword not.
+func (p *parser) notExpr() node {
+	if p.isKw("not") {
+		p.i++
+		return &notN{p.notExpr()}
+	}
+	return p.expr()
+}
+
+func (p *parser) expr() node {
+	if p.cur().k == tIdent && p.at(1).k == tOp {
+		switch op := p.at(1).s; op {
+		case "=":
+			name := p.next().s
+			p.next()
+			p.skipNL()
+			return &assignN{name: name, v: p.expr()}
+		case "+=", "-=", "||=", "&&=":
+			name := p.next().s
+			p.next()
+			p.skipNL()
+			return &assignN{name: name, v: &binN{op[:len(op)-1], &callN{name: name, bare: true}, p.expr()}}
+		}
+	}
+	n := p.ternary()
+	if p.isOp("=") {
+		switch t := n.(type) {
+		case *indexN:
+		case *callN:
+			if t.recv == nil || len(t.args) > 0 || t.block != nil {
+				p.fail("assignment to %s", t.name)
+			}
+		default:
+			p.fail("assignment")
+		}
+		p.i++
+		p.skipNL()
+		return &setN{target: n, v: p.expr()}
+	}
+	return n
 }
 
 func (p *parser) ternary() node {
@@ -266,7 +358,7 @@ func (p *parser) startsArg() bool {
 		return false
 	}
 	switch c.k {
-	case tStr, tSym, tInt, tFloat, tIdent, tConst, tLabel, tWords, tSyms, tRegex:
+	case tStr, tSym, tInt, tFloat, tIdent, tConst, tLabel, tWords, tWordsI, tSyms, tRegex:
 		return true
 	case tKw:
 		return c.s == "nil" || c.s == "true" || c.s == "false" || c.s == "self" || c.s == "not"
@@ -295,11 +387,14 @@ func (p *parser) callArgs(c *callN, allowCommand bool) {
 		}
 	}
 	switch {
-	case p.isKw("do") && c.recv == nil && c.name == "livecheck":
-		// brw never runs livecheck, so its Ruby only has to be skipped
+	case p.isKw("do") && c.recv == nil && (c.name == "livecheck" || c.name == "test"):
+		// brw never runs livecheck or test blocks, so their Ruby only has to be
+		// skipped; the formula hash only says whether livecheck calls skip.
 		p.i++
-		p.skipBlock()
 		c.block = &blockN{}
+		if p.skipBlock() {
+			c.block.body = []node{&callN{name: "skip"}}
+		}
 		c.bare = false
 	case p.isKw("do"):
 		p.i++
@@ -313,18 +408,25 @@ func (p *parser) callArgs(c *callN, allowCommand bool) {
 }
 
 // skipBlock skips to the end that closes a do block, counting Ruby's openers.
-func (p *parser) skipBlock() {
+// skipBlock skips to the block's end, reporting whether a statement of the
+// block itself starts with skip.
+func (p *parser) skipBlock() (skips bool) {
 	depth := 1
 	for depth > 0 {
 		t := p.next()
 		if t.k == tEOF {
 			p.fail("unterminated block")
 		}
+		if depth == 1 && t.k == tIdent && t.s == "skip" {
+			if prev := p.t[p.i-2]; prev.k == tNL || (prev.k == tKw && prev.s == "do") {
+				skips = true
+			}
+		}
 		if t.k != tKw {
 			continue
 		}
 		switch t.s {
-		case "do", "case", "begin", "def":
+		case "do", "case", "begin", "def", "class", "module":
 			depth++
 		case "if", "unless", "while", "until":
 			prev := p.t[p.i-2]
@@ -335,6 +437,7 @@ func (p *parser) skipBlock() {
 			depth--
 		}
 	}
+	return skips
 }
 
 func (p *parser) block(end string) *blockN {
@@ -388,8 +491,14 @@ func (p *parser) argList(close string) []node {
 			} else {
 				h.pairs = append(h.pairs, pair{&symN{k}, p.expr()})
 			}
-		} else if p.isOp("&") || p.isOp("*") || p.isOp("**") {
-			p.fail("unsupported splat or block argument")
+		} else if p.isOp("*") {
+			p.i++
+			args = append(args, &splatN{p.ternary()})
+		} else if p.isOp("&") && p.at(1).k == tSym {
+			p.i++
+			args = append(args, &symProcN{p.next().s})
+		} else if p.isOp("&") || p.isOp("**") {
+			p.fail("unsupported block argument or double splat")
 		} else {
 			e := p.expr()
 			if p.isOp("=>") {
@@ -423,7 +532,8 @@ func (p *parser) primary() node {
 	switch t.k {
 	case tInt:
 		p.i++
-		v, err := strconv.ParseInt(t.s, 10, 64)
+		// base 0 reads Ruby's literals: 0755 and 0o755 octal, 0x hex, 0b binary
+		v, err := strconv.ParseInt(t.s, 0, 64)
 		if err != nil {
 			p.fail("integer %s", t.s)
 		}
@@ -454,6 +564,13 @@ func (p *parser) primary() node {
 		a := &arrN{}
 		for _, w := range t.words {
 			a.elems = append(a.elems, &litN{rstr(w)})
+		}
+		return a
+	case tWordsI:
+		p.i++
+		a := &arrN{}
+		for _, w := range t.wordParts {
+			a.elems = append(a.elems, p.strNode(w))
 		}
 		return a
 	case tSyms:
@@ -500,6 +617,42 @@ func (p *parser) primary() node {
 		case "if", "unless":
 			p.i++
 			return p.ifExpr(t.s == "unless")
+		case "class":
+			p.i++
+			return p.classDef()
+		case "begin":
+			p.i++
+			b := &beginN{body: p.stmts("rescue", "ensure", "end")}
+			if p.isKw("rescue") {
+				p.i++
+				if p.cur().k == tConst || p.isOp("=>") {
+					p.fail("rescue of a named exception")
+				}
+				b.rescues = true
+				b.rescue = p.stmts("ensure", "end")
+			}
+			if p.isKw("ensure") {
+				p.i++
+				b.ensure = p.stmts("end")
+			}
+			if !p.isKw("end") {
+				p.fail("expected end")
+			}
+			p.i++
+			return b
+		case "def":
+			p.i++
+			return p.methodDef()
+		case "case":
+			p.i++
+			return p.caseExpr()
+		case "return":
+			p.i++
+			r := &returnN{}
+			if !p.isKw("if") && !p.isKw("unless") && p.cur().k != tNL && p.cur().k != tEOF && !p.isKw("end") {
+				r.v = p.expr()
+			}
+			return r
 		default:
 			p.fail("unsupported %s", t.s)
 		}
@@ -539,8 +692,127 @@ func (p *parser) primary() node {
 	return nil
 }
 
+func (p *parser) constPath() string {
+	if p.cur().k != tConst {
+		p.fail("expected a constant, got %q", p.cur().s)
+	}
+	var name strings.Builder
+	name.WriteString(p.next().s)
+	for p.isOp("::") {
+		p.i++
+		if p.cur().k != tConst {
+			p.fail("expected a constant, got %q", p.cur().s)
+		}
+		name.WriteString("::" + p.next().s)
+	}
+	return name.String()
+}
+
+// classDef parses `class Name < Super ... end`.
+func (p *parser) classDef() node {
+	c := &classN{name: p.constPath()}
+	if p.isOp("<") {
+		p.i++
+		c.super = p.constPath()
+	}
+	c.body = p.stmts("end")
+	if !p.isKw("end") {
+		p.fail("expected end")
+	}
+	p.i++
+	return c
+}
+
+// methodDef parses `def name(params) ... end`, with or without parentheses.
+func (p *parser) methodDef() node {
+	t := p.next()
+	self := t.k == tKw && t.s == "self" && p.isOp(".")
+	if self {
+		p.i++
+		t = p.next()
+	}
+	if t.k != tIdent && t.k != tConst && t.k != tKw {
+		p.fail("method name %q", t.s)
+	}
+	d := &defN{name: t.s, self: self}
+	if p.isOp("=") {
+		p.fail("endless method")
+	}
+	parens := p.isOp("(") && !p.cur().spaceBef
+	if parens {
+		p.i++
+	}
+	closed := func() bool { return parens && p.isOp(")") }
+	for !closed() && p.cur().k != tNL && !p.isOp(";") {
+		switch c := p.next(); c.k {
+		case tIdent:
+			pr := param{name: c.s}
+			if p.isOp("=") {
+				p.i++
+				pr.def = p.ternary()
+			}
+			d.params = append(d.params, pr)
+		case tLabel:
+			pr := param{name: c.s, kw: true}
+			if !p.isOp(",") && !closed() && p.cur().k != tNL {
+				pr.def = p.ternary()
+			}
+			d.params = append(d.params, pr)
+		default:
+			p.fail("parameter %q", c.s)
+		}
+		if p.isOp(",") {
+			p.i++
+			p.skipNL()
+		}
+	}
+	if parens {
+		p.expectOp(")")
+	}
+	d.body = p.stmts("end")
+	if !p.isKw("end") {
+		p.fail("expected end")
+	}
+	p.i++
+	return d
+}
+
+func (p *parser) caseExpr() node {
+	c := &caseN{}
+	if p.cur().k != tNL {
+		c.subject = p.expr()
+	}
+	p.skipNL()
+	for p.isKw("when") {
+		p.i++
+		var w when
+		for {
+			p.skipNL()
+			w.pats = append(w.pats, p.ternary())
+			if !p.isOp(",") {
+				break
+			}
+			p.i++
+		}
+		if p.isKw("then") {
+			p.i++
+		}
+		w.body = p.stmts("when", "else", "end")
+		c.whens = append(c.whens, w)
+	}
+	if p.isKw("else") {
+		p.i++
+		c.els = p.stmts("end")
+	}
+	if !p.isKw("end") {
+		p.fail("expected end")
+	}
+	p.i++
+	return c
+}
+
 func (p *parser) ifExpr(negate bool) node {
-	cond := p.expr()
+	cond := p.andOr()
 	if negate {
 		cond = &notN{cond}
 	}

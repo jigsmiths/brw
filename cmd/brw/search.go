@@ -15,8 +15,8 @@ import (
 
 func searchCommand(e *env, args []string) error {
 	fs := newFlagSet("search")
-	desc := fs.Bool("desc", false, "search descriptions")
 	prefix := prefixFlag(e, fs)
+	desc := fs.Bool("desc", false, "search descriptions")
 	kinds := kindFlags(fs)
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -33,13 +33,13 @@ func searchCommand(e *env, args []string) error {
 	ctx := context.Background()
 	var idx *api.Index
 	if !caskOnly {
-		if idx, err = e.index(ctx); err != nil {
+		if idx, err = e.index(ctx, *prefix); err != nil {
 			return err
 		}
 	}
 	var casks *api.CaskIndex
 	if !formulaOnly {
-		if casks, err = e.caskIndex(ctx, ""); err != nil {
+		if casks, err = e.caskIndex(ctx, *prefix); err != nil {
 			return err
 		}
 	}

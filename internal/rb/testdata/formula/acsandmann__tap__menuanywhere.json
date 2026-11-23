@@ -1,0 +1,103 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "the macos menu bar at your fingertips",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://github.com/acsandmann/menuanywhere",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": "MIT",
+      "link_overwrite": [],
+      "name": "menuanywhere",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [
+        {
+          "cask": null,
+          "contexts": [
+            "build"
+          ],
+          "download": null,
+          "name": "xcode",
+          "specs": [
+            "stable"
+          ],
+          "version": "12.0"
+        },
+        {
+          "cask": null,
+          "contexts": [],
+          "download": null,
+          "name": "macos",
+          "specs": [
+            "stable"
+          ],
+          "version": null
+        }
+      ],
+      "revision": 0,
+      "service": {
+        "error_log_path": "$HOMEBREW_PREFIX/var/log/menuanywhere.error.log",
+        "keep_alive": {
+          "always": true
+        },
+        "log_path": "$HOMEBREW_PREFIX/var/log/menuanywhere.log",
+        "run": [
+          "$HOMEBREW_PREFIX/opt/menuanywhere/bin/menuanywhere"
+        ],
+        "run_type": "immediate",
+        "working_dir": "$HOMEBREW_PREFIX"
+      },
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "9a07bf73bc119be19f809a6e85434e3af66572d1a416418958d0a6f3e6927d7b",
+          "revision": null,
+          "tag": null,
+          "url": "https://api.github.com/repos/acsandmann/menuanywhere/tarball/1.0.6",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "1.0.6"
+      }
+    }
+  ]
+}

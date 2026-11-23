@@ -30,13 +30,14 @@ func trustOrUntrust(e *env, cmd string, args []string) error {
 	fs := newFlagSet(cmd)
 	prefix := prefixFlag(e, fs)
 	asTap := fs.Bool("tap", false, "the name is a tap")
+	asFormula := fs.Bool("formula", false, "the name is a formula")
 	asCask := fs.Bool("cask", false, "the name is a cask")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
-	if *asTap && *asCask {
-		return errors.New("--tap and --cask cannot be used together")
+	if countTrue(*asTap, *asFormula, *asCask) > 1 {
+		return errors.New("--tap, --formula and --cask cannot be used together")
 	}
 	store, err := trust.Load(trust.Path())
 	if err != nil {
@@ -50,11 +51,11 @@ func trustOrUntrust(e *env, cmd string, args []string) error {
 	}
 	var b strings.Builder
 	for _, name := range names {
-		kind, ref, err := trustTarget(*prefix, name, *asTap, *asCask)
+		kind, ref, err := trustTarget(*prefix, name, *asTap, *asFormula, *asCask)
 		if err != nil {
 			return err
 		}
-		label := "cask"
+		label := map[trust.Kind]string{trust.KindFormula: "formula", trust.KindCask: "cask"}[kind]
 		if kind == trust.KindTap {
 			label = "tap"
 			if strings.HasPrefix(ref, "homebrew/") {
@@ -74,13 +75,15 @@ func trustOrUntrust(e *env, cmd string, args []string) error {
 			return err
 		}
 		if kind == trust.KindTap {
-			for _, c := range store.Entries(trust.KindCask) {
-				if strings.HasPrefix(c, ref+"/") {
-					removed, err := store.Untrust(trust.KindCask, c)
-					if err != nil {
-						return err
+			for _, k := range []trust.Kind{trust.KindFormula, trust.KindCask} {
+				for _, c := range store.Entries(k) {
+					if strings.HasPrefix(c, ref+"/") {
+						removed, err := store.Untrust(k, c)
+						if err != nil {
+							return err
+						}
+						changed = changed || removed
 					}
-					changed = changed || removed
 				}
 			}
 		}
@@ -90,13 +93,13 @@ func trustOrUntrust(e *env, cmd string, args []string) error {
 	return err
 }
 
-// trustTarget is how the store names a tap (user/repo) or a cask
-// (user/repo/token): by the tap's remote when it was tapped from elsewhere
-// than GitHub.
-func trustTarget(prefix, name string, asTap, asCask bool) (trust.Kind, string, error) {
+// trustTarget is how the store names a tap (user/repo), a formula or a cask
+// (user/repo/name): by the tap's remote when it was tapped from elsewhere
+// than GitHub. Without --formula or --cask, a name is whichever the tap has.
+func trustTarget(prefix, name string, asTap, asFormula, asCask bool) (trust.Kind, string, error) {
 	slashes := strings.Count(name, "/")
 	switch {
-	case !asCask && (asTap || slashes == 1) && slashes == 1:
+	case !asFormula && !asCask && slashes == 1:
 		t := tap.Tap{Name: strings.ToLower(name), Dir: tap.Dir(prefix, strings.ToLower(name))}
 		return trust.KindTap, trust.Reference(t.Name, t.Remote()), nil
 	case !asTap && slashes == 2:
@@ -105,9 +108,29 @@ func trustTarget(prefix, name string, asTap, asCask bool) (trust.Kind, string, e
 			break
 		}
 		t := tap.Tap{Name: tapName, Dir: tap.Dir(prefix, tapName)}
-		return trust.KindCask, trust.Reference(t.Name, t.Remote()) + "/" + strings.ToLower(token), nil
+		kind := trust.KindCask
+		switch {
+		case asFormula:
+			kind = trust.KindFormula
+		case asCask:
+		case t.HasFormula(token) && t.HasCask(token):
+			return "", "", fmt.Errorf("ambiguous trust target %s: use --formula or --cask", name)
+		case t.HasFormula(token):
+			kind = trust.KindFormula
+		}
+		return kind, trust.Reference(t.Name, t.Remote()) + "/" + strings.ToLower(token), nil
 	}
-	return "", "", fmt.Errorf("trust targets must be fully-qualified tap or cask names: %s", name)
+	return "", "", fmt.Errorf("trust targets must be fully-qualified tap, formula or cask names: %s", name)
+}
+
+func countTrue(bs ...bool) int {
+	n := 0
+	for _, b := range bs {
+		if b {
+			n++
+		}
+	}
+	return n
 }
 
 func listTrusted(e *env, store *trust.Store) error {

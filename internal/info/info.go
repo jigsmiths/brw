@@ -4,6 +4,7 @@ package info
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -32,6 +33,30 @@ type Env struct {
 	Kegs     []cellar.Keg
 	Outdated []outdated.Result
 	Now      time.Time // for deprecation dates; the zero value means the current time
+	// TapRemote gives a tap's origin URL, empty without one, and its folder.
+	TapRemote func(tap string) (remote, dir string)
+}
+
+var githubRemote = regexp.MustCompile(`^(?:https?://|git(?:@|://))github\.com[:/](.+)/(.+?)(?:\.git)?$`)
+
+// tapSourceLines are brew info's From and Tap lines for a tap formula, whose
+// file is at path in the tap: a GitHub link, the remote and path, or the
+// file itself when the tap has no remote. Official taps get no Tap line.
+func tapSourceLines(tap, remote, dir, path string) string {
+	var from string
+	switch m := githubRemote.FindStringSubmatch(remote); {
+	case remote == "":
+		from = filepath.Join(dir, path)
+	case m != nil:
+		from = "https://github.com/" + m[1] + "/" + m[2] + "/blob/HEAD/" + path
+	default:
+		from = remote + "/" + path
+	}
+	out := "From: " + from + "\n"
+	if user, _, _ := strings.Cut(tap, "/"); !strings.EqualFold(user, "homebrew") {
+		out += "Tap: " + tap + "\n"
+	}
+	return out
 }
 
 type keg struct {
@@ -69,7 +94,12 @@ func (a keg) compare(b keg) int {
 	return a.pkg.Compare(b.pkg)
 }
 
-func Text(f *api.Formula, env Env) (string, error) {
+func Text(f *api.Formula, env Env) (string, error) { return ShadowingText(f, env, "") }
+
+// ShadowingText is Text for a formula a bare name found through its installed
+// keg, which shadows the formula of the tap shadows: it is titled by its name
+// and warned about, as brew info does.
+func ShadowingText(f *api.Formula, env Env, shadows string) (string, error) {
 	var b strings.Builder
 	tag, err := platform.Tag(env.Host)
 	if err != nil {
@@ -100,11 +130,18 @@ func Text(f *api.Formula, env Env) (string, error) {
 	if outdated != nil && len(specs) > 0 {
 		specs[0] = env.installedVersion(f, kegs) + " → " + specs[0]
 	}
-	fmt.Fprintf(&b, "==> %s: %s", f.FullName, strings.Join(specs, ", "))
+	title := f.FullName
+	if shadows != "" {
+		title = f.Name
+	}
+	fmt.Fprintf(&b, "==> %s: %s", title, strings.Join(specs, ", "))
 	if here.KegOnly {
 		b.WriteString(" [keg-only]")
 	}
 	b.WriteByte('\n')
+	if shadows != "" {
+		fmt.Fprintf(&b, "Warning: `%s` shadows `%s/%s`.\n", f.Name, shadows, f.Name)
+	}
 
 	if f.Desc != "" {
 		b.WriteString(f.Desc + "\n")
@@ -130,7 +167,12 @@ func Text(f *api.Formula, env Env) (string, error) {
 	} else {
 		b.WriteString(env.installStatus(f, kegs) + "\n")
 	}
-	fmt.Fprintf(&b, "From: %s/blob/HEAD/%s\n", coreRemote, f.RubySourcePath)
+	if f.FromTap() && env.TapRemote != nil {
+		remote, dir := env.TapRemote(f.Tap)
+		b.WriteString(tapSourceLines(f.Tap, remote, dir, f.RubySourcePath))
+	} else {
+		fmt.Fprintf(&b, "From: %s/blob/HEAD/%s\n", coreRemote, f.RubySourcePath)
+	}
 	if f.License != "" {
 		b.WriteString("License: " + f.License + "\n")
 	}
@@ -461,7 +503,7 @@ func (e Env) dependencies(f *api.Formula, kegs []keg, bottled bool) (string, err
 	if err != nil {
 		return "", err
 	}
-	typed, err := r.Typed(f.Name)
+	typed, err := r.Typed(f.FullName) // a tap's formula may share a core formula's name
 	if err != nil {
 		return "", err
 	}

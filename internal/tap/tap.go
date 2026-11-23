@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
-	"github.com/jigsmiths/brw/internal/caskrb"
+	"github.com/jigsmiths/brw/internal/rb"
 )
 
 type Tap struct {
@@ -125,16 +125,16 @@ func (t Tap) caskFiles() ([]string, error) {
 // load evaluates a cask file and records where it came from, as brew's
 // receipt does: the tap's HEAD, the file and its checksum.
 func (t Tap) load(file, tag, head string) (api.Cask, error) {
-	rb, err := os.ReadFile(file)
+	src, err := os.ReadFile(file)
 	if err != nil {
 		return api.Cask{}, err
 	}
-	c, err := caskrb.Load(rb, tag)
+	c, err := rb.LoadCask(src, tag)
 	if err != nil {
 		return api.Cask{}, fmt.Errorf("%s/%s: %w", t.Name, strings.TrimSuffix(filepath.Base(file), ".rb"), err)
 	}
 	rel, _ := filepath.Rel(t.Dir, file)
-	sum := sha256.Sum256(rb)
+	sum := sha256.Sum256(src)
 	c.Tap, c.FullToken, c.TapGitHead, c.SourceFile = t.Name, t.Name+"/"+c.Token, head, file
 	c.RubySourcePath, c.RubySourceChecksum.SHA256 = filepath.ToSlash(rel), hex.EncodeToString(sum[:])
 	return c, nil

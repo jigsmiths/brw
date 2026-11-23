@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/install/installtest"
 )
 
@@ -39,6 +41,56 @@ func makeOutdated(t *testing.T, e *env, prefix, name string) {
 		}
 	}
 	e.err.(*bytes.Buffer).Reset()
+}
+
+// tapKeg adds an opt-linked keg whose receipt says it came from tap.
+func tapKeg(t *testing.T, prefix, name, version, tap string) {
+	t.Helper()
+	writeFile(t, filepath.Join(prefix, "Cellar", name, version, "INSTALL_RECEIPT.json"), `{"source":{"tap":"`+tap+`"}}`)
+	if err := os.Symlink("../Cellar/"+name+"/"+version, filepath.Join(prefix, "opt", name)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// otherTapStore has fort, which only a tap has, and a vault from a tap that
+// shares its name with the listing's vault.
+func otherTapStore(t *testing.T) (*env, string) {
+	t.Helper()
+	e, prefix := linkStore(t)
+	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "vault"); err != nil {
+		t.Fatal(err)
+	}
+	tapKeg(t, prefix, "fort", "0.1", "djadmin/tap")
+	tapKeg(t, prefix, "vault", "0.9", "hashicorp/tap")
+	e.err.(*bytes.Buffer).Reset()
+	return e, prefix
+}
+
+func TestUpgradeOfANamedFormulaFromAnotherTap(t *testing.T) {
+	e, prefix := otherTapStore(t)
+	for _, name := range []string{"fort", "vault"} {
+		_, err := runCmd(t, e, "upgrade", "-prefix", prefix, name)
+		if !errors.Is(err, install.ErrOtherTap) || !strings.HasPrefix(err.Error(), name+": ") {
+			t.Errorf("%s: err = %v, want ErrOtherTap", name, err)
+		}
+	}
+	if w := e.err.(*bytes.Buffer).String(); strings.Contains(w, "already installed") {
+		t.Errorf("stderr = %q", w)
+	}
+}
+
+func TestUpgradeAndOutdatedWarnAboutFormulaeFromOtherTaps(t *testing.T) {
+	e, prefix := otherTapStore(t)
+	const want = "brw: warning: not checking formulae from other taps: fort, vault\n"
+	for _, cmd := range []string{"upgrade", "outdated"} {
+		e.err.(*bytes.Buffer).Reset()
+		if _, err := runCmd(t, e, cmd, "-prefix", prefix); err != nil {
+			t.Fatalf("%s: %v", cmd, err)
+		}
+		if w := e.err.(*bytes.Buffer).String(); w != want {
+			t.Errorf("%s: stderr = %q, want %q", cmd, w, want)
+		}
+	}
 }
 
 func TestUpgradeBringsOutdatedFormulaeUpToDate(t *testing.T) {

@@ -378,3 +378,56 @@ func TestFetchReportsDownloadProgress(t *testing.T) {
 		t.Errorf("a cached bottle reported progress: %v", calls)
 	}
 }
+
+// A source download keeps the server's time, as brew's curl --remote-time
+// does; a formula's source_modified_time can come from it.
+func TestFetchSourceKeepsTheServersTime(t *testing.T) {
+	when := time.Date(2026, 10, 26, 14, 49, 20, 0, time.UTC)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Last-Modified", when.Format(http.TimeFormat))
+		_, _ = w.Write([]byte("binary"))
+	}))
+	t.Cleanup(srv.Close)
+	sum := sha256.Sum256([]byte("binary"))
+	path, err := fetcher(t).FetchSource(context.Background(), "tool", "1.0", srv.URL+"/tool-darwin-arm64", hex.EncodeToString(sum[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || !fi.ModTime().Equal(when) || filepath.Base(path) != "tool--1.0--tool-darwin-arm64" {
+		t.Errorf("%s: %v, %v", path, fi.ModTime(), err)
+	}
+}
+
+// A tap's bottle outside GitHub Packages has no manifest: brew reads the tab
+// from the bottle's own receipt, and sends no registry token.
+func TestFetchAPlainBottleReadsItsOwnReceipt(t *testing.T) {
+	body, err := os.ReadFile(tarball(t, dir("tool/1.0", 0o755), file("tool/1.0/INSTALL_RECEIPT.json", tabJSON, 0o644), file("tool/1.0/bin/tool", "x", 0o755)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var auths []string
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		hits.Add(1)
+		auths = append(auths, req.Header.Get("Authorization"))
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	sum := sha256.Sum256(body)
+	req := Request{Name: "tool", PkgVersion: "1.0", Tag: "arm64_tahoe",
+		File: api.BottleFile{Cellar: ":any", SHA256: hex.EncodeToString(sum[:]), URL: srv.URL + "/releases/tool-1.0.arm64_tahoe.bottle.tar.gz"}}
+	f := fetcher(t)
+	res, err := f.Fetch(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(res.Tab) != tabJSON || len(res.SBOMSupplement) != 0 {
+		t.Errorf("tab = %s, supplement = %s", res.Tab, res.SBOMSupplement)
+	}
+	if len(auths) != 1 || auths[0] != "" {
+		t.Errorf("authorization sent: %q", auths)
+	}
+	if _, err := f.Fetch(context.Background(), req); err != nil || hits.Load() != 1 {
+		t.Errorf("a cached plain bottle was fetched again: %v, %d requests", err, hits.Load())
+	}
+}

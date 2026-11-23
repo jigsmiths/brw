@@ -10,11 +10,13 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/bottle"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
@@ -45,6 +47,22 @@ type Installer struct {
 
 	// KeepGoing records a formula's failure in its Result and carries on, as a multi-formula upgrade does.
 	KeepGoing bool
+
+	// LoadSource gives a tap formula's file to build it when it has no bottle for this host.
+	LoadSource func(f *api.Formula) (Source, error)
+	// Version is the prefix's Homebrew version, for the receipt of a formula
+	// it builds.
+	Version string
+	// BuiltOn describes this machine, for the receipt of a formula it builds.
+	BuiltOn cellar.BuiltOn
+	// SDK is the macOS SDK a build compiles against, and MacVersion the
+	// version it targets, such as "27.2".
+	SDK, MacVersion string
+	// Run runs a build's commands; nil runs them for real.
+	Run RunFunc
+	// DepInfo gives a runtime dependency's current pkg_version, license and
+	// bottle for this host, for a built formula's SBOM.
+	DepInfo func(fullName string) (pkgVersion, license, bottleURL, bottleSHA256 string)
 	// After runs once a formula is installed, for the work that follows each one.
 	After func(Item, Result)
 }
@@ -103,20 +121,41 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 		return nil, err
 	}
 
-	reqs := make([]bottle.Request, len(plan.Items))
-	for i, it := range plan.Items {
-		reqs[i] = bottle.Request{Name: it.Formula.Name, PkgVersion: it.PkgVersion, Rebuild: it.Formula.Bottle.Stable.Rebuild, Tag: it.Tag, File: it.Bottle}
+	var reqs []bottle.Request
+	var names []string
+	for _, it := range plan.Items {
+		names = append(names, it.Formula.Name)
+		if !it.Build {
+			reqs = append(reqs, bottle.Request{Name: it.Formula.Name, PkgVersion: it.PkgVersion, Rebuild: it.Formula.Bottle.Stable.Rebuild, Tag: it.Tag, File: it.Bottle})
+		}
 	}
-	in.logf("==> Fetching downloads for: %s", sentence(reqs))
+	in.logf("==> Fetching downloads for: %s", sentence(names))
 	fetched, err := in.Fetcher.FetchAll(ctx, reqs)
 	if err != nil {
 		return nil, err
 	}
-	for i, it := range plan.Items {
+	sources := map[string]string{}
+	for _, it := range plan.Items {
+		if it.Build {
+			f := it.Formula
+			if sources[f.Name], err = in.Fetcher.FetchSource(ctx, f.Name, it.PkgVersion, f.URLs.Stable.URL, f.URLs.Stable.Checksum); err != nil {
+				return nil, fmt.Errorf("%s: %w", f.FullName, err)
+			}
+		}
+	}
+	next := 0
+	for _, it := range plan.Items {
 		if err := ctx.Err(); err != nil {
 			return results, err
 		}
-		r, err := in.pour(it, fetched[i])
+		var r Result
+		var err error
+		if it.Build {
+			r, err = in.build(ctx, it, sources[it.Formula.Name])
+		} else {
+			r, err = in.pour(it, fetched[next])
+			next++
+		}
 		if err != nil {
 			err = fmt.Errorf("%s: %w", it.Formula.Name, err)
 			if !in.KeepGoing {
@@ -188,10 +227,16 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	}
 	staged := path.Join(dest, f.Name, it.PkgVersion)
 
-	receipt, err := cellar.NewPourReceipt(res.Tab, cellar.Pour{
+	pour := cellar.Pour{
 		OnRequest: it.OnRequest, Time: in.now(), Aliases: f.Aliases, Stable: f.Versions.Stable,
 		Scheme: f.VersionScheme, Tap: f.Tap, Path: in.APIPath, Arch: it.Arch,
-	})
+	}
+	if f.FromTap() {
+		user, repo, _ := strings.Cut(f.Tap, "/")
+		pour.Path = filepath.Join(in.Prefix, "Library", "Taps", user, "homebrew-"+repo, filepath.FromSlash(f.RubySourcePath))
+		pour.TapGitHead = f.TapGitHead
+	}
+	receipt, err := cellar.NewPourReceipt(res.Tab, pour)
 	if err != nil {
 		return Result{}, err
 	}
@@ -199,7 +244,14 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := in.Root.WriteFile(path.Join(staged, "INSTALL_RECEIPT.json"), data, 0o644); err != nil {
+	receiptPath := path.Join(staged, "INSTALL_RECEIPT.json")
+	if in.exists(receiptPath) {
+		// a bottle served outside a registry carries its tab; brew writes over it
+		err = in.Root.Replace(receiptPath, data)
+	} else {
+		err = in.Root.WriteFile(receiptPath, data, 0o644)
+	}
+	if err != nil {
 		return Result{}, err
 	}
 	if err := in.relocate(it, staged, receipt); err != nil {
@@ -233,7 +285,14 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 		return Result{}, err
 	}
 
-	result = Result{Name: f.Name, Version: it.PkgVersion}
+	return in.finish(it, keg, receipt.Aliases, old), nil
+}
+
+// finish links a keg that is in its place and runs its post_install steps,
+// as brew does after a pour or a build.
+func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs) Result {
+	f := it.Formula
+	result := Result{Name: f.Name, Version: it.PkgVersion}
 	if old != nil {
 		result.Upgraded, result.Reinstalled, result.OldVersion = !it.Reinstall, it.Reinstall, old.version
 	}
@@ -241,7 +300,7 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 		result.Size, _ = cellar.Keg{Path: abs}.Abv()
 		in.logf("    %s: %s", abs, result.Size)
 	}
-	k := link.Keg{Name: f.Name, Version: it.PkgVersion, Aliases: receipt.Aliases}
+	k := link.Keg{Name: f.Name, Version: it.PkgVersion, Aliases: aliases}
 	link := !it.KegOnly
 	if it.Linked != nil { // an upgrade does what the old keg had
 		link = *it.Linked
@@ -253,21 +312,28 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	}
 	if err := in.restoreEtcVar(keg); err != nil {
 		result.PostInstallErr = err
-		return result, nil
+		return result
+	}
+	tapDefined := f.FromTap() && f.PostInstallDefined
+	if len(f.PostInstallSteps) == 0 && !tapDefined {
+		return result
+	}
+	in.logf("==> Running post_install for %s", f.Name)
+	// brew makes it for every post_install, so steps can link into it.
+	if err := in.Root.MkdirAll("libexec", 0o755); err != nil {
+		result.PostInstallErr = err
+		return result
 	}
 	if len(f.PostInstallSteps) > 0 {
-		in.logf("==> Running post_install for %s", f.Name)
-		// brew makes it for every post_install, so steps can link into it.
-		if err := in.Root.MkdirAll("libexec", 0o755); err != nil {
-			result.PostInstallErr = err
-			return result, nil
-		}
 		result.PostInstallErr = poststep.Run(poststep.Context{
 			Root: in.Root, Prefix: in.Prefix, Name: f.Name, Version: f.Versions.Stable, Keg: keg,
 			OS: cmp.Or(in.OS, runtime.GOOS), User: in.User, Log: in.Log,
 		}, f.PostInstallSteps)
 	}
-	return result, nil
+	if tapDefined && result.PostInstallErr == nil {
+		result.PostInstallErr = in.tapPostInstall(f)
+	}
+	return result
 }
 
 // oldKegs is what an upgrade or reinstall does with the kegs it replaces.
@@ -407,11 +473,7 @@ func (in *Installer) relocate(it Item, staged string, r *cellar.Receipt) error {
 }
 
 // sentence lists the names as brew does: "a", "a and b", "a, b and c".
-func sentence(reqs []bottle.Request) string {
-	names := make([]string, len(reqs))
-	for i, r := range reqs {
-		names[i] = r.Name
-	}
+func sentence(names []string) string {
 	if len(names) < 2 {
 		return strings.Join(names, "")
 	}

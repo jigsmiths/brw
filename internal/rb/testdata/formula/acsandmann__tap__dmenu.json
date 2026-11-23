@@ -1,0 +1,88 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Dynamic menu for macOS, inspired by dmenu for X11",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://github.com/acsandmann/dmenu",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": "MIT",
+      "link_overwrite": [],
+      "name": "dmenu",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [
+        {
+          "cask": null,
+          "contexts": [
+            "build"
+          ],
+          "download": null,
+          "name": "xcode",
+          "specs": [
+            "stable",
+            "head"
+          ],
+          "version": null
+        }
+      ],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "head": {
+          "branch": "main",
+          "url": "https://github.com/acsandmann/dmenu.git",
+          "using": null
+        },
+        "stable": {
+          "checksum": "6c9a6d7d7e6cade1ba9796bccbe7407491340c681b2a594b1c2171017d9bfbf0",
+          "revision": null,
+          "tag": null,
+          "url": "https://api.github.com/repos/acsandmann/dmenu/tarball/0.1.0",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": "HEAD",
+        "stable": "0.1.0"
+      }
+    }
+  ]
+}

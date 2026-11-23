@@ -1,7 +1,8 @@
-package caskrb
+package rb
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -32,6 +33,7 @@ type (
 	proc  struct {
 		b   *blockN
 		env *scope
+		sym string // &:name, which calls name on its argument
 	}
 	special string // a constant such as MacOS
 )
@@ -159,6 +161,8 @@ func str(v value) string {
 		return strconv.FormatBool(bool(x))
 	case tmplV:
 		return "{{version}}"
+	case *buffer:
+		return x.s
 	}
 	fail("%T as a string", v)
 	return ""
@@ -215,8 +219,9 @@ type dsl interface {
 }
 
 type interp struct {
-	plat *platform
-	ctx  []dsl
+	plat  *platform
+	ctx   []dsl
+	build *builder // set while a formula's install method runs
 }
 
 func (in *interp) run(body []node, s *scope) value {
@@ -227,7 +232,58 @@ func (in *interp) run(body []node, s *scope) value {
 	return last
 }
 
+// returned unwinds a method body to its caller with the value of a return.
+type returned struct{ v value }
+
+// callDef runs a method defined in the file.
+func (in *interp) callDef(d *defN, args []value, kw *hash, s *scope) (out value) {
+	ms := &scope{vars: map[string]value{}, parent: s}
+	pos := 0
+	for _, p := range d.params {
+		switch {
+		case p.kw:
+			v, ok := value(nil), false
+			if kw != nil {
+				v, ok = kw.get(sym(p.name))
+			}
+			if !ok {
+				if p.def == nil {
+					fail("missing keyword %s for %s", p.name, d.name)
+				}
+				v = in.eval(p.def, ms)
+			}
+			ms.vars[p.name] = v
+		case pos < len(args):
+			ms.vars[p.name] = args[pos]
+			pos++
+		case p.def != nil:
+			ms.vars[p.name] = in.eval(p.def, ms)
+		default:
+			fail("too few arguments to %s", d.name)
+		}
+	}
+	if pos < len(args) {
+		fail("too many arguments to %s", d.name)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			ret, ok := r.(returned)
+			if !ok {
+				panic(r)
+			}
+			out = ret.v
+		}
+	}()
+	return in.run(d.body, ms)
+}
+
 func (in *interp) callBlock(p *proc, args ...value) value {
+	if p.sym != "" {
+		if len(args) == 0 {
+			fail("&:%s without an argument", p.sym)
+		}
+		return in.method(args[0], p.sym, args[1:], nil)
+	}
 	s := &scope{vars: map[string]value{}, parent: p.env}
 	for i, n := range p.b.params {
 		if i < len(args) {
@@ -331,20 +387,128 @@ func (in *interp) eval(n node, s *scope) value {
 		for _, a := range x.args {
 			args = append(args, in.eval(a, s))
 		}
-		return index(recv, args)
+		return in.index(recv, args)
 	case *callN:
 		return in.evalCall(x, s)
+	case *caseN:
+		var subj value
+		if x.subject != nil {
+			subj = in.eval(x.subject, s)
+		}
+		for _, w := range x.whens {
+			for _, p := range w.pats {
+				pv := in.eval(p, s)
+				if (x.subject == nil && truthy(pv)) || (x.subject != nil && caseEq(pv, subj)) {
+					return in.run(w.body, s)
+				}
+			}
+		}
+		return in.run(x.els, s)
+	case *returnN:
+		var v value
+		if x.v != nil {
+			v = in.eval(x.v, s)
+		}
+		panic(returned{v})
+	case *setN:
+		v := in.eval(x.v, s)
+		in.set(x.target, v, s)
+		return v
+	case *rescueN:
+		// Loading has no Ruby exceptions; what would raise is refused instead.
+		// An install's failures are StandardErrors, which rescue catches.
+		if in.build == nil {
+			return in.eval(x.x, s)
+		}
+		return in.rescuing(func() value { return in.eval(x.x, s) }, func() value { return in.eval(x.fallback, s) })
+	case *beginN:
+		defer in.run(x.ensure, s)
+		if !x.rescues {
+			return in.run(x.body, s)
+		}
+		if in.build == nil {
+			fail("begin with rescue")
+		}
+		return in.rescuing(func() value { return in.run(x.body, s) }, func() value { return in.run(x.rescue, s) })
+	case *defN:
+		for _, d := range slices.Backward(in.ctx) {
+			if df, ok := d.(definer); ok {
+				df.define(x)
+				return sym(x.name)
+			}
+		}
+		fail("def %s", x.name)
 	}
 	fail("node %T", n)
 	return nil
 }
 
+// rescuing runs body, and fallback instead if body fails the build. Ruby
+// brw cannot run is still refused.
+func (in *interp) rescuing(body, fallback func() value) (v value) {
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(buildFailure); !ok {
+				panic(r)
+			}
+			v = fallback()
+		}
+	}()
+	return body()
+}
+
+// definer takes method definitions, as a formula class body does.
+type definer interface{ define(d *defN) }
+
+// setter handles assignments a DSL owns, such as ENV["X"] = v.
+type setter interface {
+	set(in *interp, target node, v value, s *scope) bool
+}
+
+func (in *interp) set(target node, v value, s *scope) {
+	for _, d := range slices.Backward(in.ctx) {
+		if st, ok := d.(setter); ok && st.set(in, target, v, s) {
+			return
+		}
+	}
+	if ix, ok := target.(*indexN); ok && len(ix.args) == 1 {
+		switch recv := in.eval(ix.recv, s).(type) {
+		case *hash:
+			recv.set(in.eval(ix.args[0], s), v)
+			return
+		case *arr:
+			if i, ok := in.eval(ix.args[0], s).(rint); ok && int(i) < len(recv.v) && i >= 0 {
+				recv.v[i] = v
+				return
+			}
+		}
+	}
+	fail("assignment")
+}
+
+// caseEq is Ruby's ===, as case/when uses it.
+func caseEq(pat, v value) bool {
+	switch p := pat.(type) {
+	case *regex:
+		return compile(p).MatchString(str(v))
+	case *rangeV:
+		i, ok := v.(rint)
+		lo, hi := p.lo, p.hi
+		return ok && int64(i) >= lo && (int64(i) < hi || (!p.exclusive && int64(i) == hi))
+	}
+	return eq(pat, v)
+}
+
 func (in *interp) constant(name string) value {
 	switch name {
-	case "MacOS", "OS", "Hardware::CPU", "ENV", "Pathname", "File", "Dir":
+	case "MacOS", "OS", "Hardware::CPU", "ENV", "Pathname", "File", "Dir", "Formula", "Etc", "Process", "FileUtils", "Utils":
 		return special(name)
 	case "HOMEBREW_PREFIX":
 		return rstr("$HOMEBREW_PREFIX")
+	case "Language::Python::Virtualenv", "Language::Python::Shebang", "Language::Node", "Language::Perl::Shebang",
+		"Language::Php::Shebang":
+		// only ever included; their methods are refused where a formula calls them
+		return special(name)
 	case "HOMEBREW_TEMP":
 		if t, ok := lookupEnv("HOMEBREW_TEMP"); ok && t != "" {
 			return rstr(t)
@@ -372,7 +536,25 @@ func (in *interp) evalCall(c *callN, s *scope) value {
 	}
 	var args []value
 	var kw *hash
+	var blk *proc
+	if c.block != nil {
+		blk = &proc{b: c.block, env: s}
+	}
 	for i, a := range c.args {
+		switch x := a.(type) {
+		case *symProcN:
+			blk = &proc{sym: x.name}
+			continue
+		case *splatN:
+			switch v := in.eval(x.x, s).(type) {
+			case *arr:
+				args = append(args, v.v...)
+			case nil:
+			default:
+				args = append(args, v)
+			}
+			continue
+		}
 		v := in.eval(a, s)
 		if h, ok := v.(*hash); ok && i == len(c.args)-1 {
 			if _, isHashLit := a.(*hashN); isHashLit {
@@ -392,10 +574,6 @@ func (in *interp) evalCall(c *callN, s *scope) value {
 	}
 	if kw != nil {
 		args = append(args, kw)
-	}
-	var blk *proc
-	if c.block != nil {
-		blk = &proc{c.block, s}
 	}
 	return in.method(recv, c.name, args, blk)
 }
@@ -466,6 +644,32 @@ func cmpOp(op string, c int) bool {
 	}
 	fail("cmp %s", op)
 	return false
+}
+
+// index is recv[args], which while a formula installs can read the real
+// files and environment.
+func (in *interp) index(recv value, args []value) value {
+	if x, ok := recv.(special); ok && len(args) == 1 {
+		switch {
+		case x == "Formula":
+			root := PrefixPlaceholder
+			if in.build != nil {
+				root = in.build.env.Prefix
+			}
+			return formulaRef{name: str(args[0]), root: root}
+		case x == "Dir" && in.build != nil:
+			return in.build.glob(str(args[0]))
+		case x == "ENV" && in.build != nil:
+			if v, ok := in.build.env.Env[str(args[0])]; ok {
+				return rstr(v)
+			}
+			if v, ok := lookupEnv(str(args[0])); ok {
+				return rstr(v)
+			}
+			return nil
+		}
+	}
+	return index(recv, args)
 }
 
 func index(recv value, args []value) value {
@@ -559,7 +763,7 @@ func compile(r *regex) *regexp.Regexp {
 	}
 	src := strings.ReplaceAll(r.src, `\h`, `[0-9a-fA-F]`)
 	src = strings.ReplaceAll(src, `\Z`, `\n?\z`)
-	re, err := regexp.Compile(src)
+	re, err := regexp.Compile("(?m)" + src) // Ruby's ^ and $ always match at lines
 	if err != nil {
 		fail("regex %s", r.src)
 	}
@@ -581,6 +785,13 @@ func rubySub(s string) string {
 }
 
 func (in *interp) method(recv value, name string, args []value, blk *proc) value {
+	if in.build != nil {
+		if s, ok := recv.(rstr); ok {
+			if v, ok := in.build.pathMethod(in, string(s), name, args, blk); ok {
+				return v
+			}
+		}
+	}
 	switch x := recv.(type) {
 	case caskRef:
 		if name == "url" {
@@ -598,10 +809,28 @@ func (in *interp) method(recv value, name string, args []value, blk *proc) value
 		}
 	case rstr:
 		return strMethod(string(x), name, args)
+	case rint:
+		if name == "to_s" && len(args) == 0 {
+			return rstr(str(x))
+		}
 	case *arr:
 		return in.arrMethod(x, name, args, blk)
+	case *buffer:
+		return bufferMethod(x, name, args)
+	case buildOptions:
+		return x.method(name, args)
+	case resourceRef:
+		if in.build != nil {
+			return in.build.resourceMethod(in, x, name, args, blk)
+		}
 	case special:
-		return in.specialMethod(x, name, args)
+		return in.specialMethod(x, name, args, blk)
+	case formulaRef:
+		return x.method(name)
+	case passwd:
+		if name == "name" {
+			return rstr(x)
+		}
 	}
 	fail("method %s on %T", name, recv)
 	return nil
@@ -708,6 +937,18 @@ func strMethod(s string, name string, args []value) value {
 		return rbool(strings.TrimSpace(s) != "")
 	case "dirname": // Pathname#dirname
 		return rstr(path.Dir(s))
+	case "strip":
+		return rstr(strings.Trim(s, " \t\n\v\f\r\x00"))
+	case "chomp":
+		if len(args) > 0 {
+			return rstr(strings.TrimSuffix(s, str(args[0])))
+		}
+		for _, end := range []string{"\r\n", "\n", "\r"} {
+			if t, ok := strings.CutSuffix(s, end); ok {
+				return rstr(t)
+			}
+		}
+		return rstr(s)
 	}
 	if len(args) == 0 {
 		fail("String#%s without an argument", name)
@@ -830,6 +1071,23 @@ func (in *interp) arrMethod(a *arr, name string, args []value, blk *proc) value 
 			return nil
 		}
 		return a.v[len(a.v)-1]
+	case "sort":
+		if blk != nil {
+			fail("Array#sort with a block")
+		}
+		out := &arr{v: slices.Clone(a.v)}
+		slices.SortStableFunc(out.v, func(x, y value) int {
+			xi, xok := x.(rint)
+			yi, yok := y.(rint)
+			if xok && yok {
+				return cmp.Compare(xi, yi)
+			}
+			if xok != yok {
+				fail("Array#sort of mixed values")
+			}
+			return strings.Compare(str(x), str(y))
+		})
+		return out
 	case "join":
 		sep := ""
 		if len(args) > 0 {
@@ -914,7 +1172,12 @@ func compareMac(a, b string) int {
 	return 0
 }
 
-func (in *interp) specialMethod(x special, name string, args []value) value {
+func (in *interp) specialMethod(x special, name string, args []value, blk *proc) value {
+	if b := in.build; b != nil {
+		if v, ok := b.classMethod(in, x, name, args, blk); ok {
+			return v
+		}
+	}
 	if f := in.flight(); f != nil && x == "File" && name != "expand_path" {
 		return f.file(in, nil, name, args)
 	}
@@ -928,13 +1191,17 @@ func (in *interp) specialMethod(x special, name string, args []value) value {
 	case "MacOS.version":
 		return &macVer{in.plat.macos}
 	case "Hardware::CPU.intel?":
-		return rbool(in.plat.arch == "intel")
+		return rbool(in.plat.real().arch == "intel")
 	case "Hardware::CPU.arm?":
-		return rbool(in.plat.arch == "arm")
+		return rbool(in.plat.real().arch == "arm")
+	case "Hardware::CPU.is_64_bit?":
+		return rbool(true)
+	case "Hardware::CPU.is_32_bit?":
+		return rbool(false)
 	case "OS.mac?":
-		return rbool(in.plat.os == "macos")
+		return rbool(in.plat.real().os == "macos")
 	case "OS.linux?":
-		return rbool(in.plat.os == "linux")
+		return rbool(in.plat.real().os == "linux")
 	case "ENV.fetch":
 		if v, ok := lookupEnv(arg()); ok {
 			return rstr(v)
@@ -947,6 +1214,10 @@ func (in *interp) specialMethod(x special, name string, args []value) value {
 		return rstr(arg())
 	case "Dir.home":
 		return rstr("/$HOME")
+	case "Process.uid":
+		return rint(0) // only ever passed to Etc.getpwuid
+	case "Etc.getpwuid":
+		return passwd(lookupUser())
 	case "File.expand_path":
 		return rstr(expandHome(arg()))
 	}

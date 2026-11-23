@@ -17,7 +17,6 @@ const (
 	lcCodeSig   = 0x1d
 	textOffset  = 0x400 // the first section starts here, so the commands must fit below it
 	fileLen     = 0x800
-	mhExecute   = 2
 	typeDylib   = 6
 )
 
@@ -265,6 +264,37 @@ func TestChangeRpath(t *testing.T) {
 	g := mustParse(t, f.Bytes())
 	if got := g.Rpaths(); !reflect.DeepEqual(got, []string{"/a/much/longer/prefix/than/before/lib"}) {
 		t.Errorf("rpaths = %v", got)
+	}
+}
+
+func TestDeleteRpath(t *testing.T) {
+	orig := build(typeDylib, segment(0x100, 0), rpathCmd("/a"), rpathCmd("/b"), rpathCmd("/a"), codeSig())
+	f := mustParse(t, bytes.Clone(orig))
+	if err := f.DeleteRpath("/a"); err != nil {
+		t.Fatal(err)
+	}
+	untouched(t, orig, f.Bytes())
+	g := mustParse(t, f.Bytes())
+	if got := g.Rpaths(); !reflect.DeepEqual(got, []string{"/b", "/a"}) {
+		t.Errorf("rpaths = %v, want the first /a gone", got)
+	}
+	if n := le.Uint32(g.data[16:]); n != 4 {
+		t.Errorf("ncmds = %d, want 4", n)
+	}
+	if g.cmds[len(g.cmds)-1].cmd != lcCodeSig {
+		t.Error("the commands behind it were lost")
+	}
+	if err := f.DeleteRpath("/none"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("deleting a missing rpath: %v", err)
+	}
+}
+
+func TestKinds(t *testing.T) {
+	for typ, want := range map[uint32][3]bool{mhExecute: {true, false, false}, typeDylib: {false, true, false}, 8: {false, false, true}, 1: {}} {
+		f := mustParse(t, build(typ, segment(0x10, 0)))
+		if got := [3]bool{f.IsExecutable(), f.IsDylib(), f.IsBundle()}; got != want {
+			t.Errorf("file type %d: executable, dylib, bundle = %v, want %v", typ, got, want)
+		}
 	}
 }
 

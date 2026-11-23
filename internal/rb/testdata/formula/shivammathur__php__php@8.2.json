@@ -1,0 +1,545 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {
+        "stable": {
+          "files": {
+            "arm64_golden_gate": {
+              "cellar": "/opt/homebrew/Cellar",
+              "sha256": "f8df707d27e170176bec3757117e4fcd70b7fda063bc3201e1ac9dfba172d413",
+              "url": "https://ghcr.io/v2/shivammathur/php/php/8.2/blobs/sha256:f8df707d27e170176bec3757117e4fcd70b7fda063bc3201e1ac9dfba172d413"
+            },
+            "arm64_linux": {
+              "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+              "sha256": "52839ec7c922127775fc115a843e7199192c7c418d48ba44bf17f270a09c14df",
+              "url": "https://ghcr.io/v2/shivammathur/php/php/8.2/blobs/sha256:52839ec7c922127775fc115a843e7199192c7c418d48ba44bf17f270a09c14df"
+            },
+            "arm64_sequoia": {
+              "cellar": "/opt/homebrew/Cellar",
+              "sha256": "956a3c6c3bb5b052a71339cea483daad62de74477368fc17f82e93c6a523c58d",
+              "url": "https://ghcr.io/v2/shivammathur/php/php/8.2/blobs/sha256:956a3c6c3bb5b052a71339cea483daad62de74477368fc17f82e93c6a523c58d"
+            },
+            "arm64_tahoe": {
+              "cellar": "/opt/homebrew/Cellar",
+              "sha256": "0934b7ef82c1f34cb500a10c2c90419b01c57ef4da881151f7fb2d268c1632ee",
+              "url": "https://ghcr.io/v2/shivammathur/php/php/8.2/blobs/sha256:0934b7ef82c1f34cb500a10c2c90419b01c57ef4da881151f7fb2d268c1632ee"
+            },
+            "x86_64_linux": {
+              "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+              "sha256": "46d10acb05a48ec983f29e234a958feb0b0a254df7ad6c250f7e203137d041c7",
+              "url": "https://ghcr.io/v2/shivammathur/php/php/8.2/blobs/sha256:46d10acb05a48ec983f29e234a958feb0b0a254df7ad6c250f7e203137d041c7"
+            }
+          },
+          "rebuild": 0,
+          "root_url": "https://ghcr.io/v2/shivammathur/php"
+        }
+      },
+      "build_dependencies": [
+        "httpd",
+        "pkgconf",
+        "gcc"
+      ],
+      "caveats": "To enable PHP in Apache add the following to httpd.conf and restart Apache:\n    LoadModule php_module $HOMEBREW_PREFIX/opt/php@8.2/lib/httpd/modules/libphp.so\n\n    <FilesMatch \\.php$>\n        SetHandler application/x-httpd-php\n    </FilesMatch>\n\nFinally, check DirectoryIndex includes index.php\n    DirectoryIndex index.php index.html\n\nThe php.ini and php-fpm.ini file can be found in:\n    $HOMEBREW_PREFIX/etc/php/8.2/\n",
+      "compatibility_version": 1,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [
+        "apr",
+        "apr-util",
+        "argon2",
+        "aspell",
+        "autoconf",
+        "curl",
+        "freetds",
+        "gd",
+        "gmp",
+        "icu4c@79",
+        "krb5",
+        "libpq",
+        "libsodium",
+        "libzip",
+        "oniguruma",
+        "openldap",
+        "openssl@4",
+        "pcre2",
+        "sqlite",
+        "tidy-html5",
+        "unixodbc",
+        "gettext"
+      ],
+      "deprecate_args": {
+        "because": "unsupported",
+        "date": "2026-12-31",
+        "replacement_cask": null,
+        "replacement_formula": null
+      },
+      "deprecated": false,
+      "deprecation_date": "2026-12-31",
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "General-purpose scripting language",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://www.php.net/",
+      "keg_only": true,
+      "keg_only_reason": {
+        "explanation": "",
+        "reason": ":versioned_formula"
+      },
+      "license": "PHP-3.01 AND Zend-2.0 AND BSL-1.0 AND MIT AND Apache-1.0 AND bcrypt-Solar-Designer AND BSD-2-Clause-Darwin AND BSD-2-Clause AND BSD-3-Clause AND BSD-4-Clause-UC AND ISC AND LGPL-2.1-only AND LGPL-2.1-or-later AND OLDAP-2.8 AND TCL AND Zlib",
+      "link_overwrite": [],
+      "name": "php@8.2",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [
+        {
+          "after": "exec $PHP -n -C -q ",
+          "before": "^exec \\$PHP (?:-n )?-C -q ",
+          "path": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "regexp": true,
+          "type": "inreplace"
+        },
+        {
+          "non_recursive": true,
+          "paths": [
+            {
+              "base": "pkgshare",
+              "path": "pear/.channels"
+            },
+            {
+              "base": "pkgshare",
+              "path": "pear/.channels/.alias"
+            }
+          ],
+          "permissions": "0755",
+          "type": "set_permissions"
+        },
+        {
+          "non_recursive": true,
+          "paths": [
+            {
+              "base": "pkgshare",
+              "path": "pear/.depdblock"
+            },
+            {
+              "base": "pkgshare",
+              "path": "pear/.filemap"
+            },
+            {
+              "base": "pkgshare",
+              "path": "pear/.depdb"
+            },
+            {
+              "base": "pkgshare",
+              "path": "pear/.lock"
+            },
+            {
+              "base": "pkgshare",
+              "path": "pear/.channels/*"
+            },
+            {
+              "base": "pkgshare",
+              "path": "pear/.channels/.alias/*"
+            }
+          ],
+          "permissions": "0644",
+          "type": "set_permissions"
+        },
+        {
+          "path": {
+            "base": "homebrew_prefix",
+            "path": "lib/php/pecl"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "guards": [
+            {
+              "base": "prefix",
+              "condition": "unless_exists",
+              "id": "1",
+              "path": "pecl"
+            }
+          ],
+          "source": {
+            "base": "homebrew_prefix",
+            "path": "lib/php/pecl"
+          },
+          "target": {
+            "base": "prefix",
+            "path": "pecl"
+          },
+          "type": "symlink"
+        },
+        {
+          "args": [
+            "-R",
+            "{{pkgshare}}/pear/.",
+            "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}"
+          ],
+          "command": {
+            "path": "/bin/cp"
+          },
+          "type": "run"
+        },
+        {
+          "args": [
+            "config-set",
+            "php_ini",
+            "{{etc}}/php/{{version.major_minor}}/php.ini",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "args": [
+            "config-set",
+            "php_dir",
+            "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/doc"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "args": [
+            "config-set",
+            "doc_dir",
+            "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/doc",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "args": [
+            "-ec",
+            "extension_dir=\"$(\"$1/php-config\" --extension-dir)\"\next_dir=\"$2/${extension_dir##*/}\"\nmkdir -p \"$ext_dir\"\nexec \"$1/pear\" config-set ext_dir \"$ext_dir\" system\n",
+            "--",
+            "{{bin}}",
+            "{{HOMEBREW_PREFIX}}/lib/php/pecl"
+          ],
+          "command": {
+            "path": "/bin/sh"
+          },
+          "type": "run"
+        },
+        {
+          "args": [
+            "config-set",
+            "bin_dir",
+            "{{opt_prefix}}/bin",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/data"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "args": [
+            "config-set",
+            "data_dir",
+            "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/data",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/cfg"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "args": [
+            "config-set",
+            "cfg_dir",
+            "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/cfg",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/htdocs"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "args": [
+            "config-set",
+            "www_dir",
+            "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/htdocs",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "args": [
+            "config-set",
+            "man_dir",
+            "{{HOMEBREW_PREFIX}}/share/man",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/test"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "args": [
+            "config-set",
+            "test_dir",
+            "{{HOMEBREW_PREFIX}}/share/pear@{{version.major_minor}}/test",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "args": [
+            "config-set",
+            "php_bin",
+            "{{opt_prefix}}/bin/php",
+            "system"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "run"
+        },
+        {
+          "args": [
+            "update-channels"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "print_stdout": true,
+          "type": "run"
+        },
+        {
+          "path": {
+            "base": "etc",
+            "path": "php/{{version.major_minor}}/conf.d"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "args": [
+            "-n",
+            "-r",
+            "list(, $php_config, $opt_prefix, $config_path) = $argv;\nexec(escapeshellarg($php_config) . ' --extension-dir', $output, $status);\nif ($status !== 0) {\n    exit($status);\n}\n$php_ext_dir = $opt_prefix . '/lib/php/' . basename(implode(\"\\n\", $output));\nforeach (array_slice($argv, 4) as $extension) {\n    $path = $config_path . '/conf.d/ext-' . $extension . '.ini';\n    $type = $extension === 'opcache' ? 'zend_extension' : 'extension';\n    $library = $php_ext_dir . '/' . $extension . '.so';\n    if (file_exists($path)) {\n        $content = file_get_contents($path);\n        if ($content === false) {\n            exit(1);\n        }\n        $content = preg_replace_callback('/' . $type . '=.*$/m', function () use ($type, $library) {\n            return $type . '=' . $library;\n        }, $content, -1, $count);\n        if ($count === 0) {\n            fwrite(STDERR, 'Cannot update ' . $type . ' in ' . $path . \"\\n\");\n            exit(1);\n        }\n    } else {\n        $content = '[' . $extension . \"]\\n\" . $type . '=\"' . $library . \"\\\"\\n\";\n    }\n    if (file_put_contents($path, $content) === false) {\n        exit(1);\n    }\n}\n",
+            "--",
+            "{{bin}}/php-config",
+            "{{opt_prefix}}",
+            "{{etc}}/php/{{version.major_minor}}",
+            "intl",
+            "opcache"
+          ],
+          "command": {
+            "base": "bin",
+            "path": "php"
+          },
+          "type": "run"
+        },
+        {
+          "after": "exec $PHP -C -q ",
+          "before": "exec $PHP -n -C -q ",
+          "path": {
+            "base": "bin",
+            "path": "pear"
+          },
+          "type": "inreplace"
+        }
+      ],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": {
+        "error_log_path": "$HOMEBREW_PREFIX/var/log/php-fpm.log",
+        "keep_alive": {
+          "always": true
+        },
+        "run": [
+          "$HOMEBREW_PREFIX/opt/php@8.2/sbin/php-fpm",
+          "--nodaemonize"
+        ],
+        "run_type": "immediate",
+        "working_dir": "$HOMEBREW_PREFIX/var"
+      },
+      "test_dependencies": [
+        "httpd"
+      ],
+      "urls": {
+        "stable": {
+          "checksum": "df50a00d2b453096608bf2bd98a9fab9a3df8678a77b93011b65c3cfe9a018fa",
+          "revision": null,
+          "tag": null,
+          "url": "https://www.php.net/distributions/php-8.2.36.tar.xz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [
+        {
+          "xz": "build"
+        },
+        "bzip2",
+        "libedit",
+        "libffi",
+        "libxml2",
+        "libxslt"
+      ],
+      "uses_from_macos_bounds": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ],
+      "variations": {
+        "arm64_linux": {
+          "build_dependencies": [
+            "httpd",
+            "pkgconf"
+          ],
+          "dependencies": [
+            "apr",
+            "apr-util",
+            "argon2",
+            "aspell",
+            "autoconf",
+            "curl",
+            "freetds",
+            "gd",
+            "gmp",
+            "icu4c@79",
+            "krb5",
+            "libpq",
+            "libsodium",
+            "libzip",
+            "oniguruma",
+            "openldap",
+            "openssl@4",
+            "pcre2",
+            "sqlite",
+            "tidy-html5",
+            "unixodbc",
+            "zlib-ng-compat"
+          ]
+        },
+        "x86_64_linux": {
+          "build_dependencies": [
+            "httpd",
+            "pkgconf"
+          ],
+          "dependencies": [
+            "apr",
+            "apr-util",
+            "argon2",
+            "aspell",
+            "autoconf",
+            "curl",
+            "freetds",
+            "gd",
+            "gmp",
+            "icu4c@79",
+            "krb5",
+            "libpq",
+            "libsodium",
+            "libzip",
+            "oniguruma",
+            "openldap",
+            "openssl@4",
+            "pcre2",
+            "sqlite",
+            "tidy-html5",
+            "unixodbc",
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "version_scheme": 0,
+      "versions": {
+        "bottle": true,
+        "head": null,
+        "stable": "8.2.36"
+      }
+    }
+  ]
+}

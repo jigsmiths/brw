@@ -42,10 +42,19 @@ func NewResolver(idx *api.Index, host platform.Host) (*Resolver, error) {
 	return r, nil
 }
 
+// NotFound is ErrNotFound for name, with why brw could not load it when it
+// is a tap's formula, such as an untrusted tap.
+func NotFound(idx *api.Index, name string) error {
+	if err := idx.LoadError(name); err != nil {
+		return fmt.Errorf("%w: %w", ErrNotFound, err)
+	}
+	return ErrNotFound
+}
+
 func (r *Resolver) formula(name string) (*api.Formula, error) {
 	f, ok := r.idx.Lookup(name)
 	if !ok {
-		return nil, fmt.Errorf("%s: %w", name, ErrNotFound)
+		return nil, fmt.Errorf("%s: %w", name, NotFound(r.idx, name))
 	}
 	return f, nil
 }
@@ -135,7 +144,7 @@ func (r *Resolver) declared(name string) ([]string, error) {
 	for _, n := range names {
 		d, ok := r.idx.Lookup(n)
 		if !ok {
-			return nil, fmt.Errorf("dependency %q of %s: %w", n, f.Name, ErrNotFound)
+			return nil, fmt.Errorf("dependency %q of %s: %w", n, f.Name, NotFound(r.idx, n))
 		}
 		if !slices.Contains(out, d.Name) {
 			out = append(out, d.Name)

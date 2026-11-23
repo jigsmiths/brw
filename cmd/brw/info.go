@@ -14,6 +14,7 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/info"
 	"github.com/jigsmiths/brw/internal/outdated"
+	"github.com/jigsmiths/brw/internal/tap"
 )
 
 func infoCommand(e *env, args []string) error {
@@ -38,7 +39,7 @@ func infoCommand(e *env, args []string) error {
 		return err
 	}
 
-	found, err := e.lookupInfoItems(ctx, names, formulaOnly, caskOnly)
+	found, err := e.lookupInfoItems(ctx, *prefix, kegs, names, formulaOnly, caskOnly)
 	if err != nil {
 		return err
 	}
@@ -55,7 +56,11 @@ func infoCommand(e *env, args []string) error {
 		if err != nil {
 			return err
 		}
-		env = info.Env{Index: found.idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale}
+		env = info.Env{Index: found.idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale,
+			TapRemote: func(name string) (string, string) {
+				t := tap.Tap{Name: name, Dir: tap.Dir(*prefix, name)}
+				return t.Remote(), t.Dir
+			}}
 	}
 
 	if *asJSON {
@@ -76,7 +81,7 @@ func infoCommand(e *env, args []string) error {
 	for i, it := range found.items {
 		var text string
 		if it.formula != nil {
-			text, err = info.Text(it.formula, env)
+			text, err = info.ShadowingText(it.formula, env, it.shadows)
 		} else {
 			text, err = info.CaskText(it.cask, caskEnv)
 		}
@@ -95,6 +100,7 @@ func infoCommand(e *env, args []string) error {
 // infoItem is a name given to info: a formula or a cask.
 type infoItem struct {
 	formula *api.Formula
+	shadows string // the tap of the formula the name would otherwise mean
 	cask    *api.Cask
 }
 
@@ -108,24 +114,51 @@ type infoLookup struct {
 
 // lookupInfoItems finds each name, as brew does: a formula if there is one,
 // else a cask. It stops at the first name that is neither.
-func (e *env) lookupInfoItems(ctx context.Context, names []string, formulaOnly, caskOnly bool) (infoLookup, error) {
+func (e *env) lookupInfoItems(ctx context.Context, prefix string, kegs []cellar.Keg, names []string, formulaOnly, caskOnly bool) (infoLookup, error) {
 	var l infoLookup
 	var err error
 	if !caskOnly {
-		if l.idx, l.client, err = e.indexAndClient(ctx); err != nil {
+		if l.idx, l.client, err = e.indexAndClient(ctx, prefix); err != nil {
 			return l, err
 		}
 	}
 	for _, name := range names {
 		if l.idx != nil {
 			if f, ok := l.idx.Lookup(name); ok {
-				l.items = append(l.items, infoItem{formula: f})
+				it := infoItem{formula: f}
+				if !strings.Contains(name, "/") {
+					it.formula, it.shadows = installedResolution(l.idx, kegs, f)
+				}
+				if !formulaOnly {
+					c, err := e.caskOverTapFormula(name, it.formula, func() (*api.CaskIndex, error) {
+						if l.casks == nil {
+							var err error
+							l.casks, err = e.caskIndex(ctx, prefix)
+							return l.casks, err
+						}
+						return l.casks, nil
+					})
+					if err != nil {
+						return l, err
+					}
+					if c != nil {
+						l.items = append(l.items, infoItem{cask: c})
+						continue
+					}
+				}
+				l.items = append(l.items, it)
 				continue
+			}
+			if err := ambiguous(l.idx, name); err != nil {
+				return l, err
+			}
+			if err := unreadable(l.idx, name); err != nil {
+				return l, err
 			}
 		}
 		if !formulaOnly {
 			if l.casks == nil {
-				if l.casks, err = e.caskIndex(ctx, ""); err != nil {
+				if l.casks, err = e.caskIndex(ctx, prefix); err != nil {
 					return l, err
 				}
 			}
@@ -149,9 +182,12 @@ func (e *env) lookupInfoItems(ctx context.Context, names []string, formulaOnly, 
 func writeInfoJSON(w io.Writer, client *api.Client, formulae []*api.Formula, env info.Env) error {
 	entries := []json.RawMessage{}
 	for _, f := range formulae {
-		raw, err := client.Raw(f.Name)
-		if err != nil {
-			return err
+		raw, ok := env.Index.TapRaw(f.FullName)
+		if !ok {
+			var err error
+			if raw, err = client.Raw(f.Name); err != nil {
+				return err
+			}
 		}
 		entry, err := info.JSON(raw, f, env)
 		if err != nil {

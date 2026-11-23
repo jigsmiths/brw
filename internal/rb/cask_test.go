@@ -1,4 +1,4 @@
-package caskrb
+package rb
 
 import (
 	"encoding/json"
@@ -132,7 +132,9 @@ func readWant(t *testing.T, path string) map[string]any {
 // for homebrew/cask, and from brew info --json=v2 --variations for taps.
 func TestEvaluateMatchesBrew(t *testing.T) {
 	asBrew(t)
-	files, _ := filepath.Glob(filepath.Join("testdata", "*", "*.rb"))
+	files, _ := filepath.Glob(filepath.Join("testdata", "cask", "*.rb"))
+	tapFiles, _ := filepath.Glob(filepath.Join("testdata", "tap", "*.rb"))
+	files = append(files, tapFiles...)
 	if len(files) == 0 {
 		t.Fatal("no fixtures")
 	}
@@ -189,7 +191,7 @@ func TestLoad(t *testing.T) {
   zap trash: "~/Library/Tool"
 end
 `)
-	arm, err := Load(src, "arm64_tahoe")
+	arm, err := LoadCask(src, "arm64_tahoe")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +229,7 @@ end
 		t.Errorf("binary: %s", got)
 	}
 
-	intel, err := Load(src, "sonoma")
+	intel, err := LoadCask(src, "sonoma")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +256,7 @@ func TestLoadTranslatesFileOperations(t *testing.T) {
   end
 end
 `)
-	c, err := Load(src, "arm64_tahoe")
+	c, err := LoadCask(src, "arm64_tahoe")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +296,7 @@ func TestLoadRefusesRubyItCannotTranslate(t *testing.T) {
 		"not a cask": "class Foo\nend\n",
 		"garbled":    "cask \"t\" do\n  version \"1\n",
 	} {
-		if _, err := Load([]byte(src), "arm64_tahoe"); !errors.Is(err, ErrUnsupported) {
+		if _, err := LoadCask([]byte(src), "arm64_tahoe"); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%s: %v, want ErrUnsupported", name, err)
 		}
 	}
@@ -305,7 +307,7 @@ func TestLoadRefusesRubyItCannotTranslate(t *testing.T) {
 //
 //	git clone https://github.com/Homebrew/homebrew-cask && curl -O https://formulae.brew.sh/api/cask.jws.json
 //	git -C homebrew-cask checkout <tap_git_head of any cask in the API>
-//	BRW_CASKRB_CASKS=homebrew-cask BRW_CASKRB_API=cask.jws.json go test -run Conformance ./internal/caskrb
+//	BRW_CASKRB_CASKS=homebrew-cask BRW_CASKRB_API=cask.jws.json go test -run Conformance ./internal/rb
 func TestConformanceHomebrewCask(t *testing.T) {
 	dir, apiPath := os.Getenv("BRW_CASKRB_CASKS"), os.Getenv("BRW_CASKRB_API")
 	if dir == "" || apiPath == "" {

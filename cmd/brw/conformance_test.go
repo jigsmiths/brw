@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	osexec "os/exec"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -258,7 +259,8 @@ func infoBlocks(out string) map[string]map[string][]string {
 			}
 			if formula, _, ok := strings.Cut(name, ": "); ok {
 				cur, section = map[string][]string{}, ""
-				blocks[formula] = cur
+				// a tap formula is headed by its full name; a rack has one name
+				blocks[path.Base(formula)] = cur
 			}
 		}
 		if cur != nil {
@@ -290,7 +292,7 @@ func isSubsequence(sub, lines []string) bool {
 // uninstalled ones.
 func infoNames(t *testing.T, e *env) []string {
 	t.Helper()
-	idx, err := e.index(t.Context())
+	idx, err := e.index(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

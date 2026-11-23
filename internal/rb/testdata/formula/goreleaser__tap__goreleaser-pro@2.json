@@ -1,0 +1,126 @@
+{
+  "formulae": [
+    {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [
+        "goreleaser"
+      ],
+      "conflicts_with_reasons": [
+        null
+      ],
+      "dependencies": [
+        "git"
+      ],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Release engineering, simplified.",
+      "disable_args": {
+        "because": "the cask should be used now instead",
+        "date": "2025-06-14",
+        "replacement_cask": "goreleaser-pro@2",
+        "replacement_formula": null
+      },
+      "disable_date": "2025-06-14",
+      "disable_reason": "the cask should be used now instead",
+      "disable_replacement_cask": "goreleaser-pro@2",
+      "disable_replacement_formula": null,
+      "disabled": true,
+      "homepage": "https://goreleaser.com",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": "Copyright Becker Software LTDA",
+      "link_overwrite": [],
+      "name": "goreleaser-pro@2",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [
+        "deno",
+        "go",
+        "rustup",
+        "zig"
+      ],
+      "options": [
+        {
+          "description": "Build with deno support",
+          "option": "--with-deno"
+        },
+        {
+          "description": "Build with go support",
+          "option": "--with-go"
+        },
+        {
+          "description": "Build with rustup support",
+          "option": "--with-rustup"
+        },
+        {
+          "description": "Build with zig support",
+          "option": "--with-zig"
+        }
+      ],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "8f4fe75597c72d6dc52e84e208e743922f57613e314198c0466722b94b3b2310",
+          "revision": null,
+          "tag": null,
+          "url": "https://github.com/goreleaser/goreleaser-pro/releases/download/v2.9.0/goreleaser-pro_Darwin_arm64.tar.gz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "variations": {
+        "arm64_linux": {
+          "urls": {
+            "stable": {
+              "checksum": "a8db146d1301cfe694eb2e3077dff2f7c186e786d73e44b81b53b9ea90bcf4e0",
+              "revision": null,
+              "tag": null,
+              "url": "https://github.com/goreleaser/goreleaser-pro/releases/download/v2.9.0/goreleaser-pro_Linux_arm64.tar.gz",
+              "using": null
+            }
+          }
+        },
+        "x86_64_linux": {
+          "urls": {
+            "stable": {
+              "checksum": "a8db146d1301cfe694eb2e3077dff2f7c186e786d73e44b81b53b9ea90bcf4e0",
+              "revision": null,
+              "tag": null,
+              "url": "https://github.com/goreleaser/goreleaser-pro/releases/download/v2.9.0/goreleaser-pro_Linux_arm64.tar.gz",
+              "using": null
+            }
+          }
+        }
+      },
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "2.9.1"
+      }
+    }
+  ]
+}

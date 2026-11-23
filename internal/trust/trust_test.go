@@ -98,8 +98,34 @@ func TestTrusted(t *testing.T) {
 			t.Errorf("CaskTrusted(%s, %q, %s) = %v", tc.tap, tc.remote, tc.token, got)
 		}
 	}
-	if s.HasCasksFrom("partly/tap", "") != true || s.HasCasksFrom("untrusted/tap", "") {
-		t.Error("HasCasksFrom should tell a partly trusted tap from an untrusted one")
+	if !s.PartlyTrusted("partly/tap", "") || s.PartlyTrusted("untrusted/tap", "") {
+		t.Error("PartlyTrusted should tell a partly trusted tap from an untrusted one")
+	}
+}
+
+func TestFormulaTrusted(t *testing.T) {
+	s := load(t, `{"trustedtaps":["trusted/tap"],"trustedformulae":["partly/tap/tool","/users/me/mirror/tool"],"trustedcasks":["casks/tap/app"]}`)
+	for _, tc := range []struct {
+		tap, remote, name string
+		want              bool
+	}{
+		{"homebrew/core", "", "jq", true},
+		{"trusted/tap", "", "any", true},
+		{"partly/tap", "", "tool", true},
+		{"partly/tap", "", "other", false},
+		{"mirror/tap", "/users/me/mirror", "tool", true},
+		// a trusted cask does not trust a formula of the same name
+		{"casks/tap", "", "app", false},
+	} {
+		if got := s.FormulaTrusted(tc.tap, tc.remote, tc.name); got != tc.want {
+			t.Errorf("FormulaTrusted(%s, %q, %s) = %v", tc.tap, tc.remote, tc.name, got)
+		}
+	}
+	// brew counts a tap with any trusted formula or cask as partly trusted
+	for tap, want := range map[string]bool{"partly/tap": true, "casks/tap": true, "untrusted/tap": false} {
+		if got := s.PartlyTrusted(tap, ""); got != want {
+			t.Errorf("PartlyTrusted(%s) = %v", tap, got)
+		}
 	}
 }
 

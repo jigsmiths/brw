@@ -75,7 +75,7 @@ func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (f
 	if caskOnly {
 		return nil, names, nil
 	}
-	idx, err := e.index(context.Background())
+	idx, err := e.index(context.Background(), prefix)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -117,7 +117,7 @@ func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (f
 // upgradeFormulae upgrades the named formulae, or every outdated one. found
 // says whether any was out of date.
 func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string) (found bool, err error) {
-	idx, client, err := e.indexAndClient(context.Background())
+	idx, client, err := e.indexAndClient(context.Background(), prefix)
 	if err != nil {
 		return false, err
 	}
@@ -130,8 +130,10 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 		return false, err
 	}
 
+	otherTap := outdated.OtherTap(idx, kegs)
 	var upgrade, pinned []outdated.Result
 	if len(names) == 0 {
+		e.warnOtherTap(idx, kegs, otherTap)
 		for _, r := range stale {
 			if r.Pinned {
 				continue // brew leaves pinned formulae alone without a word
@@ -155,8 +157,14 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 			}
 			i := slices.IndexFunc(stale, func(r outdated.Result) bool { return r.Name == rack })
 			switch {
+			case slices.Contains(otherTap, rack):
+				if err := tapFormulaError(idx, kegs, rack); err != nil {
+					problems = append(problems, err)
+				} else {
+					problems = append(problems, fmt.Errorf("%s: %w", rack, install.ErrOtherTap))
+				}
 			case i < 0:
-				f, _ := idx.Lookup(rack)
+				f, _, _ := outdated.Formula(idx, rack, finder.Installed(rack))
 				_, _ = fmt.Fprintf(e.err, "brw: warning: %s %s already installed\n", rack, pkgVersionOf(f.Versions.Stable, f.Revision))
 			case stale[i].Pinned:
 				pinned = append(pinned, stale[i])
@@ -184,15 +192,15 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 	planner := e.newPlanner(prefix, idx, client, kegs)
 	upgradeNames := make([]string, len(upgrade))
 	for i, r := range upgrade {
-		upgradeNames[i] = r.Name
+		upgradeNames[i] = r.FullName
 	}
 	plan, planErrs := planner.PlanUpgrade(upgradeNames)
-	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures)
+	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures, withBuilds(e, prefix, idx, client))
 }
 
 // applyPlan shows or carries out the plan, cleaning up old kegs after each
 // formula. what ends the "cannot be ..." message, for example "upgraded".
-func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error) error {
+func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error, builds func(*install.Installer)) error {
 	for _, err := range planErrs {
 		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 	}
@@ -211,7 +219,7 @@ func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what stri
 		return errors.Join(append(failures, printPlan(e, prefix, plan))...)
 	}
 	err := withRoot(prefix, journal, func(root *fsx.Root) error {
-		return runInstall(e, root, prefix, downloads, plan, func(in *install.Installer) {
+		return runInstall(e, root, prefix, downloads, plan, builds, func(in *install.Installer) {
 			in.KeepGoing = true
 			in.After = func(it install.Item, _ install.Result) { cleanAfterUpgrade(e, root, prefix, it) }
 		})

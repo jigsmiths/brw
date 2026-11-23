@@ -36,7 +36,7 @@ func depsCommand(e *env, args []string) error {
 		}
 		out = lines(names)
 	} else {
-		idx, err := e.index(context.Background())
+		idx, err := e.index(context.Background(), *prefix)
 		if err != nil {
 			return err
 		}
@@ -88,7 +88,7 @@ func usesCommand(e *env, args []string) error {
 		}
 		names = deps.InstalledUses(kegs, pos[0])
 	} else {
-		idx, err := e.index(context.Background())
+		idx, err := e.index(context.Background(), *prefix)
 		if err != nil {
 			return err
 		}

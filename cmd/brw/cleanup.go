@@ -67,7 +67,7 @@ func cleanupCommand(e *env, args []string) (err error) {
 		if prunePrefix {
 			return c.PrunePrefix()
 		}
-		index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background()) })
+		index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background(), prefix) })
 		if idx, err := index(); err == nil {
 			c.Current = func(name string) (cleanup.Formula, bool) {
 				f, ok := idx.Lookup(name)

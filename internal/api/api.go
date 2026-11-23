@@ -52,13 +52,20 @@ func (f *Formula) ForOS(goos string) bool {
 
 // Formula is an entry of the formula listing, with the fields brw uses.
 type Formula struct {
-	Name                 string   `json:"name"`
-	FullName             string   `json:"full_name"`
-	Desc                 string   `json:"desc"`
-	Homepage             string   `json:"homepage"`
-	License              string   `json:"license"`
-	Caveats              string   `json:"caveats"`
-	RubySourcePath       string   `json:"ruby_source_path"`
+	Name           string `json:"name"`
+	FullName       string `json:"full_name"`
+	Desc           string `json:"desc"`
+	Homepage       string `json:"homepage"`
+	License        string `json:"license"`
+	Caveats        string `json:"caveats"`
+	RubySourcePath string `json:"ruby_source_path"`
+	TapGitHead     string `json:"tap_git_head"` // a tap formula's tap commit
+	URLs           struct {
+		Stable struct {
+			URL      string `json:"url"`
+			Checksum string `json:"checksum"`
+		} `json:"stable"`
+	} `json:"urls"`
 	Deprecated           bool     `json:"deprecated"`
 	Disabled             bool     `json:"disabled"`
 	DeprecationReason    string   `json:"deprecation_reason"`
@@ -91,6 +98,7 @@ type Formula struct {
 	UsesBounds                    []struct{ Since string }      `json:"uses_from_macos_bounds"`
 	KegOnly                       bool                          `json:"keg_only"`
 	PostInstallSteps              []json.RawMessage             `json:"post_install_steps"`
+	PostInstallDefined            bool                          `json:"post_install_defined"`
 	Variations                    map[string]json.RawMessage    `json:"variations"`
 }
 
@@ -205,9 +213,16 @@ func Parse(b []byte) ([]Formula, error) {
 }
 
 // Index finds formulae by name, alias or old name. Real names win over aliases.
+// The API's formulae win over a tap's for a bare name.
 type Index struct {
 	byName map[string]*Formula
 	all    []*Formula
+
+	tapFull  map[string]*tapFormula   // tap/name, tap/alias
+	tapBare  map[string][]*tapFormula // name or alias, in the taps that have it
+	tapOrder []*tapFormula
+	skipped  []string
+	onSkip   func(tap string)
 }
 
 // NewIndex indexes formulae, which it keeps pointers into.
@@ -227,12 +242,25 @@ func NewIndex(formulae []Formula) *Index {
 	return idx
 }
 
-// Formulae returns every formula once, in listing order.
-func (i *Index) Formulae() []*Formula { return i.all }
+// Formulae returns every formula once: the API's in listing order, then the
+// taps' that evaluate.
+func (i *Index) Formulae() []*Formula {
+	if len(i.tapOrder) == 0 && len(i.skipped) == 0 {
+		return i.all
+	}
+	return append(slices.Clip(i.all), i.tapFormulae()...)
+}
 
+// Lookup finds a formula by name, alias, old name or full name, such as
+// fluxcd/tap/flux.
 func (i *Index) Lookup(name string) (*Formula, bool) {
-	f, ok := i.byName[name]
-	return f, ok
+	if parts := strings.Split(name, "/"); len(parts) == 3 {
+		return i.LookupFrom(parts[0]+"/"+parts[1], parts[2])
+	}
+	if f, ok := i.byName[name]; ok {
+		return f, true
+	}
+	return i.lookupTap(name)
 }
 
 // freshFor is how long a validated listing is used without asking the server.
@@ -729,6 +757,15 @@ func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) 
 		}
 	}
 	return out, nil
+}
+
+// TapBottle is the bottle for tag of a tap formula, by full name.
+func (i *Index) TapBottle(fullName, tag string) (BottleFile, error) {
+	raw, ok := i.TapRaw(fullName)
+	if !ok {
+		return BottleFile{}, fmt.Errorf("%s: %w", fullName, fs.ErrNotExist)
+	}
+	return bottleFile(fullName, tag, raw)
 }
 
 func bottleFile(name, tag string, raw json.RawMessage) (BottleFile, error) {

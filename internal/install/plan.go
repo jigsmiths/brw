@@ -46,10 +46,14 @@ type Item struct {
 	// from the formula as brew does. Nil leaves the bottle's list as it is.
 	RuntimeDeps []cellar.Dependency
 	Bottle      api.BottleFile
-	PkgVersion  string // version and revision, which names the keg directory
-	OnRequest   bool   // asked for by name, not only needed by something else
-	KegOnly     bool
-	Warnings    []string
+	// Build installs a tap formula from its download, as it has no bottle for
+	// this host, with BuildDeps installed first.
+	Build      bool
+	BuildDeps  []string
+	PkgVersion string // version and revision, which names the keg directory
+	OnRequest  bool   // asked for by name, not only needed by something else
+	KegOnly    bool
+	Warnings   []string
 
 	// Upgrade holds the kegs of the older versions this one replaces, and Linked
 	// whether to link the new keg, which an upgrade takes from the old one. Both
@@ -99,7 +103,7 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 	for _, name := range names {
 		f, ok := p.Index.Lookup(name)
 		if !ok {
-			return nil, fmt.Errorf("%s: %w", name, deps.ErrNotFound)
+			return nil, fmt.Errorf("%s: %w", name, deps.NotFound(p.Index, name))
 		}
 		if err := w.visit(f, true); err != nil {
 			return nil, err
@@ -150,10 +154,13 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	if err != nil {
 		return err
 	}
+	if p.builds(f) {
+		direct = append(slices.Clone(direct), f.BuildDependencies...)
+	}
 	for _, d := range direct {
 		df, ok := p.Index.Lookup(d)
 		if !ok {
-			return fmt.Errorf("%s: dependency %s: %w", f.Name, d, deps.ErrNotFound)
+			return fmt.Errorf("%s: dependency %s: %w", f.Name, d, deps.NotFound(p.Index, d))
 		}
 		if err := w.visit(df, false); err != nil {
 			return err
@@ -168,7 +175,11 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	if err != nil {
 		return err
 	}
-	w.plan.Items = append(w.plan.Items, Item{Formula: f, HostTag: w.hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)})
+	it := Item{Formula: f, HostTag: w.hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)}
+	if p.builds(f) {
+		it.BuildDeps = f.BuildDependencies
+	}
+	w.plan.Items = append(w.plan.Items, it)
 	return nil
 }
 
@@ -179,7 +190,7 @@ func (p *Planner) attachBottles(plan *Plan, problems *[]error) error {
 	for i := range plan.Items {
 		it := &plan.Items[i]
 		p.check(it, problems)
-		if it.Tag != "" {
+		if it.Tag != "" && !it.Formula.FromTap() {
 			want[it.Formula.Name] = it.Tag
 		}
 	}
@@ -193,6 +204,12 @@ func (p *Planner) attachBottles(plan *Plan, problems *[]error) error {
 			continue
 		}
 		it.Bottle = files[it.Formula.Name]
+		if it.Formula.FromTap() {
+			// a tap formula's bottle is in its own hash, not the API's
+			if it.Bottle, err = p.Index.TapBottle(it.Formula.FullName, it.Tag); err != nil {
+				return err
+			}
+		}
 		if err := p.checkCellar(it); err != nil {
 			*problems = append(*problems, err)
 		}
@@ -345,7 +362,7 @@ func (p *Planner) runtimeDeps(r *deps.Resolver, f *api.Formula) ([]cellar.Depend
 	for _, name := range order {
 		d, ok := p.Index.Lookup(name)
 		if !ok {
-			return nil, fmt.Errorf("%s: dependency %s: %w", f.Name, name, deps.ErrNotFound)
+			return nil, fmt.Errorf("%s: dependency %s: %w", f.Name, name, deps.NotFound(p.Index, name))
 		}
 		dep := cellar.Dependency{
 			FullName: d.FullName, Version: d.Versions.Stable, Revision: d.Revision,
@@ -467,6 +484,13 @@ func (p *Planner) installed(f *api.Formula) (bool, error) {
 	return true, nil
 }
 
+// builds says whether f is installed from its download: a tap formula with
+// no bottle for this host. brw builds on macOS only so far.
+func (p *Planner) builds(f *api.Formula) bool {
+	_, bottled := platform.Select(p.Host, f.BottleTags())
+	return !bottled && f.FromTap() && f.URLs.Stable.URL != "" && p.Host.OS == "darwin"
+}
+
 // check records what stops f being installed, and picks its bottle tag.
 func (p *Planner) check(it *Item, problems *[]error) {
 	f := it.Formula
@@ -483,9 +507,12 @@ func (p *Planner) check(it *Item, problems *[]error) {
 		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.Name, ErrPostInstall, strings.Join(u, ", ")))
 	}
 	tag, ok := platform.Select(p.Host, f.BottleTags())
-	if !ok {
+	switch {
+	case p.builds(f):
+		it.Build = true // as brew does, from the formula's download
+	case !ok:
 		hostTag, _ := platform.Tag(p.Host)
-		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.Name, ErrNoBottle, hostTag))
+		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.FullName, ErrNoBottle, hostTag))
 	}
 	it.Tag = tag
 	for _, name := range f.ConflictsWith {

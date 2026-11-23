@@ -108,7 +108,7 @@ func TestUpToDate(t *testing.T) {
 
 func TestOlderKegIsOutdated(t *testing.T) {
 	got := check(t, index(t, formula{name: "jq", version: "1.9"}), prefix(t, keg{name: "jq", version: "1.8", linked: true}))
-	want := []Result{{Name: "jq", InstalledVersions: []string{"1.8"}, CurrentVersion: "1.9"}}
+	want := []Result{{Name: "jq", FullName: "jq", InstalledVersions: []string{"1.8"}, CurrentVersion: "1.9"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -195,7 +195,7 @@ func TestHeadKegIsNotOutdated(t *testing.T) {
 func TestPinnedFormulaIsListedWithItsPin(t *testing.T) {
 	p := prefix(t, keg{name: "jq", version: "1.7", linked: true, pinned: true})
 	got := check(t, index(t, formula{name: "jq", version: "1.8"}), p)
-	want := []Result{{Name: "jq", InstalledVersions: []string{"1.7"}, CurrentVersion: "1.8", Pinned: true, PinnedVersion: "1.7"}}
+	want := []Result{{Name: "jq", FullName: "jq", InstalledVersions: []string{"1.7"}, CurrentVersion: "1.8", Pinned: true, PinnedVersion: "1.7"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -242,5 +242,22 @@ func TestTapKegWithACoreNamesakeIsSkipped(t *testing.T) {
 	core := prefix(t, keg{name: "opencode", version: "1.19", tap: "homebrew/core", linked: true})
 	if got := check(t, idx, core); len(got) != 1 {
 		t.Errorf("a core install should be checked: %+v", got)
+	}
+}
+
+func TestOtherTapNamesRacksCheckCannotSee(t *testing.T) {
+	idx := index(t, formula{name: "opencode", version: "2.0"}, formula{name: "jq", version: "1.8"}, formula{name: "mixed", version: "1"})
+	p := prefix(t,
+		keg{name: "fort", version: "0.1", tap: "djadmin/tap"},
+		keg{name: "opencode", version: "1.19", tap: "anomalyco/tap"},
+		keg{name: "jq", version: "1.7", tap: "homebrew/core"},
+		keg{name: "gone", version: "1"},
+		keg{name: "mixed", version: "0.9", tap: "other/tap"},
+		keg{name: "mixed", version: "1", tap: "homebrew/core"},
+	)
+	kegs, err := p.Kegs()
+	must(t, err)
+	if got := OtherTap(idx, kegs); !reflect.DeepEqual(got, []string{"fort", "opencode"}) {
+		t.Errorf("got %v", got)
 	}
 }
