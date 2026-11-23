@@ -12,7 +12,6 @@ import (
 
 const zeros = "0000000000000000000000000000000000000000000000000000000000000000"
 
-// toolFormula is a tap formula at version, depending on the API's app.
 func toolFormula(class, version string) string {
 	return "class " + class + " < Formula\n  desc \"A tool from a tap\"\n  homepage \"https://example.com\"\n" +
 		"  url \"https://example.com/tool-" + version + ".tar.gz\"\n  sha256 \"" + zeros + "\"\n\n  depends_on \"app\"\nend\n"
@@ -25,8 +24,6 @@ func writeTapFormula(t *testing.T, repo, name, rb string) {
 	gitIn(t, repo, "commit", "-q", "-m", name)
 }
 
-// tapFormulaStore is a prefix with the API's app formula installed and the
-// tap u/t, from origin, listing tool 1.0.
 func tapFormulaStore(t *testing.T) (e *env, prefix, origin string) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -85,8 +82,7 @@ func TestInfoAndDepsOfATapFormula(t *testing.T) {
 	}
 }
 
-// As brew info does, a bare name means the formula its installed keg came
-// from, which shadows the API's.
+// brew info resolves a bare name to the formula its installed keg came from, shadowing the API's.
 func TestInfoOfABareNameShowsTheInstalledTapsFormula(t *testing.T) {
 	e, prefix, origin := tapFormulaStore(t)
 	writeTapFormula(t, origin, "app", "class App < Formula\n  desc \"The tap's app\"\n  url \"https://example.com/app-2.0.tar.gz\"\nend\n")
@@ -107,7 +103,7 @@ func TestInfoOfABareNameShowsTheInstalledTapsFormula(t *testing.T) {
 	}
 }
 
-// brew reads homebrew/core from the API even when it is tapped, and so does brw.
+// brew reads homebrew/core from the API even when it is tapped.
 func TestATappedHomebrewCoreIsNotReadAsATap(t *testing.T) {
 	e, prefix, _ := tapFormulaStore(t)
 	writeFile(t, filepath.Join(tap.Dir(prefix, "homebrew/core"), "Formula", "o", "onlytap.rb"),
@@ -149,7 +145,7 @@ func TestFormulaeOfAnUntrustedTapAreSkipped(t *testing.T) {
 	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, "Skipping u/t because it is not trusted. Run `brw trust u/t` to trust it.") {
 		t.Errorf("stderr = %q", w)
 	}
-	// a tap cloned from elsewhere than GitHub is trusted by its remote, as brew does
+	// a tap cloned from elsewhere than GitHub is trusted by its remote
 	if out, err := runCmd(t, e, "trust", "-prefix", prefix, "u/t/tool"); err != nil || out != "Trusted formula: "+strings.ToLower(origin)+"/tool\n" {
 		t.Errorf("trust u/t/tool = %q, %v", out, err)
 	}

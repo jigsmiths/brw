@@ -23,8 +23,6 @@ func sum(b []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// server serves body at every path except /redirect, which sends the client
-// to /files/tool, and counts the downloads.
 func server(t *testing.T, body []byte, header http.Header) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32

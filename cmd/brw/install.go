@@ -61,14 +61,12 @@ func installCommand(e *env, args []string) error {
 	return errors.Join(failures...)
 }
 
-// resolved is the names given to a command, as brew reads them: a formula if
-// there is one, else a cask.
 type resolved struct {
 	formulae []string
 	casks    []api.Cask
 	idx      *api.Index
 	client   *api.Client
-	failures []error // names that are neither, already reported
+	failures []error
 }
 
 func (e *env) resolve(ctx context.Context, prefix string, names []string, formulaOnly, caskOnly bool) (resolved, error) {
@@ -159,8 +157,6 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 	return r, nil
 }
 
-// untappedTaps are the taps, sorted, that the dependencies of the named
-// formulae and of theirs name but the prefix has not tapped.
 func untappedTaps(idx *api.Index, prefix string, names []string) []string {
 	seen := map[string]bool{}
 	var missing []string
@@ -188,7 +184,6 @@ func untappedTaps(idx *api.Index, prefix string, names []string) []string {
 	return missing
 }
 
-// ensureTap is the tap called name, cloned first when the prefix lacks it, as brew does.
 func (e *env) ensureTap(ctx context.Context, prefix, name string) (tap.Tap, error) {
 	t := tap.Tap{Name: name, Dir: tap.Dir(prefix, name)}
 	if _, err := os.Stat(t.Dir); err == nil {
@@ -202,10 +197,6 @@ func (e *env) ensureTap(ctx context.Context, prefix, name string) (tap.Tap, erro
 	return t, nil
 }
 
-// trustNamed taps the tap of each full name and trusts what it names, as brew
-// does for names given to install before it loads anything: the tap's formula
-// of that name, else its cask. failed are the names whose tap could not be
-// tapped, already reported.
 func (e *env) trustNamed(ctx context.Context, prefix string, names []string, formulaOnly, caskOnly bool) (failed []string, err error) {
 	var store *trust.Store
 	for _, name := range names {
@@ -244,9 +235,6 @@ func (e *env) trustNamed(ctx context.Context, prefix string, names []string, for
 	return failed, nil
 }
 
-// tapCask finds a cask by full name, tapping its tap first when it is not
-// there, as brew does. Naming it so trusts it, as brew records. It is nil
-// when the tap does not have the cask.
 func (e *env) tapCask(ctx context.Context, prefix, tapName, token string) (*api.Cask, error) {
 	t, err := e.ensureTap(ctx, prefix, tapName)
 	if err != nil {
@@ -329,8 +317,6 @@ func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) er
 	return errors.Join(append(failures, err)...)
 }
 
-// withBuilds lets the installer build a tap formula that has no bottle for
-// this host, as brew does: from its formula file, recording this machine.
 func withBuilds(e *env, prefix string, idx *api.Index, client *api.Client) func(*install.Installer) {
 	return func(in *install.Installer) {
 		tag, _ := platform.Tag(e.host)
@@ -378,8 +364,6 @@ func withBuilds(e *env, prefix string, idx *api.Index, client *api.Client) func(
 	}
 }
 
-// runInstall carries out a plan and reports what went wrong. opts adjust the
-// installer, as an upgrade does.
 func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.Plan, opts ...func(*install.Installer)) error {
 	hostTag, err := platform.Tag(e.host)
 	if err != nil {
@@ -439,13 +423,10 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 	return errors.Join(problems...)
 }
 
-// sbomCreator names brw in the SBOMs of what it installs.
 func sbomCreator() string {
 	return sbomCreatorFor(buildInfo())
 }
 
-// sbomCreatorFor adds the version brw was installed as, or else the start of the
-// commit it was built from, when there is one.
 func sbomCreatorFor(version, revision string) string {
 	const creator = "Tool: https://github.com/jigsmiths/brw"
 	switch {
@@ -457,7 +438,6 @@ func sbomCreatorFor(version, revision string) string {
 	return creator
 }
 
-// printCaveats shows the keg-only notices and the caveats of what was installed.
 func printCaveats(e *env, plan *install.Plan, results []install.Result, prefix string) {
 	installed := map[string]bool{}
 	for _, r := range results {
@@ -486,7 +466,6 @@ func printCaveats(e *env, plan *install.Plan, results []install.Result, prefix s
 	}
 }
 
-// brewCache is where brew keeps its downloads and API data.
 func brewCache() string {
 	if d := os.Getenv("HOMEBREW_CACHE"); d != "" {
 		return d

@@ -20,7 +20,6 @@ import (
 	"github.com/jigsmiths/brw/internal/poststep"
 )
 
-// Reasons a formula cannot be planned for install.
 var (
 	ErrNoBottle        = errors.New("no bottle for this host")
 	ErrDisabled        = errors.New("disabled")
@@ -31,47 +30,39 @@ var (
 	ErrOtherTap        = errors.New("installed from another tap")
 )
 
-// BottleSource finds the file of a bottle for a formula name and tag.
 type BottleSource interface {
 	Bottles(want map[string]string) (map[string]api.BottleFile, error)
 }
 
-// Item is one formula of a plan, with the bottle chosen for this host.
 type Item struct {
 	Formula *api.Formula
 	Tag     string
-	HostTag string // the tag of this host, which can differ from Tag, as for an "all" bottle
-	Arch    string // the CPU of this host as brew names it
-	// RuntimeDeps is what the receipt lists as the runtime dependencies, worked out
-	// from the formula as brew does. Nil leaves the bottle's list as it is.
+	HostTag string // differs from Tag for an "all" bottle
+	Arch    string
+	// RuntimeDeps nil leaves the bottle's own list in the receipt.
 	RuntimeDeps []cellar.Dependency
 	Bottle      api.BottleFile
-	// Build installs a tap formula from its download, as it has no bottle for
-	// this host, with BuildDeps installed first.
-	Build      bool
-	BuildDeps  []string
-	PkgVersion string // version and revision, which names the keg directory
-	OnRequest  bool   // asked for by name, not only needed by something else
-	KegOnly    bool
-	Warnings   []string
+	Build       bool
+	BuildDeps   []string
+	PkgVersion  string
+	OnRequest   bool
+	KegOnly     bool
+	Warnings    []string
 
 	// Link says whether to link the new keg: not keg-only, or for an upgrade what the old keg had.
 	Link bool
 	// Upgrade holds the kegs of the older versions this one replaces, unset for a fresh install.
-	Upgrade []cellar.Keg
-	// Reinstall puts the old keg aside, installs afresh, and deletes the old keg once that worked.
+	Upgrade   []cellar.Keg
 	Reinstall bool
 }
 
-// Plan lists what to install, dependencies first. Locks names every formula to
-// lock while installing: the items and their runtime dependencies.
+// Locks holds the items and their runtime dependencies.
 type Plan struct {
 	Items            []Item
 	Locks            []string
 	AlreadyInstalled []string
 }
 
-// Planner works out an install without changing anything.
 type Planner struct {
 	Index     *api.Index
 	Host      platform.Host
@@ -80,14 +71,12 @@ type Planner struct {
 	Kegs      []cellar.Keg
 	Linked    func(name string) bool
 	Optlinked func(name string) bool
-	Now       time.Time // for deprecation notices; the zero value means now
+	Now       time.Time // zero means now
 
-	upgrading map[string]bool // formulae being upgraded, which count as not installed
+	upgrading map[string]bool // count as not installed
 }
 
-// Plan resolves the names, adds the dependencies that are not installed yet and
-// checks that each formula can be installed from a bottle. Every problem found
-// is reported.
+// Plan reports every problem found, not just the first.
 func (p *Planner) Plan(names []string) (*Plan, error) {
 	r, err := deps.NewResolver(p.Index, p.Host)
 	if err != nil {
@@ -121,7 +110,6 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 	return plan, nil
 }
 
-// planWalk adds formulae to a plan, each after the dependencies it needs.
 type planWalk struct {
 	p        *Planner
 	r        *deps.Resolver
@@ -129,10 +117,9 @@ type planWalk struct {
 	plan     *Plan
 	problems []error
 	visited  map[string]bool // set before the dependencies are walked, so a cycle ends
-	skipped  map[string]bool // installed formulae met on the way
+	skipped  map[string]bool
 }
 
-// visit adds f, unless it is installed, after its dependencies that are not.
 func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	p, r := w.p, w.r
 	if w.visited[f.Name] {
@@ -182,8 +169,6 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	return nil
 }
 
-// attachBottles checks every item, then gives each one that has a bottle tag
-// its bottle, adding what stops an item to problems.
 func (p *Planner) attachBottles(plan *Plan, problems *[]error) error {
 	want := map[string]string{}
 	for i := range plan.Items {
@@ -204,7 +189,6 @@ func (p *Planner) attachBottles(plan *Plan, problems *[]error) error {
 		}
 		it.Bottle = files[it.Formula.Name]
 		if it.Formula.FromTap() {
-			// a tap formula's bottle is in its own hash, not the API's
 			if it.Bottle, err = p.Index.TapBottle(it.Formula.FullName, it.Tag); err != nil {
 				return err
 			}
@@ -242,7 +226,6 @@ func (p *Planner) PlanReinstall(names []string) (*Plan, []error) {
 	return p.planInstalled(names, true)
 }
 
-// planInstalled plans the named formulae as replacements of what is installed.
 func (p *Planner) planInstalled(names []string, reinstall bool) (*Plan, []error) {
 	hostTag, err := platform.Tag(p.Host)
 	if err != nil {
@@ -266,8 +249,7 @@ func (p *Planner) planInstalled(names []string, reinstall bool) (*Plan, []error)
 	return merged, errs
 }
 
-// PlanEach plans each name on its own and merges what worked. A name that cannot
-// be installed is reported and does not stop the others.
+// PlanEach reports a name that cannot be planned without stopping the others.
 func (p *Planner) PlanEach(names []string) (*Plan, []error) {
 	merged := &Plan{}
 	var errs []error
@@ -309,7 +291,6 @@ func (p *Planner) kegOnlyFirst(names []string, tag string) []string {
 	return append(first, rest...)
 }
 
-// markUpgrades fills in what the items being upgraded take from their old kegs.
 func (p *Planner) markUpgrades(plan *Plan, reinstall bool) {
 	for i := range plan.Items {
 		it := &plan.Items[i]
@@ -329,8 +310,7 @@ func (p *Planner) markUpgrades(plan *Plan, reinstall bool) {
 		it.Reinstall = reinstall
 		current := cellar.Prefix(p.Prefix).DefaultKeg(old)
 		it.OnRequest = current.Receipt != nil && current.Receipt.InstalledOnRequest
-		// brew keeps an opt-linked keg linked or unlinked as it was, else links
-		// unless keg-only (upgrade.rb).
+		// upgrade.rb: an opt-linked keg keeps its link state, else link unless keg-only.
 		if p.Optlinked(it.Formula.Name) {
 			it.Link = p.Linked(it.Formula.Name)
 		}
@@ -344,8 +324,6 @@ func (p *Planner) bottles(want map[string]string) (map[string]api.BottleFile, er
 	return p.Bottles.Bottles(want)
 }
 
-// runtimeDeps lists the runtime dependencies of f for its receipt, as brew
-// writes them: in its order, with the versions of the formulae as they are now.
 func (p *Planner) runtimeDeps(r *deps.Resolver, f *api.Formula) ([]cellar.Dependency, error) {
 	order, err := r.Expanded(f.Name)
 	if err != nil {
@@ -366,7 +344,7 @@ func (p *Planner) runtimeDeps(r *deps.Resolver, f *api.Formula) ([]cellar.Depend
 			BottleRebuild: d.Bottle.Stable.Rebuild, PkgVersion: pkgVersion(d),
 			DeclaredDirectly: slices.Contains(direct, d.Name),
 		}
-		if d.CompatibilityVersion > 0 { // brew leaves the key out when unset
+		if d.CompatibilityVersion > 0 {
 			dep.CompatibilityVersion = json.RawMessage(strconv.Itoa(d.CompatibilityVersion))
 		}
 		out = append(out, dep)
@@ -382,9 +360,8 @@ func unversioned(name string) string {
 	return versionSuffix.ReplaceAllString(name, "$1")
 }
 
-// autoLinks says whether brew links f although it is keg-only: a versioned formula
-// that was asked for by name is linked when no version of it and nothing related to
-// it is installed, and the unversioned formula is not keg-only itself.
+// autoLinks: a versioned keg-only formula asked for by name is linked when
+// nothing related is installed and the unversioned formula is not keg-only.
 func (p *Planner) autoLinks(f *api.Formula, requested bool) bool {
 	if !requested || f.KegOnlyReason.Reason != versionedReason {
 		return false
@@ -404,10 +381,9 @@ func (p *Planner) autoLinks(f *api.Formula, requested bool) bool {
 	return true
 }
 
-// related lists the formulae that share links with f, as brew does: the other
-// versions, the -full counterpart and the unversioned formula, and theirs in turn.
+// related: other versions, the -full counterpart and the unversioned formula, transitively.
 func (p *Planner) related(f *api.Formula) []*api.Formula {
-	versions := map[string][]string{} // unversioned name to its versioned formulae
+	versions := map[string][]string{}
 	for _, g := range p.Index.Formulae() {
 		if strings.Contains(g.Name, "@") {
 			base := unversioned(g.Name)
@@ -433,7 +409,7 @@ func (p *Planner) related(f *api.Formula) []*api.Formula {
 		name := queue[0]
 		queue = queue[1:]
 		for _, n := range siblings(name) {
-			g, ok := p.Index.Lookup(n) // an alias leads to the formula it names
+			g, ok := p.Index.Lookup(n)
 			if !ok || seen[g.Name] {
 				continue
 			}
@@ -445,7 +421,6 @@ func (p *Planner) related(f *api.Formula) []*api.Formula {
 	return out
 }
 
-// hostArch is the name brew gives the CPU of the host.
 func hostArch(h platform.Host) string {
 	if h.Arch == "amd64" {
 		return "x86_64"
@@ -481,14 +456,12 @@ func (p *Planner) installed(f *api.Formula) (bool, error) {
 	return true, nil
 }
 
-// builds says whether f is installed from its download: a tap formula with
-// no bottle for this host. brw builds on macOS only so far.
+// builds: a tap formula with no bottle for this host; macOS only so far.
 func (p *Planner) builds(f *api.Formula) bool {
 	_, bottled := platform.Select(p.Host, f.BottleTags())
 	return !bottled && f.FromTap() && f.URLs.Stable.URL != "" && p.Host.OS == "darwin"
 }
 
-// check records what stops f being installed, and picks its bottle tag.
 func (p *Planner) check(it *Item, problems *[]error) {
 	f := it.Formula
 	if f.Disabled {
@@ -506,7 +479,7 @@ func (p *Planner) check(it *Item, problems *[]error) {
 	tag, ok := platform.Select(p.Host, f.BottleTags())
 	switch {
 	case p.builds(f):
-		it.Build = true // as brew does, from the formula's download
+		it.Build = true
 	case !ok:
 		hostTag, _ := platform.Tag(p.Host)
 		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.FullName, ErrNoBottle, hostTag))
@@ -521,7 +494,6 @@ func (p *Planner) check(it *Item, problems *[]error) {
 	}
 }
 
-// checkCellar refuses bottles that need work we cannot do for this prefix.
 func (p *Planner) checkCellar(it *Item) error {
 	name, cellar := it.Formula.Name, it.Bottle.Cellar
 	if p.Host.OS == "linux" {

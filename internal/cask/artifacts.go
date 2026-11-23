@@ -21,7 +21,6 @@ type Where struct {
 	Home   string
 }
 
-// Placeholders fills in the API's placeholders as brew does when it loads a cask.
 func Placeholders(w Where) func(string) string {
 	return strings.NewReplacer(
 		"/$HOME", w.Home,
@@ -31,27 +30,19 @@ func Placeholders(w Where) func(string) string {
 	).Replace
 }
 
-// move is an artifact's source, relative to the staged version or absolute,
-// and its absolute target.
 type move struct {
 	source, target string
 }
 
 type installPlan struct {
-	apps, binaries []move
-	generators     []generator
-	// preflight runs before the artifacts are installed, postflight after.
+	apps, binaries        []move
+	generators            []generator
 	preflight, postflight []json.RawMessage
-	// uninstall is the receipt's uninstall_artifacts: the artifacts brew undoes
-	// on uninstall, as the API has them with the placeholders filled in.
-	uninstall []map[string]json.RawMessage
+	uninstall             []map[string]json.RawMessage
 }
 
-// uninstallDirectives are the uninstall steps brw can carry out.
 var uninstallDirectives = []string{"quit", "launchctl", "delete", "trash", "rmdir"}
 
-// plan reads the cask's artifacts. It refuses a cask that needs anything brw
-// cannot install or uninstall yet, so that one is never half done.
 func plan(c api.Cask, w Where) (installPlan, error) {
 	var p installPlan
 	unsupported := func(what string) (installPlan, error) {
@@ -69,8 +60,6 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 		if err := json.Unmarshal(raw, &obj); err != nil {
 			return installPlan{}, fmt.Errorf("%s: artifact %s: %w", c.Token, raw, err)
 		}
-		// "target" next to the kind is where the API says the artifact goes, for
-		// display; the kind's own arguments say the same.
 		delete(obj, "target")
 		if len(obj) != 1 {
 			return installPlan{}, fmt.Errorf("%s: artifact %s has %d kinds", c.Token, raw, len(obj))
@@ -124,8 +113,6 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 	return p, nil
 }
 
-// jsonFiller fills in placeholders inside JSON string values, keeping the
-// order of keys, which brew's receipt keeps from the API.
 func jsonFiller(fill func(string) string) func(json.RawMessage) json.RawMessage {
 	return func(raw json.RawMessage) json.RawMessage {
 		out, err := fillTokens(raw, fill)
@@ -142,7 +129,7 @@ func fillTokens(raw []byte, fill func(string) string) ([]byte, error) {
 	var b bytes.Buffer
 	type frame struct {
 		object bool
-		n      int // values so far; in an object, keys and values both count
+		n      int
 	}
 	var stack []frame
 	for {
@@ -189,7 +176,6 @@ func fillTokens(raw []byte, fill func(string) string) ([]byte, error) {
 	}
 }
 
-// jsonString encodes s without escaping <, > and &, as Ruby's JSON does.
 func jsonString(s string) []byte {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
@@ -198,8 +184,6 @@ func jsonString(s string) []byte {
 	return bytes.TrimSuffix(b.Bytes(), []byte("\n"))
 }
 
-// readMove reads an app's or binary's arguments: the source, then options,
-// of which brw uses target.
 func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 	var list []json.RawMessage
 	if err := json.Unmarshal(args, &list); err != nil || len(list) == 0 {
@@ -233,7 +217,6 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 	return m, nil
 }
 
-// unknownDirectives names the first uninstall directive brw cannot carry out.
 func unknownDirectives(args json.RawMessage) string {
 	var list []map[string]json.RawMessage
 	if err := json.Unmarshal(args, &list); err != nil {
@@ -254,7 +237,6 @@ func unknownDirectives(args json.RawMessage) string {
 	return ""
 }
 
-// checkRequirements fails, with brew's message, when the cask cannot run here.
 func checkRequirements(c api.Cask, host platform.Host) error {
 	fail := func(msg string) error { return fmt.Errorf("%s: %s", c.Token, msg) }
 	if host.OS != "darwin" {
@@ -313,13 +295,11 @@ func checkRequirements(c api.Cask, host platform.Host) error {
 	return nil
 }
 
-// versionMajor reads "12" or "10.15"; any 10.x is older than every supported macOS.
 func versionMajor(v string) (int, error) {
 	first, _, _ := strings.Cut(v, ".")
 	return strconv.Atoi(first)
 }
 
-// prettyName is brew's name for a macOS version, such as "Big Sur".
 func prettyName(major int) string {
 	name, ok := platform.ReleaseName(major)
 	if !ok {

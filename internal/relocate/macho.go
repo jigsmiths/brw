@@ -33,8 +33,7 @@ func (l Locations) relocatedName(name string) (string, bool) {
 	return "", false
 }
 
-// MachO rewrites the id, libraries and rpaths of the listed files and returns
-// the ones it changed, which must be signed again (Codesign).
+// The files MachO returns changed and must be signed again (Codesign).
 func MachO(root *fsx.Root, keg string, files []string, loc Locations) ([]string, error) {
 	var modified []string
 	for _, rel := range files {
@@ -171,7 +170,6 @@ func hardLinks(root *fsx.Root, keg, file string, fi fs.FileInfo) ([]string, erro
 	return names, err
 }
 
-// relink makes the names that were links of a file links of it again.
 func relink(root *fsx.Root, links map[string][]string) error {
 	for file, names := range links {
 		fi, err := root.Lstat(file)

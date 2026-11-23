@@ -24,7 +24,6 @@ func (k Keg) rack() string   { return "Cellar/" + k.Name }
 func (k Keg) opt() string    { return "opt/" + k.Name }
 func (k Keg) record() string { return "var/homebrew/linked/" + k.Name }
 
-// Linker links and unlinks kegs in the prefix at Root.
 type Linker struct {
 	Root   *fsx.Root
 	Prefix string // absolute path of Root, to read absolute symlinks into it
@@ -32,22 +31,17 @@ type Linker struct {
 	n int // symlinks made or removed by the call in progress
 }
 
-// isRecord says whether p is an opt or linked record. brew leaves those out of
-// the symlink counts it prints.
+// brew's symlink counts leave out opt and linked records.
 func isRecord(p string) bool {
 	return strings.HasPrefix(p, "opt/") || strings.HasPrefix(p, "var/homebrew/linked/")
 }
 
-// LinkCount is Link, and says how many symlinks it created, not counting the
-// opt and linked records.
 func (l *Linker) LinkCount(k Keg) (int, error) {
 	l.n = 0
 	err := l.Link(k)
 	return l.n, err
 }
 
-// UnlinkCount is Unlink, and says how many symlinks it removed, not counting
-// the linked record.
 func (l *Linker) UnlinkCount(k Keg) (int, error) {
 	l.n = 0
 	err := l.Unlink(k)
@@ -151,7 +145,6 @@ func (l *Linker) rmdirIfPossible(dir string) {
 	}
 }
 
-// Linked reports whether the keg is the one the linked record names.
 func (l *Linker) Linked(k Keg) bool {
 	if !l.isSymlink(k.record()) {
 		return false
@@ -369,8 +362,7 @@ func (l *Linker) Unlink(k Keg) error {
 	return nil
 }
 
-// Forget tidies up after a keg is deleted, as brew does: an empty rack, the opt record if it led
-// to this keg (even with other versions left), and versioned alias records that now lead nowhere.
+// Forget removes the opt record if it led to this keg, even with other versions left.
 func (l *Linker) Forget(k Keg) error {
 	l.rmdirIfPossible(k.rack())
 	if l.isSymlink(k.opt()) && l.resolved(k.opt()) == k.path() {
@@ -428,7 +420,6 @@ func (e *ConflictError) Error() string {
 	return fmt.Sprintf("could not link %s: %s already exists", e.Src, e.Dst)
 }
 
-// Error is any other failure to make a link.
 type Error struct {
 	Dst, Src string
 	Err      error

@@ -11,11 +11,7 @@ import (
 	"testing"
 )
 
-// This test compares brew update and brew upgrade with brw's. It needs the
-// checkout described in conformance_install_test.go and BRW_CONFORMANCE_UPGRADE=1.
-//
-// Every keg is renamed to 0.0.1 so the formulae count as outdated, and the
-// upgrades must leave the same prefix behind.
+// Needs the oracle checkout of conformance_install_test.go and BRW_CONFORMANCE_UPGRADE=1.
 
 // jq needs oniguruma, sqlite is keg-only and needs readline, just is pinned and
 // c-ares is unlinked.
@@ -36,8 +32,7 @@ func TestConformanceUpgrade(t *testing.T) {
 	for _, p := range []string{theirs, mine} {
 		sh(t, "", nil, "git", "clone", "-q", oracle, p)
 	}
-	// The shared cache may hold a listing older than the one brw fetches. A
-	// throwaway copy refreshes it, so both tools see the same versions.
+	// A stale shared listing would make the tools see different versions.
 	refresh := filepath.Join(work, "refresh")
 	sh(t, "", nil, "git", "clone", "-q", oracle, refresh)
 	sh(t, "", []string{"HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_CACHE=" + cache}, filepath.Join(refresh, "bin", "brew"), "update")
@@ -65,7 +60,6 @@ func TestConformanceUpgrade(t *testing.T) {
 	}
 	compare(t, "after aging", theirs, mine)
 
-	// Both see the same formulae as outdated.
 	outdated := func(out string) []string {
 		lines := strings.Fields(out)
 		slices.Sort(lines)
@@ -82,9 +76,7 @@ func TestConformanceUpgrade(t *testing.T) {
 	brewIn(theirs, "upgrade")
 	brwIn("upgrade")
 
-	// Older brew update links brew's own completions, man pages and docs, which brw
-	// update has no reason to do. brew's first run in the brw prefix also fetches
-	// its Ruby, so that happens before the doctor output is compared.
+	// Older brew update links brew's own completions, man pages and docs; brew's first run also fetches its Ruby.
 	for _, l := range []string{"etc/bash_completion.d/brew", "share/doc/homebrew", "share/fish/vendor_completions.d/brew.fish",
 		"share/man/man1/README.md", "share/man/man1/brew.1", "share/zsh/site-functions/_brew"} {
 		if err := os.Remove(filepath.Join(theirs, l)); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -134,8 +126,6 @@ func cellarRacks(t *testing.T, prefix string) []string {
 	return names
 }
 
-// age renames the kegs of the formulae to 0.0.1 and repoints every symlink
-// that went into them.
 func age(t *testing.T, prefix string, names []string) {
 	t.Helper()
 	old := map[string]string{} // name to the version that was installed

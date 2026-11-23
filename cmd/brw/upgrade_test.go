@@ -12,8 +12,6 @@ import (
 	"github.com/jigsmiths/brw/internal/install/installtest"
 )
 
-// makeOutdated turns the installed 1.0 of a formula into a 0.9, which the
-// listing says is out of date, keeping it linked if it was.
 func makeOutdated(t *testing.T, e *env, prefix, name string) {
 	t.Helper()
 	wasLinked := exists(t, prefix, "var/homebrew/linked/"+name)
@@ -43,7 +41,6 @@ func makeOutdated(t *testing.T, e *env, prefix, name string) {
 	e.err.(*bytes.Buffer).Reset()
 }
 
-// tapKeg adds an opt-linked keg whose receipt says it came from tap.
 func tapKeg(t *testing.T, prefix, name, version, tap string) {
 	t.Helper()
 	writeFile(t, filepath.Join(prefix, "Cellar", name, version, "INSTALL_RECEIPT.json"), `{"source":{"tap":"`+tap+`"}}`)
@@ -52,8 +49,6 @@ func tapKeg(t *testing.T, prefix, name, version, tap string) {
 	}
 }
 
-// otherTapStore has fort, which only a tap has, and a vault from a tap that
-// shares its name with the listing's vault.
 func otherTapStore(t *testing.T) (*env, string) {
 	t.Helper()
 	e, prefix := linkStore(t)
@@ -207,12 +202,12 @@ func TestUpgradeKeepsAKegOnlyFormulaKegOnly(t *testing.T) {
 }
 
 func TestUpgradeKeepsWhatTheReceiptSaidAboutRequests(t *testing.T) {
-	e, prefix := installed(t) // app on request, libx a dependency
+	e, prefix := installed(t)
 	makeOutdated(t, e, prefix, "libx")
 	if _, err := runCmd(t, e, "upgrade", "-prefix", prefix); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(filepath.Join(prefix, "Cellar/libx/2.0/INSTALL_RECEIPT.json")) // libx is at 2.0 in this store
+	b, err := os.ReadFile(filepath.Join(prefix, "Cellar/libx/2.0/INSTALL_RECEIPT.json"))
 	if err != nil || strings.Contains(string(b), `"installed_on_request": true`) {
 		t.Errorf("a dependency must stay a dependency: %v", err)
 	}
@@ -253,7 +248,6 @@ func TestUpgradeOneFailureDoesNotStopTheOthers(t *testing.T) {
 	}
 	makeOutdated(t, e, prefix, "good")
 	makeOutdated(t, e, prefix, "bad")
-	// The listing now says bad needs a step brw cannot run.
 	for _, f := range s.formulae {
 		if f["name"] == "bad" {
 			f["post_install_steps"] = []any{map[string]any{"type": "configure_gcc_runtime"}}
@@ -313,7 +307,6 @@ func TestUpgradeKeepsGoingWhenOneFailsWhilePouring(t *testing.T) {
 	e, prefix := linkStore(t)
 	makeOutdated(t, e, prefix, "app")
 	makeOutdated(t, e, prefix, "versioned")
-	// The place of the new keg of app is taken, so pouring it fails.
 	if err := os.MkdirAll(filepath.Join(prefix, "Cellar/app/1.0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -387,8 +380,6 @@ func TestUpgradeWarnsAboutDeprecatedFormulae(t *testing.T) {
 	}
 }
 
-// makeCaskOutdated turns the installed 1.0 of an app cask into a 0.9, which
-// the listing says is out of date.
 func makeCaskOutdated(t *testing.T, prefix, token string) {
 	t.Helper()
 	dir := filepath.Join(prefix, "Caskroom", token)

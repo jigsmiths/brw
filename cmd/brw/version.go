@@ -6,11 +6,9 @@ import (
 	"runtime/debug"
 )
 
-// stampedVersion is set by releases: -ldflags "-X main.stampedVersion=1.2.3".
+// Set by releases: -ldflags "-X main.stampedVersion=1.2.3".
 var stampedVersion string
 
-// buildInfo returns the version brw was built as, empty for a local build, and
-// the commit it was built from when known.
 func buildInfo() (v, revision string) {
 	module := ""
 	if info, ok := debug.ReadBuildInfo(); ok {
@@ -24,7 +22,6 @@ func buildInfo() (v, revision string) {
 	return buildVersion(stampedVersion, module), revision
 }
 
-// buildVersion prefers the stamped version, then the module version of go install.
 func buildVersion(stamped, module string) string {
 	if stamped != "" {
 		return stamped

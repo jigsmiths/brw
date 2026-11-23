@@ -17,7 +17,6 @@ import (
 	"testing"
 )
 
-// entry is a file for a test archive; a name ending in / is a directory.
 type entry struct {
 	name, body string
 	mode       os.FileMode
@@ -80,7 +79,6 @@ func writeFile(t *testing.T, path string, b []byte, mode os.FileMode) string {
 	return path
 }
 
-// download puts b in a cache folder under the name Fetch would give it.
 func download(t *testing.T, name string, b []byte) string {
 	t.Helper()
 	return writeFile(t, filepath.Join(t.TempDir(), sum([]byte(name))+"--"+name), b, 0o644)
@@ -98,7 +96,6 @@ func extract(t *testing.T, file string) string {
 	return dest
 }
 
-// tree lists the paths under dir, directories with a trailing /.
 func tree(t *testing.T, dir string) []string {
 	t.Helper()
 	var got []string
@@ -234,7 +231,7 @@ func TestExtractDmg(t *testing.T) {
 	if err := os.Symlink("/Applications", filepath.Join(src, "Applications")); err != nil {
 		t.Fatal(err)
 	}
-	// UDBZ images start like a bzip2 file, as slack's and shottr's do.
+	// UDBZ images start like a bzip2 file.
 	for _, format := range []string{"UDZO", "UDBZ"} {
 		file := filepath.Join(t.TempDir(), "Slack.dmg")
 		if out, err := exec.Command("hdiutil", "create", "-quiet", "-srcfolder", src, "-volname", "Slack", "-format", format, file).CombinedOutput(); err != nil {

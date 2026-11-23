@@ -9,8 +9,7 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-// stableRequirements are the requirements brew loads from the API for the
-// stable spec; it skips the kinds it cannot read from there.
+// stableRequirements keeps the kinds brew can read from the API.
 func stableRequirements(f *api.Formula) []api.Requirement {
 	var out []api.Requirement
 	for _, r := range f.Requirements {
@@ -42,7 +41,7 @@ func requirementText(r api.Requirement) string {
 			cmp = "<="
 		}
 		return "macOS " + cmp + " " + r.Version
-	default: // xcode
+	default:
 		if r.Version == "" {
 			return "Xcode (on macOS)"
 		}
@@ -50,7 +49,6 @@ func requirementText(r api.Requirement) string {
 	}
 }
 
-// requirements renders brew's Requirements section, or "".
 func requirements(f *api.Formula) string {
 	var build, required []string
 	for _, r := range stableRequirements(f) {
@@ -73,7 +71,6 @@ func requirements(f *api.Formula) string {
 	return "==> Requirements\n" + b.String()
 }
 
-// incompatible says whether h fails a requirement f needs beyond building.
 func incompatible(f *api.Formula, h platform.Host) bool {
 	mac := h.OS == "darwin"
 	major, _ := platform.MacMajor(h.MacVersion)

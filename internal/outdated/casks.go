@@ -13,7 +13,6 @@ import (
 	"github.com/jigsmiths/brw/internal/version"
 )
 
-// CaskOptions are brew outdated's switches for casks.
 type CaskOptions struct {
 	Greedy            bool     // --greedy
 	GreedyLatest      bool     // --greedy-latest
@@ -21,8 +20,7 @@ type CaskOptions struct {
 	GreedyTokens      []string // HOMEBREW_UPGRADE_GREEDY_CASKS: greedy for these casks only
 	NoAutoUpdates     bool     // HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS
 
-	Tag string // the platform tag, for the cask's variations
-	// AppDir is where an installed cask's apps went (caskroom.AppDir).
+	Tag    string
 	AppDir func(token string) string
 	// Bundle reads the CFBundleShortVersionString and CFBundleVersion of an app,
 	// "" for each it lacks. ok is false when the app has no readable Info.plist.
@@ -30,7 +28,6 @@ type CaskOptions struct {
 	Home   string // for app targets under ~
 }
 
-// CheckCasks checks each cask against the tap it was installed from, skipping casks that tap does not list.
 // A "latest" cask is never reported: brew downloads it to tell, and brw does not.
 func CheckCasks(idx *api.CaskIndex, prefix string, installed []caskroom.Cask, o CaskOptions) ([]Result, error) {
 	var out []Result

@@ -9,8 +9,6 @@ import (
 	"github.com/jigsmiths/brw/internal/poststep"
 )
 
-// readSteps reads the steps of a preflight_steps or postflight_steps artifact,
-// whose arguments are blocks of steps.
 func readSteps(args json.RawMessage) ([]json.RawMessage, error) {
 	var blocks []struct {
 		Steps []json.RawMessage `json:"steps"`
@@ -40,8 +38,6 @@ func (in *Installer) stepContext(token, version, staged string) poststep.Context
 	}
 }
 
-// runSteps runs a cask's steps. Brew runs them in a sandbox; brw runs them as
-// it runs a formula's post_install steps, with writes kept to the prefix.
 func (in *Installer) runSteps(kind, token, version, staged string, steps []json.RawMessage) error {
 	if len(steps) == 0 {
 		return nil

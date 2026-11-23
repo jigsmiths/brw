@@ -7,9 +7,8 @@ import (
 	"path"
 )
 
-// restoreEtcVar copies the keg's .bottle/etc and .bottle/var into the prefix, as
-// brew's Formula#install_etc_var does. A file that differs from one already in
-// the prefix is kept, and the bottled one lands beside it as <name>.default.
+// restoreEtcVar is Formula#install_etc_var: a differing existing file is kept and
+// the bottled one lands beside it as <name>.default.
 func (in *Installer) restoreEtcVar(keg string) error {
 	for _, top := range []string{"etc", "var"} {
 		if err := in.restoreTree(path.Join(keg, ".bottle", top), top); err != nil {

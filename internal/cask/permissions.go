@@ -12,8 +12,6 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// sudoIfNeeded is brew's sudo: nil: the command as the user, then, if that
-// fails, with sudo.
 func (in *Installer) sudoIfNeeded(ctx context.Context, name string, args ...string) error {
 	if _, err := in.exec(ctx, name, args...); err == nil {
 		return nil
@@ -22,10 +20,6 @@ func (in *Installer) sudoIfNeeded(ctx context.Context, name string, args ...stri
 	return err
 }
 
-// removePath is brew's gain_permissions_remove for a path under r: removed
-// through r when its folder is writable, else with rm and sudo if needed. A
-// failure clears flags and ACLs and makes it writable, then, if someone else
-// owns it, takes ownership with sudo, retrying after each.
 func (in *Installer) removePath(ctx context.Context, r *fsx.Root, rel string) error {
 	fi, err := r.Lstat(rel)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -77,8 +71,6 @@ func (in *Installer) removePath(ctx context.Context, r *fsx.Root, rel string) er
 	return err
 }
 
-// mkdirPath is brew's gain_permissions_mkpath: through r when the nearest
-// existing folder is writable, else mkdir -p with sudo if needed.
 func (in *Installer) mkdirPath(ctx context.Context, r *fsx.Root, rel string) error {
 	abs, err := r.Abs(rel)
 	if err != nil {
@@ -104,8 +96,6 @@ func (in *Installer) mkdirPath(ctx context.Context, r *fsx.Root, rel string) err
 	return in.sudoIfNeeded(ctx, "/bin/mkdir", "-p", "--", abs)
 }
 
-// ownedByOther says whether sudo chown could help: whether the path, or with
-// recursive anything under it, belongs to someone else. Tests replace it.
 var ownedByOther = ownedByAnother
 
 func ownedByAnother(path string, recursive bool) bool {

@@ -12,17 +12,9 @@ import (
 	"testing"
 )
 
-// This test installs real old versions of casks with brew into two fresh
-// copies of a brew checkout, then upgrades one with brew and the other with
-// brw and compares them. Afterwards neither tool may find anything left to
-// upgrade. It needs the checkout described in conformance_cask_test.go and
-// BRW_CONFORMANCE_CASK_UPGRADE=1.
+// Needs the oracle checkout of conformance_cask_test.go and BRW_CONFORMANCE_CASK_UPGRADE=1.
 
-// oldCasks are cask files from homebrew-cask's history, older than today's
-// listing: an app that updates itself and quits on upgrade, from a zip; a
-// binary; and an app with a binary it generates completions from, as zed
-// does. claude and zed are left out: their upgrade quits the copies the user
-// has open.
+// claude and zed are left out: their upgrade quits the copies the user has open.
 var oldCasks = []struct{ token, path, commit, version string }{
 	{"itsycal", "Casks/i/itsycal.rb", "24d2b0f0ce07c095284e9d4e4e8bae2c403e8f13", "0.28.0"},
 	{"claude-code", "Casks/c/claude-code.rb", "4beccf4bcd0f327fd2675e6751725c42ddb2cf58", "2.1.311"},
@@ -31,7 +23,6 @@ var oldCasks = []struct{ token, path, commit, version string }{
 
 var completionDirs = []string{"etc/bash_completion.d", "share/zsh/site-functions", "share/fish/vendor_completions.d", "share/pwsh/completions"}
 
-// compareCompletions reports completion files whose contents differ.
 func compareCompletions(t *testing.T, step, theirs, mine string) {
 	t.Helper()
 	for _, dir := range completionDirs {
@@ -76,8 +67,7 @@ func TestConformanceCaskUpgrade(t *testing.T) {
 	}
 	brewIn(theirs, "update", "--quiet")
 	brewIn(mine, "update", "--quiet")
-	// brew's sandbox can't create a completion folder while upgrading, and a
-	// prefix in use has them, so both start with them.
+	// brew's sandbox can't create a completion folder, so both prefixes start with them.
 	for _, p := range []string{theirs, mine} {
 		for _, d := range completionDirs {
 			if err := os.MkdirAll(filepath.Join(p, d), 0o755); err != nil {
@@ -86,9 +76,7 @@ func TestConformanceCaskUpgrade(t *testing.T) {
 		}
 	}
 
-	// brew installs a cask file only from a tap, so the old files go into a
-	// homebrew/cask tap of their own, which is removed once they are in. The
-	// casks then count as installed from homebrew/cask, as they would be.
+	// brew installs a cask file only from a tap, so the old files go into a temporary homebrew/cask tap.
 	files := map[string][]byte{}
 	tokens := make([]string, len(oldCasks))
 	for i, c := range oldCasks {
@@ -139,7 +127,6 @@ func TestConformanceCaskUpgrade(t *testing.T) {
 	compareTrees("old install")
 	compareCompletions(t, "old install", theirs, mine)
 
-	// Both see the same casks as outdated, and every old one is.
 	quiet := func(out string) []string {
 		lines := strings.Fields(out)
 		slices.Sort(lines)
@@ -187,7 +174,6 @@ func TestConformanceCaskUpgrade(t *testing.T) {
 		}
 	}
 
-	// Nothing is left to upgrade, as either tool sees brw's prefix.
 	if got := brwIn("outdated", "--cask", "--greedy"); got != "" {
 		t.Errorf("brw outdated after brw upgrade:\n%s", got)
 	}
@@ -202,7 +188,6 @@ func TestConformanceCaskUpgrade(t *testing.T) {
 	}
 }
 
-// fetchOldCask downloads a cask file as it was at a homebrew-cask commit.
 func fetchOldCask(t *testing.T, commit, path string) []byte {
 	t.Helper()
 	resp, err := http.Get("https://raw.githubusercontent.com/Homebrew/homebrew-cask/" + commit + "/" + path)

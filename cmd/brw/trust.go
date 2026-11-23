@@ -9,19 +9,14 @@ import (
 	"github.com/jigsmiths/brw/internal/trust"
 )
 
-// trustListing are the store's kinds as brew trust lists them.
 var trustListing = []struct{ key, label string }{
 	{"trustedtaps", "taps"}, {"trustedformulae", "formulae"}, {"trustedcasks", "casks"}, {"trustedcommands", "commands"},
 }
 
-// trustCommand trusts taps and casks in brew's trust store, as brew trust
-// does, or lists what is trusted.
 func trustCommand(e *env, args []string) error {
 	return trustOrUntrust(e, "trust", args)
 }
 
-// untrustCommand removes taps and casks from brew's trust store. Untrusting a
-// tap also removes its casks, as brew untrust does.
 func untrustCommand(e *env, args []string) error {
 	return trustOrUntrust(e, "untrust", args)
 }
@@ -93,9 +88,7 @@ func trustOrUntrust(e *env, cmd string, args []string) error {
 	return err
 }
 
-// trustTarget is how the store names a tap (user/repo), a formula or a cask
-// (user/repo/name): by the tap's remote when it was tapped from elsewhere
-// than GitHub. Without --formula or --cask, a name is whichever the tap has.
+// The store names a tap user/repo and a formula or cask user/repo/name, by the tap's remote when not from GitHub.
 func trustTarget(prefix, name string, asTap, asFormula, asCask bool) (trust.Kind, string, error) {
 	slashes := strings.Count(name, "/")
 	switch {

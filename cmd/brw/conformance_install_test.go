@@ -16,12 +16,8 @@ import (
 	"time"
 )
 
-// This test installs the same formulae with brew and with brw into two fresh
-// copies of a brew checkout and compares the results. It needs a checkout at
-// $BRW_ORACLE (default ~/.brw-oracle/hb) and BRW_CONFORMANCE_INSTALL=1. Brew
-// refuses prefixes under /private/tmp, so the copies live next to the checkout.
+// Needs $BRW_ORACLE (default ~/.brw-oracle/hb) and BRW_CONFORMANCE_INSTALL=1; brew refuses prefixes under /private/tmp.
 
-// Formulae with :any bottles, so brew can pour them into a long prefix.
 var installSet = []string{"jq", "minio", "cayley", "janet", "daemontools", "sbtenv", "docbook", "rustup"}
 
 func TestConformanceInstall(t *testing.T) {
@@ -69,7 +65,6 @@ func TestConformanceInstall(t *testing.T) {
 		t.Error("none of the installed kegs had an SBOM to compare")
 	}
 
-	// brew accepts what brw installed.
 	want := sh(t, "", brwEnv, bin, "list", "-prefix", mine)
 	if got := brewIn(mine, "list", "--formula"); got != want {
 		t.Errorf("brew list differs from brw list on brw's prefix\nbrew:\n%s\nbrw:\n%s", got, want)
@@ -111,8 +106,6 @@ func sh(t *testing.T, dir string, env []string, name string, args ...string) str
 	return string(out)
 }
 
-// snapshot lists the prefix like `find`, leaving out the checkout, the Cellar
-// and brew's locks and scratch space, its sandbox's included.
 func snapshot(t *testing.T, prefix string) string {
 	t.Helper()
 	var lines []string
@@ -145,7 +138,6 @@ func snapshot(t *testing.T, prefix string) string {
 	return strings.Join(lines, "\n")
 }
 
-// lineDiff returns the lines in only one of a and b, ignoring brew's own var/log.
 func lineDiff(a, b string) []string {
 	as, bs := strings.Split(a, "\n"), strings.Split(b, "\n")
 	var out []string
@@ -162,7 +154,6 @@ func lineDiff(a, b string) []string {
 	return out
 }
 
-// receipt returns the receipt's fields without the install time, sorted.
 func receipt(t *testing.T, prefix, name string) []string {
 	t.Helper()
 	matches, _ := filepath.Glob(filepath.Join(prefix, "Cellar", name, "*", "INSTALL_RECEIPT.json"))
@@ -188,9 +179,6 @@ func receipt(t *testing.T, prefix, name string) []string {
 	return out
 }
 
-// kegDiff compares a keg's files in the two prefixes, with prefix paths made
-// equal. Mach-O files are skipped since signatures differ, other binaries are
-// compared by size, and the SBOM ignores its time and tool (sbomTime checks the time).
 func kegDiff(t *testing.T, theirs, mine, name string) []string {
 	t.Helper()
 	list := func(prefix string) map[string]string {
@@ -269,9 +257,7 @@ func isMachO(data []byte) bool {
 	return false
 }
 
-// workDir makes a scratch directory next to the oracle checkout and removes it
-// when the test ends. A run that was interrupted leaves its directory behind,
-// so those older than an hour are swept first.
+// Directories left by an interrupted run and older than an hour are swept first.
 func workDir(t *testing.T, parent string) string {
 	t.Helper()
 	old, _ := filepath.Glob(filepath.Join(parent, "run-*"))
@@ -293,8 +279,6 @@ var (
 	sbomWho  = regexp.MustCompile(`"Tool: [^"]*"`)
 )
 
-// sbomTime checks that the SBOMs of a formula's kegs say they were made when the
-// receipt says the keg was installed, and returns how many it looked at.
 func sbomTime(t *testing.T, prefix, name string) int {
 	t.Helper()
 	checked := 0

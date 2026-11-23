@@ -6,7 +6,6 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 )
 
-// DeprecationReasons are brew's words for the reasons it gives as symbols.
 var DeprecationReasons = map[string]string{
 	"discontinued":             "is discontinued upstream",
 	"moved_to_mas":             "is now exclusively distributed on the Mac App Store",
@@ -17,9 +16,6 @@ var DeprecationReasons = map[string]string{
 	"unreachable":              "is no longer reliably reachable upstream",
 }
 
-// deprecation is brew's DeprecateDisable.message for a cask, or "" when it is
-// neither deprecated nor disabled. Unlike brew info, it gives the estimated
-// disable date even when that has passed.
 func deprecation(c api.Cask, now time.Time) string {
 	var kind, reason, formula, cask string
 	switch {

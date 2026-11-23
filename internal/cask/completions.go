@@ -14,22 +14,17 @@ import (
 
 var sandboxExec = "/usr/bin/sandbox-exec"
 
-// secretName matches the variables brew keeps from what it sandboxes.
 var secretName = regexp.MustCompile(`(?i)(cookie|key|token|password|passphrase|auth)`)
 
-// generator is a generate_completions_from_executable artifact: a command
-// that prints a shell's completion script.
 type generator struct {
-	commands []string // the executable, absolute or in the staged version, then its arguments
-	baseName string   // of the completion files; "" for the executable's name
-	format   string   // brew's shell_parameter_format; "" for none given
+	commands []string
+	baseName string
+	format   string
 	shells   []string
 }
 
 var completionShells = []string{"bash", "zsh", "fish", "pwsh"}
 
-// readGenerator reads the artifact's arguments: the command, then an object
-// of options.
 func readGenerator(args json.RawMessage) (generator, error) {
 	var list []json.RawMessage
 	if err := json.Unmarshal(args, &list); err != nil {
@@ -75,7 +70,6 @@ func readGenerator(args json.RawMessage) (generator, error) {
 	return g, nil
 }
 
-// name is brew's resolved_base_name.
 func (g generator) name(token string) string {
 	if g.baseName != "" {
 		return g.baseName
@@ -86,8 +80,6 @@ func (g generator) name(token string) string {
 	return token
 }
 
-// completionPath is where brew writes a shell's completions for name,
-// relative to the prefix.
 func completionPath(shell, name string) string {
 	bare := strings.TrimSuffix(name, filepath.Ext(name))
 	switch shell {
@@ -103,7 +95,7 @@ func completionPath(shell, name string) string {
 			name = bare + ".fish"
 		}
 		return filepath.Join("share/fish/vendor_completions.d", name)
-	default: // pwsh
+	default:
 		if !strings.HasPrefix(name, "_") || !strings.HasSuffix(name, ".ps1") {
 			name = "_" + bare + ".ps1"
 		}
@@ -111,8 +103,6 @@ func completionPath(shell, name string) string {
 	}
 }
 
-// shellParameter is what brew adds to the command, and to its environment,
-// to ask for a shell's completions in the given format.
 func shellParameter(format, shell, executable string) (args, env []string) {
 	param := shell
 	if shell == "pwsh" {
@@ -141,9 +131,6 @@ func shellParameter(format, shell, executable string) (args, env []string) {
 	}
 }
 
-// generateCompletions runs the generator for each shell in a sandbox and
-// writes what it prints, as brew does. A shell whose generator fails is
-// skipped with brew's warning.
 func (in *Installer) generateCompletions(ctx context.Context, token, staged string, g generator, undo *[]func() error) error {
 	exe := g.commands[0]
 	if !filepath.IsAbs(exe) {
@@ -178,7 +165,6 @@ func (in *Installer) generateCompletions(ctx context.Context, token, staged stri
 	return nil
 }
 
-// removeCompletions is brew's uninstall of the generated files.
 func (in *Installer) removeCompletions(token string, g generator) {
 	for _, shell := range g.shells {
 		if err := removeIfThere(in.Root, completionPath(shell, g.name(token))); err != nil {
@@ -187,8 +173,6 @@ func (in *Installer) removeCompletions(token string, g generator) {
 	}
 }
 
-// sandboxed runs argv as brew does: a temporary home and working folder, no
-// secret-looking variables, and unsandboxed with one warning when sandbox-exec is missing.
 func (in *Installer) sandboxed(ctx context.Context, argv []string) ([]byte, error) {
 	tmp, err := os.MkdirTemp("", "brw-sandbox") //fsx:allow scratch space outside the prefix
 	if err != nil {
@@ -214,7 +198,6 @@ func (in *Installer) sandboxed(ctx context.Context, argv []string) ([]byte, erro
 	return in.exec(ctx, sandboxExec, append([]string{"-p", profile}, argv...)...)
 }
 
-// personalPaths, under home, are what brew's sandbox hides from what it runs.
 var personalPaths = []string{
 	".ssh", ".gitconfig", ".git-credentials", ".config/gh", ".netrc",
 	".aws", ".azure", ".boto", ".docker", ".config/fish", ".config/gcloud", ".config/huggingface",
@@ -232,8 +215,6 @@ var personalPaths = []string{
 	"Library/CloudStorage", "Dropbox", "Google Drive", "OneDrive",
 }
 
-// sandboxProfile mirrors brew's cask sandbox, but allows writes only to temporary
-// folders since brw writes the output itself. A personal path holding a needed one stays readable.
 func sandboxProfile(home string, needed []string) string {
 	var b strings.Builder
 	b.WriteString("(version 1)\n(allow default)\n(deny network*)\n(deny file-write*)\n")
@@ -262,8 +243,6 @@ func sandboxProfile(home string, needed []string) string {
 	return b.String()
 }
 
-// resolvedPath resolves links in the part of path that exists, so a path not
-// made yet compares with resolved ones.
 func resolvedPath(path string) string {
 	rest := ""
 	for p := path; ; p = filepath.Dir(p) {

@@ -19,7 +19,6 @@ type Dep struct {
 	BottleURL, BottleSHA256 string
 }
 
-// BuildParams describe a formula brw built from its download.
 type BuildParams struct {
 	Name, FullName, Version string
 	URL, SHA256             string

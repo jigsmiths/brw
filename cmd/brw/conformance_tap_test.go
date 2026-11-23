@@ -15,12 +15,8 @@ import (
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// This test installs an old brw from a copy of jigsmiths/tap with brew and
-// with brw, releases a newer one to the copy, and upgrades each prefix with
-// its own tool after updating the taps. It needs the checkout described in
-// conformance_cask_test.go and BRW_CONFORMANCE_TAP=1.
+// Needs the oracle checkout of conformance_cask_test.go and BRW_CONFORMANCE_TAP=1.
 
-// brwReleases are brw's cask file at two of jigsmiths/homebrew-tap's commits.
 var brwReleases = []struct{ commit, version string }{
 	{"b96f532e37a8e0ebf45cecdadc6339194adecc4e", "0.18.0"},
 	{"11cc5665db54dccf2d6e9c220bc5e10627b068e9", "0.19.0"},
@@ -42,7 +38,6 @@ func TestConformanceTapCask(t *testing.T) {
 	for _, p := range []string{theirs, mine} {
 		sh(t, "", nil, "git", "clone", "-q", oracle, p)
 	}
-	// Each tool keeps its trust store in a scratch config folder, not the user's.
 	theirConfig, myConfig := filepath.Join(work, "config-brew"), filepath.Join(work, "config-brw")
 	common := []string{"HOMEBREW_NO_AUTO_UPDATE=1", "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_CACHE=" + cache,
 		"HOMEBREW_NO_REQUIRE_TAP_TRUST="}
@@ -59,8 +54,7 @@ func TestConformanceTapCask(t *testing.T) {
 	brewIn(theirs, "update", "--quiet")
 	brewIn(mine, "update", "--quiet")
 
-	// origin stands in for github.com/jigsmiths/homebrew-tap. Each release
-	// commits the cask file; brew's prefix is tapped from origin and follows it.
+	// origin stands in for github.com/jigsmiths/homebrew-tap.
 	origin := filepath.Join(work, "origin")
 	theirTap := tap.Dir(theirs, "jigsmiths/tap")
 	commit := func(msg string) {
@@ -82,13 +76,11 @@ func TestConformanceTapCask(t *testing.T) {
 	sh(t, "", nil, "git", "init", "-q", "-b", "main", origin)
 	release(brwReleases[0].commit, brwReleases[0].version)
 
-	// brw finds the tap there, cloned as it would clone it.
 	if _, err := tap.Clone(t.Context(), mine, "jigsmiths/tap", origin); err != nil {
 		t.Fatal(err)
 	}
 	brewIn(theirs, "install", "--cask", "--appdir", theirApps, "jigsmiths/tap/brw")
 	brwIn("install", "--cask", "--appdir", myApps, "jigsmiths/tap/brw")
-	// Naming the cask trusted it, and both stores say so the same way.
 	a, errA := os.ReadFile(filepath.Join(theirConfig, "homebrew", "trust.json"))
 	b, errB := os.ReadFile(filepath.Join(myConfig, "homebrew", "trust.json"))
 	if errA != nil || errB != nil || string(a) != string(b) {
@@ -114,7 +106,6 @@ func TestConformanceTapCask(t *testing.T) {
 				t.Errorf("%s: brw %s:\nbrew: %v\nbrw:  %v", step, name, a[name], b[name])
 			}
 		}
-		// The taps are at the same commit, so the receipts name the same one.
 		if ha, hb := tapGitHead(t, filepath.Join(theirs, meta)), tapGitHead(t, filepath.Join(mine, meta)); ha == "" || ha != hb {
 			t.Errorf("%s: tap_git_head: brew %q, brw %q", step, ha, hb)
 		}
@@ -193,7 +184,6 @@ func writeTapFile(t *testing.T, repo, path string, b []byte) {
 	}
 }
 
-// fetchTapFile downloads a file as it was at a jigsmiths/homebrew-tap commit.
 func fetchTapFile(t *testing.T, commit, path string) []byte {
 	t.Helper()
 	resp, err := http.Get("https://raw.githubusercontent.com/jigsmiths/homebrew-tap/" + commit + "/" + path)

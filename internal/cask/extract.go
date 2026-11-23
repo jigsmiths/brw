@@ -21,16 +21,14 @@ import (
 type format int
 
 const (
-	plainFile  format = iota // copied as it is
-	zipFile                  // zip archive
-	tarFile                  // tar, compressed or not
-	dmgFile                  // macOS disk image
-	compressed               // a single compressed file, such as foo.xz
+	plainFile format = iota
+	zipFile
+	tarFile
+	dmgFile
+	compressed
 )
 
-// Extract stages a download into the empty folder dest as brew does: archives are
-// unpacked (twice if they hold a single archive), anything else is copied, and
-// the download's quarantine carries over.
+// Extract stages a download into dest: archives unpack (twice if they hold one archive), anything else is copied.
 func Extract(ctx context.Context, file, dest string) error {
 	if err := extractNested(ctx, file, dest); err != nil {
 		return err
@@ -49,7 +47,6 @@ func extractNested(ctx context.Context, file, dest string) (err error) {
 	case compressed:
 		return fmt.Errorf("%s: a compressed file that is not a tar: %w", filepath.Base(file), ErrUnsupported)
 	}
-	// Next to dest, so that moving out of it is a rename.
 	tmp, err := os.MkdirTemp(filepath.Dir(dest), ".brw-unpack-*") //fsx:allow the caller's staging folder
 	if err != nil {
 		return err
@@ -62,7 +59,6 @@ func extractNested(ctx context.Context, file, dest string) (err error) {
 	if err := unpack(ctx, kind, file, tmp); err != nil {
 		return err
 	}
-	// Directories that came out read-only would stop the moves and the clean-up.
 	if err := run(ctx, "find", tmp, "-type", "d", "!", "-perm", "-u+w", "-exec", "chmod", "u+w", "{}", "+"); err != nil {
 		return err
 	}
@@ -96,8 +92,6 @@ func unpack(ctx context.Context, kind format, file, dir string) error {
 	return fmt.Errorf("unpack %s: unknown format %d", file, kind)
 }
 
-// detect tells the format by the file's first bytes, as brew does, since many
-// casks are downloaded from URLs without an extension.
 func detect(ctx context.Context, file string) (format, error) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -119,8 +113,7 @@ func detect(ctx context.Context, file string) (format, error) {
 	case hasPrefix(head, "PK\x03\x04", "PK\x05\x06"):
 		return zipFile, nil
 	}
-	// A disk image ends in a 512-byte trailer that starts with "koly". A
-	// bzip2-compressed image also starts like a bzip2 file.
+	// A bzip2-compressed image also starts like a bzip2 file, so the "koly" trailer is checked first.
 	if fi, err := f.Stat(); err == nil && fi.Size() >= 512 {
 		trailer := make([]byte, 4)
 		if _, err := f.ReadAt(trailer, fi.Size()-512); err == nil && string(trailer) == "koly" {
@@ -133,8 +126,6 @@ func detect(ctx context.Context, file string) (format, error) {
 	return plainFile, nil
 }
 
-// listsAsTar needs output too, as brew does: GNU tar lists a compressed file
-// that is not a tar as empty, without failing.
 func listsAsTar(ctx context.Context, file string) bool {
 	out, err := exec.CommandContext(ctx, "tar", "--list", "--file", file).Output()
 	return err == nil && len(bytes.TrimSpace(out)) > 0
@@ -149,8 +140,6 @@ func hasPrefix(b []byte, magics ...string) bool {
 	return false
 }
 
-// unpackZip uses ditto when the zip carries AppleDouble files, which ditto
-// turns back into extended attributes, and unzip otherwise.
 func unpackZip(ctx context.Context, file, dir string) error {
 	if hasAppleDouble(file) {
 		if _, err := exec.LookPath("ditto"); err == nil {
@@ -179,7 +168,6 @@ func hasAppleDouble(file string) bool {
 	return false
 }
 
-// dmgSkipped are the volume's own files, which brew leaves out.
 var dmgSkipped = map[string]bool{
 	".background": true, ".com.apple.timemachine.donotpresent": true, ".com.apple.timemachine.supported": true,
 	".DocumentRevisions-V100": true, ".DS_Store": true, ".fseventsd": true, ".MobileBackups": true,
@@ -187,8 +175,6 @@ var dmgSkipped = map[string]bool{
 	".HFS+ Private Directory Data\r": true, ".HFS+ Private Data\r": true,
 }
 
-// systemDirs are where a disk image's shortcuts point, like the Applications
-// link next to an app, which brew leaves out.
 var systemDirs = map[string]bool{
 	"/Applications": true, "/Applications/Utilities": true, "/Library": true, "/System": true,
 	"/Users": true, "/Volumes": true, "/bin": true, "/etc": true, "/opt": true, "/private": true,
@@ -237,9 +223,7 @@ func unpackDmg(ctx context.Context, file, dir string) (err error) {
 	return run(ctx, "chmod", "-R", "u+w", dir)
 }
 
-// attachDiskutil attaches the image at mnt/mount as brew does and returns the
-// plist. It fails on an image with a licence agreement, which it cancels with
-// nothing to read, leaving hdiutil to refuse it.
+// attachDiskutil fails on an image with a licence agreement, which it cancels with nothing to read.
 func attachDiskutil(ctx context.Context, file, mnt string) ([]byte, error) {
 	mount := filepath.Join(mnt, "mount")
 	if err := os.Mkdir(mount, 0o755); err != nil { //fsx:allow mount point outside the prefix
@@ -259,7 +243,7 @@ func attachDiskutil(ctx context.Context, file, mnt string) ([]byte, error) {
 
 func attachHdiutil(ctx context.Context, file, mnt string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "hdiutil", "attach", "-plist", "-nobrowse", "-readonly", "-mountrandom", mnt, file)
-	cmd.Stdin = strings.NewReader("qn\n") // declines a licence agreement
+	cmd.Stdin = strings.NewReader("qn\n")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -272,8 +256,6 @@ func attachHdiutil(ctx context.Context, file, mnt string) ([]byte, error) {
 	return out, nil
 }
 
-// ejectDiskutil is brew's eject: the APFS stores behind the volume, or the
-// volume itself, then a forced unmount on the last try.
 func ejectDiskutil(mount string) error {
 	var err error
 	for try := range 3 {
@@ -293,9 +275,7 @@ func ejectDiskutil(mount string) error {
 	return err
 }
 
-// mounted is whether a volume is mounted at path: its device differs from
-// its parent's. The folder stays after its volume goes, which can happen
-// before brw ejects it when another attach of the same image shares the disk.
+// mounted is whether a volume is mounted at path: its device differs from its parent's.
 func mounted(path string) bool {
 	fi, err := os.Stat(path)
 	parent, perr := os.Stat(filepath.Dir(path))
@@ -353,8 +333,6 @@ func copyVolume(ctx context.Context, volume, dir string) error {
 	return nil
 }
 
-// detach tries a few times, as brew does, since a volume can be busy for a
-// moment after a copy, and forces it at the end.
 func detach(mount string) error {
 	var err error
 	for try := range 3 {
@@ -377,7 +355,6 @@ func detach(mount string) error {
 
 func mountPoints(plist []byte) []string { return plistStrings(plist, "mount-point") }
 
-// plistStrings reads the strings under key, wherever it is in the plist.
 func plistStrings(plist []byte, key string) []string {
 	var mounts []string
 	d := xml.NewDecoder(bytes.NewReader(plist))
@@ -407,8 +384,7 @@ func plistStrings(plist []byte, key string) []string {
 	}
 }
 
-// diskutilImages is whether to attach disk images with diskutil, as brew does
-// from macOS 27.2, where hdiutil attach is deprecated and fails now and then.
+// diskutilImages is true from macOS 27.2, where hdiutil attach is deprecated and fails now and then.
 var diskutilImages = sync.OnceValue(func() bool {
 	out, err := exec.Command("sw_vers", "-productVersion").Output()
 	return err == nil && macAtLeast(strings.TrimSpace(string(out)), 27, 2)

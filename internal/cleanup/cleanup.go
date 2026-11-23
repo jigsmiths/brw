@@ -19,19 +19,17 @@ import (
 	"github.com/jigsmiths/brw/internal/version"
 )
 
-// Formula is the current version of a formula, from the listing.
 type Formula struct {
 	PkgVersion string // the version and revision, such as "1.2_1"
 	Scheme     int
 	Rebuild    int // of the bottle
 }
 
-// Cleaner removes old kegs, stale downloads and leftovers from a prefix.
 type Cleaner struct {
 	Root   *fsx.Root
 	Prefix string // absolute path of Root
 	Linker *link.Linker
-	Kegs   []cellar.Keg // every installed keg
+	Kegs   []cellar.Keg
 
 	// Current says what version of a formula is current. It may be nil when
 	// there is no formula listing.
@@ -55,7 +53,7 @@ type Cleaner struct {
 	seen  map[string]bool
 }
 
-// Freed is the disk space released, or that would be in a dry run.
+// Freed counts what a dry run would release too.
 func (c *Cleaner) Freed() int64 { return c.freed }
 
 func (c *Cleaner) printf(w io.Writer, format string, args ...any) {
@@ -78,8 +76,6 @@ func (c *Cleaner) racks() map[string][]cellar.Keg {
 	return out
 }
 
-// cleanPath says what is being removed and how much it frees, and removes it
-// unless this is a dry run.
 func (c *Cleaner) cleanPath(abs string, remove func() error) error {
 	if c.seen == nil {
 		c.seen = map[string]bool{}
@@ -102,8 +98,6 @@ func (c *Cleaner) cleanPath(abs string, remove func() error) error {
 	return remove()
 }
 
-// OldKegs removes the kegs of formulae that are older than the current version,
-// for the named formulae or, with none named, for all.
 func (c *Cleaner) OldKegs(names []string) error {
 	racks := c.racks()
 	var todo []string
@@ -195,8 +189,7 @@ func (c *Cleaner) cleanFormula(name string, kegs []cellar.Keg) (err error) {
 	return errors.Join(failed...)
 }
 
-// oldOnes picks the kegs that are older than the current version: from an older
-// version scheme, or from the same scheme and an older version.
+// A keg is old when its version scheme is older, or the scheme is the same and the version older.
 func oldOnes(kegs []cellar.Keg, current Formula) []cellar.Keg {
 	want, err := version.ParsePkg(current.PkgVersion)
 	if err != nil {
@@ -219,7 +212,6 @@ func oldOnes(kegs []cellar.Keg, current Formula) []cellar.Keg {
 	return old
 }
 
-// keepmeRefs lists the paths in a keg's .keepme file that exist.
 func keepmeRefs(keg string) []string {
 	b, err := os.ReadFile(filepath.Join(keg, ".keepme"))
 	if err != nil {

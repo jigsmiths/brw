@@ -20,8 +20,6 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-// testInstall is an installer over a temporary prefix and applications folder
-// that downloads from a test server serving body.
 type testInstall struct {
 	in             *Installer
 	prefix, appDir string

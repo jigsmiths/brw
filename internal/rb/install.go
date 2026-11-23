@@ -15,7 +15,6 @@ import (
 	"time"
 )
 
-// Host does what an install body asks of the machine. Paths are absolute.
 type Host interface {
 	Lstat(path string) (fs.FileInfo, error)
 	ReadDir(path string) ([]fs.DirEntry, error)
@@ -28,41 +27,29 @@ type Host interface {
 	RemoveAll(path string) error
 	Chmod(path string, perm fs.FileMode) error
 	Glob(pattern string) ([]string, error)
-	// Run runs argv in dir with env added to the environment and returns its output.
 	Run(dir string, env map[string]string, argv []string) ([]byte, error)
 }
 
-// InstallEnv is where an install body runs: the prefix it installs into and
-// the staged download it starts in.
 type InstallEnv struct {
 	Host      Host
 	Prefix    string
 	Buildpath string
-	Env       map[string]string // set by the body with ENV["X"] = v; nil starts empty
-	Tap       string            // the formula's, which std_go_args(ldflags: :goreleaser) names
-	// Resources are the downloaded resources by name, which Unpack extracts
-	// into a directory under Scratch when the install method stages one.
+	Env       map[string]string
+	Tap       string
 	Resources map[string]string
 	Unpack    func(archive, dir string) error
 	Scratch   string
-	Out       io.Writer // where ohai, opoo and puts write; nil drops them
-	// TarCommit is the commit in the download's tarball header, which
-	// std_go_args(ldflags: :goreleaser) names when the spec has no revision.
+	Out       io.Writer
+	// TarCommit is the commit in the tarball header, which std_go_args(ldflags: :goreleaser) uses when the spec has no revision.
 	TarCommit string
 }
 
-// buildFailure is an install body failing as brew's would, such as a command
-// that exits non-zero, as opposed to Ruby brw cannot run.
 type buildFailure struct{ err error }
 
 func failBuild(f string, a ...any) { panic(buildFailure{fmt.Errorf(f, a...)}) }
 
-// Install runs the formula's install method, as brew does once the download
-// is staged: in buildpath, with prefix the keg it fills.
 func (f *Formula) Install(env *InstallEnv) error { return f.run("install", env) }
 
-// PostInstall runs the formula's post_install method after its keg is linked,
-// with Buildpath as its working directory.
 func (f *Formula) PostInstall(env *InstallEnv) error { return f.run("post_install", env) }
 
 func (f *Formula) run(method string, env *InstallEnv) (err error) {
@@ -80,8 +67,6 @@ func (f *Formula) run(method string, env *InstallEnv) (err error) {
 	return nil
 }
 
-// builder is the formula instance while install runs: FileUtils, system and
-// the Pathname methods work on real files.
 type builder struct {
 	f   *formulaB
 	env *InstallEnv
@@ -133,7 +118,6 @@ func (b *builder) glob(pattern string) *arr {
 	return out
 }
 
-// globStar is Ruby's ** : any number of directories.
 func (b *builder) globStar(pattern string) []string {
 	before, after, _ := strings.Cut(b.abs(pattern), "**")
 	after = strings.TrimPrefix(after, "/")
@@ -154,7 +138,6 @@ func (b *builder) globStar(pattern string) []string {
 	return out
 }
 
-// installP is Pathname#install_p: move src into dir as name.
 func (b *builder) installP(dir, src, name string) {
 	from := b.abs(src)
 	if _, err := b.env.Host.Lstat(from); err != nil {
@@ -164,7 +147,6 @@ func (b *builder) installP(dir, src, name string) {
 	b.must(b.env.Host.Rename(from, filepath.Join(dir, name)))
 }
 
-// installSymlinkP is Pathname#install_symlink_p: a relative symlink in dir.
 func (b *builder) installSymlinkP(dir, src, name string) {
 	b.must(b.env.Host.MkdirAll(dir))
 	target := src
@@ -178,8 +160,6 @@ func (b *builder) installSymlinkP(dir, src, name string) {
 	b.must(b.env.Host.Symlink(target, link))
 }
 
-// eachSource calls fn with each file and its new name, as Pathname#install
-// takes strings, arrays and renaming hashes.
 func eachSource(args []value, fn func(src, name string)) {
 	for _, a := range args {
 		switch x := a.(type) {
@@ -205,7 +185,6 @@ func (b *builder) write(p, content string, perm fs.FileMode) {
 	b.must(b.env.Host.WriteFile(path, []byte(content), perm))
 }
 
-// pathMethod is a Pathname method on a path while install runs.
 func (b *builder) pathMethod(in *interp, p string, name string, args []value, blk *proc) (value, bool) {
 	arg := func(i int) value {
 		if i < len(args) {
@@ -305,7 +284,6 @@ func (b *builder) absFrom(dir, p string) string {
 	return filepath.Join(dir, p)
 }
 
-// writeEnvScript is Pathname#write_env_script.
 func (b *builder) writeEnvScript(p string, args []value) {
 	if len(args) < 2 {
 		fail("write_env_script")
@@ -341,7 +319,6 @@ func (b *builder) writeEnvScript(p string, args []value) {
 	b.must(b.env.Host.Chmod(b.abs(p), 0o555))
 }
 
-// run runs a command, failing the install when it fails, as brew's system does.
 func (b *builder) run(env map[string]string, args []value) []byte {
 	var argv []string
 	for _, a := range args {
@@ -369,8 +346,6 @@ func (b *builder) run(env map[string]string, args []value) []byte {
 	return out
 }
 
-// shellParameter is Utils::ShellCompletion.completion_shell_parameter: what
-// to add to the command, and the environment, for a shell's completions.
 func shellParameter(format value, shell, executable string, env map[string]string) []string {
 	param := shell
 	if shell == "pwsh" {
@@ -401,7 +376,6 @@ func shellParameter(format value, shell, executable string, env map[string]strin
 	return []string{str(format) + shell}
 }
 
-// completions is Formula#generate_completions_from_executable.
 func (b *builder) completions(in *interp, args []value, kw *hash) {
 	if len(args) == 0 {
 		fail("generate_completions_from_executable without a command")
@@ -453,7 +427,6 @@ func (b *builder) completions(in *interp, args []value, kw *hash) {
 	}
 }
 
-// fileUtils are the FileUtils methods a formula calls without a receiver.
 var fileUtils = map[string]bool{
 	"cp": true, "cp_r": true, "mv": true, "rm": true, "rm_f": true, "rm_r": true, "rm_rf": true, "rmtree": true,
 	"mkdir": true, "mkdir_p": true, "ln_s": true, "ln_sf": true, "touch": true, "chmod": true, "rmdir": true,
@@ -532,7 +505,6 @@ func (b *builder) fileUtil(name string, args []value) {
 	}
 }
 
-// copy copies a file, or a directory as cp -r does.
 func (b *builder) copy(src, dst string) {
 	h := b.env.Host
 	fi, err := h.Lstat(src)
@@ -610,7 +582,6 @@ func (b *builder) call(in *interp, s *scope, c *callN, args []value, kw *hash) (
 	return nil, true
 }
 
-// inreplace is Utils::Inreplace.inreplace with before and after.
 func (b *builder) inreplace(args []value, kw *hash) {
 	if len(args) != 3 {
 		fail("inreplace with %d arguments", len(args))
@@ -623,7 +594,6 @@ func (b *builder) inreplace(args []value, kw *hash) {
 	b.eachInreplace(args[:1], func(buf *buffer) { buf.edit(edit, args[1], args[2], audit) })
 }
 
-// classMethod is File, Dir, FileUtils and Utils working on real files.
 func (b *builder) classMethod(in *interp, x special, name string, args []value, blk *proc) (value, bool) {
 	arg := func(i int) string {
 		if i >= len(args) {
@@ -691,8 +661,6 @@ func (b *builder) classMethod(in *interp, x special, name string, args []value, 
 	return nil, false
 }
 
-// buildOptions is Formula#build, brew's BuildOptions for an install given no
-// options, which is the only kind brw does.
 type buildOptions struct{ f *formulaB }
 
 func (buildOptions) rubyValue() {}
@@ -730,8 +698,6 @@ func (o buildOptions) method(name string, args []value) value {
 	return nil
 }
 
-// time is Formula#time: the build's SOURCE_DATE_EPOCH, which brew sets to
-// the source's newest file, else now.
 func (b *builder) time() time.Time {
 	if n, err := strconv.ParseInt(b.env.Env["SOURCE_DATE_EPOCH"], 10, 64); err == nil {
 		return time.Unix(n, 0).UTC()
@@ -747,7 +713,6 @@ func (b *builder) prefixPath(m string) string {
 
 func list(vs ...string) *arr { return strs(vs) }
 
-// joined is Array(v).join(sep), as the std_*_args join their options.
 func joined(v value, sep string) string {
 	if a, ok := v.(*arr); ok {
 		var parts []string
@@ -759,7 +724,6 @@ func joined(v value, sep string) string {
 	return str(v)
 }
 
-// stdArgs are Formula#std_configure_args and its kin, as brew defines them.
 func (b *builder) stdArgs(name string, kw *hash) value {
 	or := func(k, def string) string {
 		if v := kwGet(kw, k); v != nil {
@@ -779,7 +743,6 @@ func (b *builder) stdArgs(name string, kw *hash) value {
 	case "std_cmake_args":
 		args := []string{"-DCMAKE_INSTALL_PREFIX=" + or("install_prefix", prefix), "-DCMAKE_INSTALL_LIBDIR=" + or("install_libdir", "lib"),
 			"-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_FIND_FRAMEWORK=" + or("find_framework", "LAST"), "-DCMAKE_VERBOSE_MAKEFILE=ON"}
-		// brew's own FetchContent trap, which a prefix without brew's library lacks
 		trap := filepath.Join(b.env.Prefix, "Library", "Homebrew", "cmake", "trap_fetchcontent_provider.cmake")
 		if _, err := b.env.Host.Lstat(trap); err == nil {
 			args = append(args, "-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="+trap)
@@ -829,7 +792,6 @@ func (b *builder) stdArgs(name string, kw *hash) value {
 
 var ccFlagVars = []string{"CFLAGS", "CXXFLAGS", "OBJCFLAGS", "OBJCXXFLAGS"}
 
-// envMethod is one of the ENV methods of brew's SharedEnvExtension and Stdenv.
 func (b *builder) envMethod(in *interp, name string, args []value, blk *proc) (value, bool) {
 	env := b.env.Env
 	arg := func(i int) string {
@@ -838,7 +800,7 @@ func (b *builder) envMethod(in *interp, name string, args []value, blk *proc) (v
 		}
 		return str(args[i])
 	}
-	keys := func() []string { // Array(keys)
+	keys := func() []string {
 		if a, ok := args[0].(*arr); ok {
 			var out []string
 			for _, v := range a.v {
@@ -860,7 +822,7 @@ func (b *builder) envMethod(in *interp, name string, args []value, blk *proc) (v
 			}
 		}
 	}
-	path := func(key string, front bool, p string) { // PATH#append and #prepend
+	path := func(key string, front bool, p string) {
 		var parts []string
 		if front {
 			parts = append(strings.Split(p, ":"), strings.Split(env[key], ":")...)
@@ -942,8 +904,6 @@ func (b *builder) envMethod(in *interp, name string, args []value, blk *proc) (v
 	return nil, true
 }
 
-// makeJobCount is Homebrew::EnvConfig.make_jobs: HOMEBREW_MAKE_JOBS, else
-// the number of CPUs.
 func makeJobCount() int {
 	if s, ok := lookupEnv("HOMEBREW_MAKE_JOBS"); ok {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
@@ -953,8 +913,6 @@ func makeJobCount() int {
 	return runtime.NumCPU()
 }
 
-// buffer is brew's StringInreplaceExtension: the file's text, which gsub!
-// and its kin change in place, and the edits that found nothing.
 type buffer struct {
 	s      string
 	errors []string
@@ -969,7 +927,6 @@ func inspect(v value) string {
 	return strconv.Quote(str(v))
 }
 
-// replace is String#sub! or gsub!, reporting whether the pattern matched.
 func (x *buffer) replace(before, after value, all bool) bool {
 	if re, ok := before.(*regex); ok {
 		r := compile(re)
@@ -1002,19 +959,17 @@ func (x *buffer) edit(name string, before, after value, audit bool) value {
 		if audit {
 			x.errors = append(x.errors, "expected replacement of "+inspect(before)+" with "+inspect(after))
 		}
-		return nil // Ruby's bang methods return nil when nothing matched
+		return nil
 	}
 	return x
 }
 
-// makeVar matches a make variable's assignment, as brew's helpers do.
 func makeVar(flag, tail string) *regex {
 	return &regex{src: `^` + regexp.QuoteMeta(flag) + `[ \t]*[\\?+:!]?=` + tail}
 }
 
 const makeValue = `[ \t]*((?:.*\\\n)*.*)$`
 
-// bufferMethod is a method on inreplace's string.
 func bufferMethod(x *buffer, name string, args []value) value {
 	audit := true
 	if n := len(args); n > 0 {
@@ -1060,14 +1015,10 @@ func bufferMethod(x *buffer, name string, args []value) value {
 	return strMethod(x.s, name, args)
 }
 
-// inreplaceBlock is Utils::Inreplace.inreplace with a block, which edits each
-// file's text.
 func (b *builder) inreplaceBlock(in *interp, s *scope, args []value, blk *blockN) {
 	b.eachInreplace(args, func(buf *buffer) { in.callBlock(&proc{b: blk, env: s}, buf) })
 }
 
-// eachInreplace edits each file, writes it back, and fails the build with
-// the edits that found nothing, as Utils::Inreplace does.
 func (b *builder) eachInreplace(args []value, edit func(*buffer)) {
 	var paths []string
 	for _, a := range args {
@@ -1097,7 +1048,6 @@ func (b *builder) eachInreplace(args []value, edit func(*buffer)) {
 	}
 }
 
-// set is ENV["X"] = v.
 func (b *builder) set(in *interp, target node, v value, s *scope) bool {
 	ix, ok := target.(*indexN)
 	if !ok || len(ix.args) != 1 {

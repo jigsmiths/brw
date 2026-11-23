@@ -18,14 +18,10 @@ import (
 const (
 	quarantineAttr = "com.apple.quarantine"
 	xattrTool      = "/usr/bin/xattr"
-	// noTranslocation is the flag brew adds to what a download holds, so macOS
-	// runs the app where it is instead of from a random read-only copy.
+	// noTranslocation makes macOS run the app in place instead of from a read-only copy.
 	noTranslocation = 0x0100
 )
 
-// quarantine marks a download as one from the web, in the form brew's
-// downloads carry: flags, time in hex, an empty agent and a UUID. A file
-// already marked keeps its value. It does nothing where xattr is missing.
 func quarantine(ctx context.Context, path string) error {
 	if _, err := os.Stat(xattrTool); err != nil {
 		return nil
@@ -48,8 +44,6 @@ func readQuarantine(ctx context.Context, path string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// propagated is a download's quarantine value as brew puts it on what the
-// download holds, or "" if the value cannot be read.
 func propagated(value string) string {
 	flags, rest, ok := strings.Cut(value, ";")
 	n, err := strconv.ParseUint(flags, 16, 16)
@@ -59,8 +53,6 @@ func propagated(value string) string {
 	return fmt.Sprintf("%04x;%s", n|noTranslocation, rest)
 }
 
-// propagateQuarantine marks everything under dir, but not dir itself, with the
-// download's quarantine, making each writable first as brew does.
 func propagateQuarantine(ctx context.Context, download, dir string) error {
 	if _, err := os.Stat(xattrTool); err != nil {
 		return nil
@@ -107,21 +99,17 @@ const (
 	requirementFailed = 3
 )
 
-// approval is what brew notes about an app before an upgrade replaces it.
 type approval struct {
-	approved      bool   // the user allowed it to open
-	unquarantined bool   // no quarantine, so it opens without asking
-	identity      string // its designated requirement; "" when unverified
+	approved      bool
+	unquarantined bool
+	identity      string
 }
 
-// quarantineAvailable is brew's Quarantine.available?.
 func (in *Installer) quarantineAvailable() bool {
 	_, err := os.Stat(xattrTool)
 	return in.Host.OS == "darwin" && err == nil
 }
 
-// approvals notes each app's approval and signer, or nothing where brew
-// cannot tell.
 func (in *Installer) approvals(ctx context.Context, apps []string) []approval {
 	if !in.quarantineAvailable() {
 		return nil
@@ -140,8 +128,6 @@ func (in *Installer) approvals(ctx context.Context, apps []string) []approval {
 	return out
 }
 
-// signingIdentity is the app's designated requirement, once the app is found
-// to meet it, as brew's signing_identity.
 func (in *Installer) signingIdentity(ctx context.Context, app string) string {
 	out, err := in.exec(ctx, codesignTool, "-d", "-r-", app)
 	if err != nil {
@@ -162,9 +148,6 @@ func (in *Installer) signingIdentity(ctx context.Context, app string) string {
 	return req
 }
 
-// identityMatch checks the app's signature against a requirement with brew's
-// checks: every architecture, nested code, strictly. ok is false when the
-// signature cannot be checked at all.
 func (in *Installer) identityMatch(ctx context.Context, app, req string) (match, ok bool) {
 	_, err := in.exec(ctx, codesignTool, "--verify", "--deep", "--strict", "--all-architectures", "-R", "="+req, app)
 	if err == nil {
@@ -177,9 +160,6 @@ func (in *Installer) identityMatch(ctx context.Context, app, req string) (match,
 	return false, false
 }
 
-// releaseQuarantine carries the user's approval of the old apps over to the
-// new ones when brew would, and otherwise warns as brew does that macOS may
-// ask again.
 func (in *Installer) releaseQuarantine(ctx context.Context, token string, before []approval, apps []move) {
 	if len(before) == 0 || len(before) != len(apps) {
 		return
@@ -211,9 +191,6 @@ func (in *Installer) releaseQuarantine(ctx context.Context, token string, before
 	}
 }
 
-// inheritApproval marks a quarantined app, and everything in it that is not a
-// symlink, as approved by the user, keeping the rest of its quarantine so
-// Gatekeeper still checks it.
 func inheritApproval(ctx context.Context, app string) error {
 	value := readQuarantine(ctx, app)
 	if value == "" {

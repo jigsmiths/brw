@@ -11,7 +11,6 @@ import (
 	"github.com/jigsmiths/brw/internal/install/installtest"
 )
 
-// installed returns an env and prefix with libx and app (which needs libx) installed.
 func installed(t *testing.T) (*env, string) {
 	t.Helper()
 	s := newStore(t)
@@ -95,7 +94,7 @@ func TestUninstallNamesWhatIsNotInstalled(t *testing.T) {
 
 func TestUninstallWorksOffline(t *testing.T) {
 	e, prefix := installed(t)
-	e.client = &api.Client{URL: "http://127.0.0.1:1", CacheDir: t.TempDir()} // refuses connections, nothing cached
+	e.client = &api.Client{URL: "http://127.0.0.1:1", CacheDir: t.TempDir()}
 	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "app"); err != nil {
 		t.Fatal(err)
 	}
@@ -209,8 +208,6 @@ func TestAutoremoveKeepsTheBuildDependenciesOfSourceBuiltFormulae(t *testing.T) 
 	}
 }
 
-// installedCasks returns a store and prefix with the jq formula and the named
-// app casks installed into apps.
 func installedCasks(t *testing.T, tokens ...string) (*store, *env, string, string) {
 	t.Helper()
 	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "1")
@@ -310,7 +307,6 @@ func TestUninstallRefusesAPinnedCask(t *testing.T) {
 
 func TestUninstallRefusesACaskAnotherNeeds(t *testing.T) {
 	s, _, prefix, _ := installedCasks(t, "lib")
-	// app needs lib; its install is only the record of one.
 	s.appCask("app")
 	s.casks[1]["depends_on"] = map[string]any{"cask": []string{"lib"}}
 	if err := os.MkdirAll(filepath.Join(prefix, "Caskroom/app/.metadata/1.0/20261119103045.123/Casks"), 0o755); err != nil {

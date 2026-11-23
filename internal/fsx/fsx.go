@@ -23,14 +23,12 @@ import (
 // place. brew ignores directories that start with a dot in the Cellar.
 const Staging = "Cellar/.brw-staging"
 
-// Errors a Root returns instead of doing something unsafe.
 var (
 	ErrExists = errors.New("path already exists")
 	ErrRoot   = errors.New("refusing to remove the root")
 	ErrDryRun = errors.New("a dry run writes nothing")
 )
 
-// Root is a prefix opened for changes; every path it takes is relative to it.
 type Root struct {
 	dir     string
 	root    *os.Root
@@ -39,7 +37,7 @@ type Root struct {
 	removed map[string]bool // dry run only: paths a real run would have removed
 }
 
-// Open confines operations to dir. journal may be nil.
+// Open journal may be nil.
 func Open(dir string, journal io.Writer) (*Root, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -52,8 +50,7 @@ func Open(dir string, journal io.Writer) (*Root, error) {
 	return &Root{dir: abs, root: root, journal: journal}, nil
 }
 
-// OpenDryRun is Open for a root that changes nothing: each change is checked and
-// journaled as "would ...", then skipped.
+// OpenDryRun checks and journals each change as "would ...", then skips it.
 func OpenDryRun(dir string, journal io.Writer) (*Root, error) {
 	r, err := Open(dir, journal)
 	if r != nil {
@@ -168,7 +165,7 @@ func (r *Root) writeTemp(dir string, src io.Reader, perm fs.FileMode) (string, e
 	return tmp, nil
 }
 
-// OpenLock opens name for locking, creating it if needed. Not journaled.
+// OpenLock is not journaled.
 func (r *Root) OpenLock(name string) (*os.File, error) {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -187,8 +184,7 @@ func (r *Root) OpenLock(name string) (*os.File, error) {
 	return r.root.OpenFile(rel, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o644)
 }
 
-// Abs returns the absolute path of name, for handing to another program. It
-// only checks that name is inside the root.
+// Abs only checks that name is inside the root.
 func (r *Root) Abs(name string) (string, error) {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -197,7 +193,6 @@ func (r *Root) Abs(name string) (string, error) {
 	return filepath.Join(r.dir, rel), nil
 }
 
-// Readlink returns the target of a symlink in the root, as written.
 func (r *Root) Readlink(name string) (string, error) {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -227,10 +222,9 @@ func readDir(root *os.Root, name string) ([]fs.DirEntry, error) {
 	return entries, err
 }
 
-// WalkDir calls fn for each entry below dir, depth first and sorted by name,
-// skipping directories it cannot read. It does not follow symlinks. Each
-// directory is opened relative to its parent instead of from the root, which
-// on a deep tree is several times faster than ReadDir on every path.
+// WalkDir is depth first, sorted by name, skips unreadable directories and does
+// not follow symlinks. It opens each directory relative to its parent, which on a
+// deep tree is several times faster than ReadDir on every path.
 func (r *Root) WalkDir(dir string, fn func(name string, e fs.DirEntry)) error {
 	rel, err := r.rel(dir)
 	if err != nil {
@@ -260,7 +254,7 @@ func walkDir(parent *os.Root, base, rel string, fn func(string, fs.DirEntry)) er
 	return nil
 }
 
-// ReadFile reads a file inside the root. It changes nothing and is not journaled.
+// ReadFile is not journaled.
 func (r *Root) ReadFile(name string) ([]byte, error) {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -269,7 +263,6 @@ func (r *Root) ReadFile(name string) ([]byte, error) {
 	return r.root.ReadFile(rel)
 }
 
-// Lstat is os.Lstat confined to the root.
 func (r *Root) Lstat(name string) (fs.FileInfo, error) {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -437,7 +430,6 @@ func (r *Root) MkdirAll(name string, perm fs.FileMode) error {
 	return nil
 }
 
-// Chtimes is os.Chtimes confined to the root, and journaled.
 func (r *Root) Chtimes(name string, atime, mtime time.Time) error {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -455,7 +447,6 @@ func (r *Root) Chtimes(name string, atime, mtime time.Time) error {
 	return r.log("chtimes %s", rel)
 }
 
-// Chmod is os.Chmod confined to the root, and journaled.
 func (r *Root) Chmod(name string, perm fs.FileMode) error {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -573,7 +564,7 @@ func (r *Root) Replace(name string, data []byte) (err error) {
 	return r.log("replace %s", rel)
 }
 
-// Remove is os.Remove confined to the root, and journaled; it refuses the root itself.
+// Remove refuses the root itself.
 func (r *Root) Remove(name string) error {
 	rel, err := r.rel(name)
 	if err != nil {
@@ -729,8 +720,7 @@ func escapes(rel string) bool {
 	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// hasParent is the check a real run gets when it creates rel in a directory that
-// is not there.
+// hasParent is what a real run's create does implicitly; a dry run must do it by hand.
 func (r *Root) hasParent(rel string) error {
 	fi, err := r.root.Stat(filepath.Dir(rel))
 	switch {
@@ -742,7 +732,7 @@ func (r *Root) hasParent(rel string) error {
 	return nil
 }
 
-// mustNotExist is the check a real run gets from the system when it creates rel.
+// mustNotExist is what a real run's create does implicitly; a dry run must do it by hand.
 func (r *Root) mustNotExist(rel string) error {
 	if r.removed[rel] {
 		return nil

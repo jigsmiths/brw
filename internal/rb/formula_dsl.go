@@ -7,13 +7,10 @@ import (
 	"strings"
 )
 
-// activeMacOS are the macOS releases brew still names in bottle tags.
 var activeMacOS = map[string]bool{
 	"golden_gate": true, "tahoe": true, "sequoia": true, "sonoma": true, "ventura": true, "monterey": true, "big_sur": true,
 }
 
-// bottleTag is Utils::Bottles::Tag's name for a tag symbol: x86_64 macOS tags
-// of supported releases drop the arch.
 func bottleTag(s string) string {
 	if s == "all" {
 		return s
@@ -52,7 +49,6 @@ type bottleFile struct {
 	cellar      value
 }
 
-// bottleB is a bottle block.
 type bottleB struct {
 	rootURL  string
 	rebuild  int64
@@ -148,13 +144,9 @@ func (b *bottleB) hash(name, pkgVersion string) *hash {
 	return h
 }
 
-// instanceDSL answers what a Formula instance knows: its paths, name and
-// version. Paths use the API's placeholders.
 type instanceDSL struct {
-	f    *formulaB
-	root string // the Homebrew prefix: PrefixPlaceholder, or the real one while installing
-	// linked makes prefix the opt prefix, as Formula#prefix is once the keg
-	// is opt-linked and not installing.
+	f      *formulaB
+	root   string
 	linked bool
 }
 
@@ -167,8 +159,6 @@ func (d *instanceDSL) prefix() string {
 	return d.root + "/Cellar/" + d.f.name + "/" + d.f.pkgVersion()
 }
 
-// formulaPath gives a Formula's path method relative to prefix, or false.
-// root is the Homebrew prefix, for the paths outside the keg.
 func formulaPath(prefix, optPrefix, name, root, method string) (string, bool) {
 	sub := map[string]string{
 		"bin": "bin", "sbin": "sbin", "lib": "lib", "libexec": "libexec", "share": "share", "include": "include",
@@ -244,13 +234,10 @@ func (d *instanceDSL) call(in *interp, s *scope, c *callN, args []value, kw *has
 	return nil, false
 }
 
-// passwd is Etc.getpwuid: the user running brw.
 type passwd string
 
 func (passwd) rubyValue() {}
 
-// formulaRef is Formula["name"] in a formula: another formula, of which
-// only the opt paths are known before it is installed.
 type formulaRef struct{ name, root string }
 
 func (formulaRef) rubyValue() {}
@@ -266,7 +253,6 @@ func (r formulaRef) method(name string) value {
 	return rstr(p)
 }
 
-// serviceB is a service block, as Homebrew::Service#to_hash writes it.
 type serviceB struct {
 	f      *formulaB
 	fields *hash
@@ -417,7 +403,6 @@ func (sv *serviceB) hash() *hash {
 	return h
 }
 
-// parseCron is Service#parse_cron joined as Service#to_hash writes it.
 func parseCron(s string) string {
 	f := map[string]string{"Minute": "*", "Hour": "*", "Day": "*", "Month": "*", "Weekday": "*"}
 	switch s {

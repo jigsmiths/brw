@@ -2,8 +2,7 @@ package main
 
 import "testing"
 
-// brew info resolves a bare name through the newest installed keg, so keg
-// versions compare as versions, revisions included.
+// brew info resolves a bare name through the newest installed keg, revisions included.
 func TestOlderVersionComparesVersions(t *testing.T) {
 	for _, tt := range []struct {
 		a, b  string

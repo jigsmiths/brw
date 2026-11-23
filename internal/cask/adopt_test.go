@@ -19,7 +19,6 @@ func infoPlist(short, version string) string {
 `
 }
 
-// versioned is an installer whose app has an Info.plist with versions.
 func versioned(t *testing.T) *testInstall {
 	t.Helper()
 	if _, err := exec.LookPath("plutil"); err != nil {
@@ -35,7 +34,6 @@ func versioned(t *testing.T) *testInstall {
 	return ti
 }
 
-// existingApp puts an app in the app folder, as if installed by hand.
 func existingApp(t *testing.T, ti *testInstall, plist string) string {
 	t.Helper()
 	app := filepath.Join(ti.appDir, "App.app")
@@ -132,8 +130,6 @@ func TestInstallTakesOverTheBinaryLinksOfAnAdoptedApp(t *testing.T) {
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Into the app, into this version once it is staged again, and into a
-	// version that is gone, which is a broken link.
 	staged := filepath.Join(ti.prefix, "Caskroom/app/1.0/tool")
 	for name, to := range map[string]string{
 		"app": filepath.Join(app, "Contents/MacOS/app"), "tool": staged,

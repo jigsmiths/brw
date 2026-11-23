@@ -24,7 +24,6 @@ func caskIndex(t *testing.T, extra ...api.Cask) *api.CaskIndex {
 	return api.NewCaskIndex(append(casks, extra...))
 }
 
-// bundles is a Bundle reader for apps that are not really there.
 func bundles(apps map[string][2]string) func(string) (string, string, bool) {
 	return func(app string) (string, string, bool) {
 		v, ok := apps[app]

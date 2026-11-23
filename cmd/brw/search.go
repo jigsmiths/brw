@@ -48,7 +48,7 @@ func searchCommand(e *env, args []string) error {
 	if *desc {
 		out, err = searchDescriptions(idx, casks, query)
 	} else {
-		racks, _ := cellar.Prefix(*prefix).Names() // none installed when unreadable
+		racks, _ := cellar.Prefix(*prefix).Names()
 		shown := func(f *api.Formula) bool { return f.ForOS(e.host.OS) || slices.Contains(racks, f.Name) }
 		out, err = searchNames(idx, casks, query, shown, e.tty)
 	}
@@ -59,8 +59,7 @@ func searchCommand(e *env, args []string) error {
 	return err
 }
 
-// searchDescriptions is search --desc. Brew heads each kind it searched, even
-// when nothing matched. A nil index is a kind not searched.
+// A nil index is a kind not searched; brew prints a heading for each searched kind even with no match.
 func searchDescriptions(idx *api.Index, casks *api.CaskIndex, query string) (string, error) {
 	var b strings.Builder
 	if idx != nil {
@@ -93,8 +92,6 @@ func searchDescriptions(idx *api.Index, casks *api.CaskIndex, query string) (str
 	return b.String(), nil
 }
 
-// searchNames is search by name, with headings on a terminal. A nil index is
-// a kind not searched.
 func searchNames(idx *api.Index, casks *api.CaskIndex, query string, shown func(*api.Formula) bool, headings bool) (string, error) {
 	var names, tokens []string
 	var err error

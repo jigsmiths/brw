@@ -21,27 +21,22 @@ import (
 
 const coreRemote = "https://github.com/Homebrew/homebrew-core"
 
-// ErrOtherTap is returned for a formula whose installed kegs came from a tap
-// that has a formula of the same name in core.
 var ErrOtherTap = errors.New("installed from another tap")
 
-// Env is the machine state the output depends on.
 type Env struct {
 	Index    *api.Index
 	Host     platform.Host
 	Prefix   cellar.Prefix
 	Kegs     []cellar.Keg
 	Outdated []outdated.Result
-	Now      time.Time // for deprecation dates; the zero value means the current time
-	// TapRemote gives a tap's origin URL, empty without one, and its folder.
+	Now      time.Time // zero means now
+	// TapRemote's remote is empty without one.
 	TapRemote func(tap string) (remote, dir string)
 }
 
 var githubRemote = regexp.MustCompile(`^(?:https?://|git(?:@|://))github\.com[:/](.+)/(.+?)(?:\.git)?$`)
 
-// tapSourceLines are brew info's From and Tap lines for a tap formula, whose
-// file is at path in the tap: a GitHub link, the remote and path, or the
-// file itself when the tap has no remote. Official taps get no Tap line.
+// tapSourceLines are brew info's From and Tap lines; official taps get no Tap line.
 func tapSourceLines(tap, remote, dir, path string) string {
 	var from string
 	switch m := githubRemote.FindStringSubmatch(remote); {
@@ -78,7 +73,6 @@ func newKeg(k cellar.Keg) keg {
 	return out
 }
 
-// compare orders kegs by version scheme, then version.
 func (a keg) compare(b keg) int {
 	switch {
 	case a.scheme != b.scheme:
@@ -96,9 +90,8 @@ func (a keg) compare(b keg) int {
 
 func Text(f *api.Formula, env Env) (string, error) { return ShadowingText(f, env, "") }
 
-// ShadowingText is Text for a formula a bare name found through its installed
-// keg, which shadows the formula of the tap shadows: it is titled by its name
-// and warned about, as brew info does.
+// ShadowingText is Text for a formula found through its installed keg, which
+// shadows the tap formula named by shadows: titled by name and warned about.
 func ShadowingText(f *api.Formula, env Env, shadows string) (string, error) {
 	var b strings.Builder
 	tag, err := platform.Tag(env.Host)
@@ -201,8 +194,7 @@ func ShadowingText(f *api.Formula, env Env, shadows string) (string, error) {
 	return b.String(), nil
 }
 
-// Caveats is the formula's own caveats with the prefix filled in, leaving out
-// brew's additions (such as keg-only advice) that depend on the user's shell.
+// Caveats leaves out brew's shell-dependent additions such as keg-only advice.
 func Caveats(f *api.Formula, prefix string) string {
 	if f.Caveats == "" {
 		return ""
@@ -234,7 +226,6 @@ func (e Env) deprecation(f *api.Formula) string {
 	return Deprecation(f, now)
 }
 
-// Deprecation is the notice for a deprecated or disabled formula, or "".
 func Deprecation(f *api.Formula, now time.Time) string {
 	var kind, reason, replacement string
 	switch {
@@ -274,7 +265,7 @@ func Deprecation(f *api.Formula, now time.Time) string {
 	return msg
 }
 
-// plusYear adds twelve months, clamping to the end of a shorter month.
+// plusYear clamps to the end of a shorter month.
 func plusYear(d time.Time) time.Time {
 	next := time.Date(d.Year()+1, d.Month(), 1, 0, 0, 0, 0, time.UTC)
 	last := next.AddDate(0, 1, -1).Day()
@@ -293,7 +284,6 @@ func replacementWithType(formula, cask string) string {
 	return ""
 }
 
-// conflicts lists the formulae f conflicts with and why, sorted.
 func (e Env) conflicts(f *api.Formula) []string {
 	var out []string
 	for i, name := range f.ConflictsWith {
@@ -312,7 +302,7 @@ func (e Env) conflicts(f *api.Formula) []string {
 	return out
 }
 
-// installed returns f's kegs, oldest first, with HEAD kegs ahead of the rest.
+// installed puts HEAD kegs ahead of the rest, which are oldest first.
 func (e Env) installed(f *api.Formula) []keg {
 	var kegs []keg
 	var named []cellar.Keg
@@ -358,7 +348,6 @@ func (e Env) bottledHere(f *api.Formula) bool {
 	return ok
 }
 
-// installedVersion is the linked version, or else the newest installed one.
 func (e Env) installedVersion(f *api.Formula, kegs []keg) string {
 	for _, k := range kegs {
 		if e.Prefix.Linked(f.Name, k.Version) {
@@ -368,7 +357,6 @@ func (e Env) installedVersion(f *api.Formula, kegs []keg) string {
 	return kegs[len(kegs)-1].Version
 }
 
-// installStatus reports how the keg brew reads the receipt from was installed.
 func (e Env) installStatus(f *api.Formula, kegs []keg) string {
 	tab := kegs[len(kegs)-1]
 	if v, ok := e.Prefix.OptVersion(f.Name); ok {
@@ -386,7 +374,6 @@ func (e Env) installStatus(f *api.Formula, kegs []keg) string {
 
 var versionedName = regexp.MustCompile(`@[\d.]+$`)
 
-// installedVersions lists installed kegs of f and related versioned formulae, newest formula first.
 func (e Env) installedVersions(f *api.Formula) ([]string, error) {
 	related := []*api.Formula{f}
 	if versionedName.MatchString(f.Name) {
@@ -402,7 +389,7 @@ func (e Env) installedVersions(f *api.Formula) ([]string, error) {
 
 	type group struct {
 		f    *api.Formula
-		kegs []keg // newest first
+		kegs []keg
 	}
 	var groups []group
 	seen := map[string]bool{}
@@ -471,10 +458,9 @@ func (e Env) installedVersions(f *api.Formula) ([]string, error) {
 	return formatRows(rows), nil
 }
 
-// row is one line of the Installed Versions block.
 type row struct{ name, version, size, linked string }
 
-// formatRows aligns the columns. Only rows with a [Linked] marker pad the size.
+// formatRows pads the size only for rows with a [Linked] marker.
 func formatRows(rows []row) []string {
 	var nameW, versionW, sizeW int
 	for _, r := range rows {
@@ -497,7 +483,6 @@ func formatRows(rows []row) []string {
 	return lines
 }
 
-// dependencies renders the Dependencies block, or nothing if it is empty.
 func (e Env) dependencies(f *api.Formula, kegs []keg, bottled bool) (string, error) {
 	r, err := deps.NewResolver(e.Index, e.Host)
 	if err != nil {
@@ -517,7 +502,7 @@ func (e Env) dependencies(f *api.Formula, kegs []keg, bottled bool) (string, err
 			}
 		}
 	} else {
-		// brew lists build dependencies only for a formula it would build here.
+		// brew lists build dependencies only when it would build here.
 		hideBuild = bottled || f.Disabled || incompatible(f, e.Host) || !f.ForOS(e.Host.OS)
 	}
 

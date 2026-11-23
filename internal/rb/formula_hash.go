@@ -8,7 +8,6 @@ import (
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
-// licenseString is SPDX.license_expression_to_string.
 func licenseString(v value, bracket bool) value {
 	switch x := v.(type) {
 	case nil:
@@ -71,7 +70,6 @@ func strsOrEmpty(ss []string) *arr {
 	return a
 }
 
-// depsHash is the dependency part of Formula#dependencies_hash for one spec.
 func depsHash(deps []dep) *hash {
 	pick := func(keep func(dep) bool) *arr {
 		var names []string
@@ -210,7 +208,6 @@ func lifecycleArgs(date, because, rf, rc value) value {
 	return h
 }
 
-// caveats runs def caveats, with the prefix as the API writes it.
 func (b *formulaB) caveats() value {
 	d, ok := b.defs["caveats"]
 	if !ok {
@@ -278,7 +275,7 @@ func (b *formulaB) hash() *hash {
 		patches.v = append(patches.v, b.stable.patches...)
 	}
 	h.put("patches", patches)
-	h.put("local_patch_checksums", &hash{}) // rb refuses local patch files
+	h.put("local_patch_checksums", &hash{})
 	h.put("revision", rint(b.revision))
 	h.put("version_scheme", rint(b.scheme))
 	h.put("compatibility_version", b.compat)
@@ -331,7 +328,6 @@ func (b *formulaB) hash() *hash {
 	h.put("conflicts_with_reasons", why)
 	h.put("link_overwrite", strsOrEmpty(b.linkOverwrite))
 	h.put("caveats", b.caveats())
-	// what is installed is the prefix's to say; brew info fills these in
 	h.put("installed", &arr{v: []value{}})
 	h.put("linked_keg", nil)
 	h.put("pinned", rbool(false))

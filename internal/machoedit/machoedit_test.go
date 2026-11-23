@@ -45,7 +45,6 @@ func rpathCmd(path string) []byte {
 	return b
 }
 
-// segment is a __TEXT segment with one section at textOffset.
 func segment(sectSize uint64, sectType uint32) []byte {
 	b := make([]byte, 72+80)
 	le.PutUint32(b[0:], cmdSegment)

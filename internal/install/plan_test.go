@@ -638,7 +638,7 @@ func TestPlanUpgradeDoesNotChangeLaterInstallPlans(t *testing.T) {
 
 func TestPlanUpgradeTakesTheReceiptOfTheKegInUse(t *testing.T) {
 	idx := index(t, f("app"))
-	older := keg("app", "0.8") // not asked for
+	older := keg("app", "0.8")
 	newer := onRequest(keg("app", "0.9"))
 	plan, errs := upgradePlanner(t, idx, true, older, newer).PlanUpgrade([]string{"app"})
 	if len(errs) != 0 || !plan.Items[0].OnRequest || len(plan.Items[0].Upgrade) != 2 {

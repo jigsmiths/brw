@@ -13,7 +13,6 @@ import (
 	"testing"
 )
 
-// fields are the parts of brew's cask hash that brw reads.
 var fields = strings.Fields(`name desc homepage url url_specs version sha256 artifacts caveats caveats_rosetta
 depends_on conflicts_with container rename auto_updates deprecated deprecation_date deprecation_reason
 deprecation_replacement_formula deprecation_replacement_cask disabled disable_date disable_reason
@@ -22,7 +21,6 @@ disable_replacement_formula disable_replacement_cask languages`)
 var macTags = strings.Fields(`arm64_golden_gate golden_gate arm64_tahoe tahoe arm64_sequoia sequoia arm64_sonoma sonoma
 arm64_ventura ventura arm64_monterey monterey arm64_big_sur big_sur`)
 
-// asBrew pins what brew's API generator saw: its date and an empty environment.
 func asBrew(t *testing.T) {
 	t.Helper()
 	oldToday, oldEnv := today, lookupEnv
@@ -31,8 +29,6 @@ func asBrew(t *testing.T) {
 	t.Cleanup(func() { today, lookupEnv = oldToday, oldEnv })
 }
 
-// tagsFor are the platforms brew evaluated a cask on: every supported one
-// when it has on-system blocks, otherwise just the base one.
 func tagsFor(want map[string]any) []string {
 	vars, _ := want["variations"].(map[string]any)
 	sp, _ := want["supported_platforms"].([]any)
@@ -58,7 +54,6 @@ func normal(v any) any {
 	return out
 }
 
-// sameKindSorted sorts artifacts of one kind, whose order brew leaves to Ruby's unstable sort.
 func sameKindSorted(v any) any {
 	list, _ := v.([]any)
 	out := slices.Clone(list)
@@ -82,8 +77,6 @@ func sameKindSorted(v any) any {
 	return out
 }
 
-// compareWithBrew evaluates src on every platform brew did and returns how its
-// hash differs from want, brew's own.
 func compareWithBrew(t *testing.T, src []byte, want map[string]any) []string {
 	t.Helper()
 	var diffs []string
@@ -128,8 +121,6 @@ func readWant(t *testing.T, path string) map[string]any {
 	return want
 }
 
-// The fixtures are cask files with brew's hash for them: from Homebrew's API
-// for homebrew/cask, and from brew info --json=v2 --variations for taps.
 func TestEvaluateMatchesBrew(t *testing.T) {
 	asBrew(t)
 	files, _ := filepath.Glob(filepath.Join("testdata", "cask", "*.rb"))
@@ -220,7 +211,6 @@ end
 	if want := []string{"preflight_steps", "app", "binary", "zap"}; !slices.Equal(kinds, want) {
 		t.Errorf("artifacts %q, want %q", kinds, want)
 	}
-	// The quarantine command becomes the step brew's own casks use.
 	if got := string(arm.Artifacts[0]); !strings.Contains(got, `"command":{"path":"/usr/bin/xattr"}`) ||
 		!strings.Contains(got, `"$HOMEBREW_PREFIX/Caskroom/tool/1.2.3,45/tool"`) || !strings.Contains(got, `"allow_failure":true`) {
 		t.Errorf("preflight steps: %s", got)
@@ -238,7 +228,6 @@ end
 	}
 }
 
-// A flight block's file writes and existence checks become steps and guards.
 func TestLoadTranslatesFileOperations(t *testing.T) {
 	src := []byte(`cask "agent" do
   version "1"
@@ -302,12 +291,9 @@ func TestLoadRefusesRubyItCannotTranslate(t *testing.T) {
 	}
 }
 
-// TestConformanceHomebrewCask evaluates every cask in a homebrew-cask checkout
-// and compares it with Homebrew's API generated from the same commit:
-//
-//	git clone https://github.com/Homebrew/homebrew-cask && curl -O https://formulae.brew.sh/api/cask.jws.json
-//	git -C homebrew-cask checkout <tap_git_head of any cask in the API>
-//	BRW_CASKRB_CASKS=homebrew-cask BRW_CASKRB_API=cask.jws.json go test -run Conformance ./internal/rb
+// git clone https://github.com/Homebrew/homebrew-cask && curl -O https://formulae.brew.sh/api/cask.jws.json
+// git -C homebrew-cask checkout <tap_git_head of any cask in the API>
+// BRW_CASKRB_CASKS=homebrew-cask BRW_CASKRB_API=cask.jws.json go test -run Conformance ./internal/rb
 func TestConformanceHomebrewCask(t *testing.T) {
 	dir, apiPath := os.Getenv("BRW_CASKRB_CASKS"), os.Getenv("BRW_CASKRB_API")
 	if dir == "" || apiPath == "" {
@@ -322,8 +308,7 @@ func TestConformanceHomebrewCask(t *testing.T) {
 	if err := json.Unmarshal(raw, &jws); err != nil {
 		t.Fatal(err)
 	}
-	// The API generator treats $HOMEBREW_PREFIX and $APPDIR as relative paths, so
-	// an absolute target comes out doubled, unlike a real install's.
+	// The API generator treats $HOMEBREW_PREFIX and $APPDIR as relative, doubling absolute targets.
 	payload := strings.NewReplacer(`"$HOMEBREW_PREFIX/bin/$`, `"$`, `"/Applications/$`, `"$`).Replace(jws.Payload)
 	var casks []map[string]any
 	if err := json.Unmarshal([]byte(payload), &casks); err != nil {

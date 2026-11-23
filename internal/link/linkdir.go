@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-// ErrAlreadyLinked is returned by Link when the formula has a linked record.
 var ErrAlreadyLinked = errors.New("already linked")
 
-// action says what to do with an entry of a keg directory.
 type action int
 
 const (
@@ -23,8 +21,7 @@ const (
 	info
 )
 
-// Link links the keg into the prefix as brew does for a formula that is not
-// keg-only. If anything fails, what was linked is taken out again.
+// If anything fails, what was linked is taken out again.
 func (l *Linker) Link(k Keg) (err error) {
 	if fi, statErr := l.stat(k.record()); statErr == nil && fi.IsDir() {
 		return ErrAlreadyLinked
@@ -147,7 +144,7 @@ func (l *Linker) linkDir(k Keg, root string, rule func(rel string) action) error
 		if !fi.IsDir() {
 			return false
 		}
-		if l.isDir(dst) { // a real directory is already there: go into it
+		if l.isDir(dst) {
 			return true
 		}
 		if path.Ext(src) == ".app" {

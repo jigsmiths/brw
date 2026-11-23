@@ -10,7 +10,6 @@ import (
 	"slices"
 )
 
-// Errors for files or edits machoedit cannot handle.
 var (
 	ErrNotMachO    = errors.New("not a Mach-O file")
 	ErrUnsupported = errors.New("unsupported Mach-O layout")
@@ -38,7 +37,6 @@ const (
 	sThreadLocalZerofill = 0x12
 )
 
-// The load commands that name a library to load.
 var loadDylib = []uint32{0xc, 0x80000018, 0x8000001f, 0x20, 0x80000023}
 
 var le = binary.LittleEndian
@@ -48,7 +46,6 @@ type command struct {
 	cmd       uint32
 }
 
-// File is a thin, 64 bit, little endian Mach-O file held in memory.
 type File struct {
 	data []byte
 	cmds []command
@@ -100,13 +97,10 @@ func (f *File) populate() error {
 // Bytes returns the file contents, which edits change in place.
 func (f *File) Bytes() []byte { return f.data }
 
-// IsDylib reports whether the file is a dynamic library, the only kind with an ID.
 func (f *File) IsDylib() bool { return le.Uint32(f.data[12:]) == mhDylib }
 
-// IsExecutable reports whether the file is a program (MH_EXECUTE).
 func (f *File) IsExecutable() bool { return le.Uint32(f.data[12:]) == mhExecute }
 
-// IsBundle reports whether the file is a loadable bundle (MH_BUNDLE).
 func (f *File) IsBundle() bool { return le.Uint32(f.data[12:]) == mhBundle }
 
 // str reads the string a load command points at with its offset field, which
@@ -124,7 +118,6 @@ func (f *File) str(c command) string {
 	return string(s)
 }
 
-// DylibID is the install name of a dylib (LC_ID_DYLIB).
 func (f *File) DylibID() (string, bool) {
 	if !f.IsDylib() {
 		return "", false
@@ -137,7 +130,6 @@ func (f *File) DylibID() (string, bool) {
 	return "", false
 }
 
-// Dylibs lists the libraries the file loads, without repeats, in order.
 func (f *File) Dylibs() []string {
 	var names []string
 	for _, c := range f.cmds {
@@ -150,7 +142,6 @@ func (f *File) Dylibs() []string {
 	return names
 }
 
-// Rpaths lists the LC_RPATH entries in load order.
 func (f *File) Rpaths() []string {
 	var paths []string
 	for _, c := range f.cmds {
@@ -161,7 +152,6 @@ func (f *File) Rpaths() []string {
 	return paths
 }
 
-// ChangeID sets the install name of a dylib, as install_name_tool -id does.
 func (f *File) ChangeID(name string) error {
 	if !f.IsDylib() {
 		return fmt.Errorf("%w: not a dylib", ErrNotFound)
@@ -237,7 +227,7 @@ func (f *File) replace(c command, repl []byte) error {
 	tail := bytes.Clone(f.data[c.off+c.size : end])
 	copy(f.data[c.off:], repl)
 	copy(f.data[c.off+len(repl):], tail)
-	clear(f.data[headerSize+newSize : max(end, headerSize+newSize)]) // what shrinking left behind
+	clear(f.data[headerSize+newSize : max(end, headerSize+newSize)])
 	le.PutUint32(f.data[20:], uint32(newSize))
 	return f.populate()
 }

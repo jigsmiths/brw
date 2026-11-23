@@ -24,11 +24,8 @@ import (
 	"time"
 )
 
-// DefaultURL is the listing as Homebrew signs it, which brw checks before use.
 const DefaultURL = "https://formulae.brew.sh/api/formula.jws.json"
 
-// Requirement is a formula's depends_on of a platform or tool, such as
-// {"name":"macos","version":"12"}.
 type Requirement struct {
 	Name     string   `json:"name"`
 	Version  string   `json:"version"`
@@ -36,8 +33,7 @@ type Requirement struct {
 	Specs    []string `json:"specs"`    // "stable", "head"
 }
 
-// ForOS says whether f is for goos ("darwin" or "linux"): a formula that needs
-// the other OS is left out of brew's name search.
+// ForOS: brew's name search leaves out a formula that needs the other OS.
 func (f *Formula) ForOS(goos string) bool {
 	for _, r := range f.Requirements {
 		if slices.Contains(r.Contexts, "build") {
@@ -50,7 +46,6 @@ func (f *Formula) ForOS(goos string) bool {
 	return true
 }
 
-// Formula is an entry of the formula listing, with the fields brw uses.
 type Formula struct {
 	Name           string `json:"name"`
 	FullName       string `json:"full_name"`
@@ -59,7 +54,7 @@ type Formula struct {
 	License        string `json:"license"`
 	Caveats        string `json:"caveats"`
 	RubySourcePath string `json:"ruby_source_path"`
-	TapGitHead     string `json:"tap_git_head"` // a tap formula's tap commit
+	TapGitHead     string `json:"tap_git_head"`
 	URLs           struct {
 		Stable struct {
 			URL      string `json:"url"`
@@ -102,22 +97,20 @@ type Formula struct {
 	Variations                    map[string]json.RawMessage    `json:"variations"`
 }
 
-// KegOnlyReason is why a formula is not linked. Reason is a symbol such as
-// ":versioned_formula" or free text.
+// Reason is a symbol such as ":versioned_formula" or free text.
 type KegOnlyReason struct {
 	Reason      string `json:"reason"`
 	Explanation string `json:"explanation"`
 }
 
-// UsesFromMacOS is a dependency macOS provides itself. It is a plain name or
-// a one-entry object mapping the name to a tag or list of tags.
+// UsesFromMacOS is a plain name or a one-entry object mapping the name to a tag
+// or list of tags.
 type UsesFromMacOS struct {
 	Name  string
 	Tags  []string
-	Since string // macOS release that provides it; older macOS needs the real dependency
+	Since string // older macOS needs the real dependency
 }
 
-// UnmarshalJSON accepts either form the listing uses: a name or an object.
 func (u *UsesFromMacOS) UnmarshalJSON(b []byte) error {
 	var name string
 	if json.Unmarshal(b, &name) == nil {
@@ -142,12 +135,10 @@ func (u *UsesFromMacOS) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Runtime is false for build-only and test-only entries.
 func (u UsesFromMacOS) Runtime() bool {
 	return !slices.Contains(u.Tags, "build") && !slices.Contains(u.Tags, "test")
 }
 
-// ForTag returns a copy with the variation for the exact bottle tag applied.
 func (f Formula) ForTag(tag string) (Formula, error) {
 	raw, ok := f.Variations[tag]
 	if !ok {
@@ -173,8 +164,7 @@ func (f Formula) ForTag(tag string) (Formula, error) {
 	return f, nil
 }
 
-// Bottle lists the tags a formula has bottles for. The URL and checksum of each
-// bottle are not kept; read them from the raw entry (Client.Raw).
+// Bottle keeps no URL or checksum; read them from Client.Raw.
 type Bottle struct {
 	Rebuild int
 	RootURL string
@@ -225,7 +215,6 @@ type Index struct {
 	onSkip   func(tap string)
 }
 
-// NewIndex indexes formulae, which it keeps pointers into.
 func NewIndex(formulae []Formula) *Index {
 	idx := &Index{byName: make(map[string]*Formula, len(formulae))}
 	for i := range formulae {
@@ -242,8 +231,6 @@ func NewIndex(formulae []Formula) *Index {
 	return idx
 }
 
-// Formulae returns every formula once: the API's in listing order, then the
-// taps' that evaluate.
 func (i *Index) Formulae() []*Formula {
 	if len(i.tapOrder) == 0 && len(i.skipped) == 0 {
 		return i.all
@@ -263,27 +250,23 @@ func (i *Index) Lookup(name string) (*Formula, bool) {
 	return i.lookupTap(name)
 }
 
-// freshFor is how long a validated listing is used without asking the server.
-// The server allows ten minutes (Cache-Control: max-age=600).
 const freshFor = 10 * time.Minute
 
 // indexVersion is bumped when parsing or the index shape changes, so an older
 // brw's index is not trusted. Type changes are caught by fingerprints.
 const indexVersion = "4"
 
-// Client caches the formula and cask listings in CacheDir by ETag, plus a parsed
-// index that loads much faster. A failed fetch falls back to the cache and calls Warn.
+// A failed fetch falls back to the cache and calls Warn.
 type Client struct {
-	URL      string // the formula listing
-	CaskURL  string // the cask listing
+	URL      string
+	CaskURL  string
 	CacheDir string
-	// Key checks the signature of the listing. Homebrew's own key when nil.
-	Key  *rsa.PublicKey
-	HTTP *http.Client
-	Warn func(msg string)
-	Now  func() time.Time // defaults to time.Now
+	Key      *rsa.PublicKey // Homebrew's own key when nil
+	HTTP     *http.Client
+	Warn     func(msg string)
+	Now      func() time.Time // defaults to time.Now
 
-	entries map[string]span // formula name to its entry in the cached listing, after Formulae
+	entries map[string]span // set by Formulae
 }
 
 func (c *Client) now() time.Time {
@@ -293,7 +276,6 @@ func (c *Client) now() time.Time {
 	return time.Now()
 }
 
-// Update says what Refresh or RefreshCasks found.
 type Update struct {
 	Changed bool
 	Total   int
@@ -333,7 +315,6 @@ func refresh[T any](ctx context.Context, c *Client, l listing[T], name func(T) s
 	return up, nil
 }
 
-// nameDiff lists the sorted names in next that are not in old, and the reverse.
 func nameDiff[T any](old, next []T, name func(T) string) (added, removed []string) {
 	was := map[string]bool{}
 	for _, item := range old {
@@ -350,9 +331,7 @@ func nameDiff[T any](old, next []T, name func(T) string) (added, removed []strin
 	return added, removed
 }
 
-// Formulae loads the formula listing, from the cache while it is still valid.
-// It also learns where each entry is in the cached listing, so Raw and
-// Bottles can read one without a scan.
+// Formulae records entry spans so Raw and Bottles need no scan.
 func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	var spans []span
 	l := c.formulaListing()
@@ -371,16 +350,14 @@ func (c *Client) Formulae(ctx context.Context) ([]Formula, error) {
 	return items, nil
 }
 
-// listing is one of the signed listings the client caches, in the files
-// <stem>.json, <stem>.etag and <stem>.index of CacheDir.
+// listing is cached in CacheDir as <stem>.json, <stem>.etag and <stem>.index.
 type listing[T any] struct {
 	stem        string
 	url         string
 	parse       func([]byte) ([]T, error)
-	fingerprint string  // of the index, see indexFingerprint
-	spans       *[]span // set to the entries' spans when known, if not nil
-	// slim, if set, drops what can be read back from an entry's span, so the
-	// index is smaller and quicker to load. It is only used when the spans are known.
+	fingerprint string  // see indexFingerprint
+	spans       *[]span // filled when not nil
+	// slim drops what an entry's span can supply; used only when spans are known.
 	slim func(T) T
 }
 
@@ -482,14 +459,11 @@ func (c *Client) fresh(etagFile string) bool {
 	return age >= 0 && age < freshFor
 }
 
-// touch records that the cached listing was just validated.
 func (c *Client) touch(etagFile string) {
 	now := c.now()
 	_ = os.Chtimes(etagFile, now, now) //fsx:allow cache file; a failure only costs a revalidation
 }
 
-// fromCache loads the cached listing, preferring the index and rebuilding it
-// from the listing when it is unusable.
 func fromCache[T any](c *Client, l listing[T], etag string) ([]T, error) {
 	if items, ok := loadIndex(c, l, etag); ok {
 		return items, nil
@@ -506,20 +480,18 @@ func fromCache[T any](c *Client, l listing[T], etag string) ([]T, error) {
 	return items, nil
 }
 
-// listingIndex is a parsed listing as stored on disk.
 type listingIndex[T any] struct {
 	Fingerprint string
 	ETag        string
 	Items       []T
-	Spans       []span // where each item's entry is in the listing; nil if unknown
+	Spans       []span // nil if unknown
 }
 
-// span is where one entry is in a cached listing, in bytes.
 type span struct{ Off, Len int64 }
 
 func entrySpans(data []byte) ([]span, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
-	if _, err := dec.Token(); err != nil { // the opening bracket
+	if _, err := dec.Token(); err != nil {
 		return nil, err
 	}
 	var spans []span
@@ -563,8 +535,7 @@ func loadIndex[T any](c *Client, l listing[T], etag string) ([]T, bool) {
 	return idx.Items, true
 }
 
-// storeIndex is best effort: without an index the listing is parsed each time.
-// data is the listing as cached, which the spans point into.
+// storeIndex is best effort; data is what the spans point into.
 func storeIndex[T any](c *Client, l listing[T], etag string, items []T, data []byte) {
 	if etag == "" {
 		return
@@ -590,8 +561,6 @@ func storeIndex[T any](c *Client, l listing[T], etag string, items []T, data []b
 	_ = writeAtomic(l.file(c.CacheDir, ".index"), b.Bytes())
 }
 
-// fingerprint summarises the shape of t, so that adding, removing or retyping a
-// field changes it.
 func fingerprint(t reflect.Type) string {
 	var b strings.Builder
 	describe(&b, t, map[reflect.Type]bool{})
@@ -627,8 +596,6 @@ func describe(b *strings.Builder, t reflect.Type, seen map[reflect.Type]bool) {
 	}
 }
 
-// each calls fn with every entry of the cached listing, in order, until fn
-// returns true.
 func (c *Client) each(fn func(name string, raw json.RawMessage) (done bool, err error)) error {
 	f, err := os.Open(filepath.Join(c.CacheDir, "formula.json"))
 	if err != nil {
@@ -636,7 +603,7 @@ func (c *Client) each(fn func(name string, raw json.RawMessage) (done bool, err 
 	}
 	defer func() { _ = f.Close() }()
 	dec := json.NewDecoder(f)
-	if _, err := dec.Token(); err != nil { // the opening bracket
+	if _, err := dec.Token(); err != nil {
 		return err
 	}
 	for dec.More() {
@@ -668,8 +635,7 @@ func readEntry(file string, s span) ([]byte, error) {
 	return raw, nil
 }
 
-// entry reads one formula's entry where Formulae found it. ok is false when
-// it is not known, or the listing changed since, so the caller scans instead.
+// entry is not ok when the span is unknown or the listing changed since.
 func (c *Client) entry(name string) (json.RawMessage, bool) {
 	s, ok := c.entries[name]
 	if !ok {
@@ -686,8 +652,7 @@ func (c *Client) entry(name string) (json.RawMessage, bool) {
 	return raw, true
 }
 
-// Raw returns the cached JSON entry for the formula with this exact name,
-// exactly as the API served it. Call Formulae first to fill the cache.
+// Raw needs Formulae called first to fill the cache.
 func (c *Client) Raw(name string) (json.RawMessage, error) {
 	if raw, ok := c.entry(name); ok {
 		return raw, nil
@@ -708,18 +673,16 @@ func (c *Client) Raw(name string) (json.RawMessage, error) {
 	return found, nil
 }
 
-// BottleFile says where one bottle is and what it must hash to.
 type BottleFile struct {
 	Cellar string `json:"cellar"`
 	URL    string `json:"url"`
 	SHA256 string `json:"sha256"`
 }
 
-// Bottles maps formula names to bottle tags and looks up each bottle, scanning
-// the cached listing once for any entry Formulae did not locate.
+// Bottles scans the cached listing once for any entry Formulae did not locate.
 func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) {
 	out := make(map[string]BottleFile, len(want))
-	rest := map[string]string{} // not found by entry
+	rest := map[string]string{}
 	for _, name := range slices.Sorted(maps.Keys(want)) {
 		raw, ok := c.entry(name)
 		if !ok {
@@ -759,7 +722,6 @@ func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) 
 	return out, nil
 }
 
-// TapBottle is the bottle for tag of a tap formula, by full name.
 func (i *Index) TapBottle(fullName, tag string) (BottleFile, error) {
 	raw, ok := i.TapRaw(fullName)
 	if !ok {
@@ -786,7 +748,6 @@ func bottleFile(name, tag string, raw json.RawMessage) (BottleFile, error) {
 	return file, nil
 }
 
-// stale returns the cached listing after a failed fetch, or the fetch error if there is none.
 func stale[T any](c *Client, l listing[T], etag string, haveBody bool, fetchErr error) ([]T, error) {
 	if !haveBody {
 		return nil, fetchErr

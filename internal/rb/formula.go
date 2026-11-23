@@ -12,19 +12,15 @@ import (
 	"github.com/jigsmiths/brw/internal/version"
 )
 
-// Formula is a formula file evaluated as brew loads it on one platform.
 type Formula struct {
 	b *formulaB
 }
 
-// PrefixPlaceholder and CellarPlaceholder stand for the prefix and Cellar in
-// paths a formula file computes, as in Homebrew's API.
 const (
 	PrefixPlaceholder = "$HOMEBREW_PREFIX"
 	CellarPlaceholder = "$HOMEBREW_CELLAR"
 )
 
-// hostPlatform is the machine brw runs on; tests pin it.
 var hostPlatform = func() *platform {
 	p := &platform{os: "macos", arch: "intel"}
 	if runtime.GOOS == "linux" {
@@ -36,7 +32,6 @@ var hostPlatform = func() *platform {
 	return p
 }
 
-// lookupUser is the user name a formula reads with Etc.getpwuid; tests pin it.
 var lookupUser = func() string {
 	if u, err := user.Current(); err == nil {
 		return u.Username
@@ -44,8 +39,6 @@ var lookupUser = func() string {
 	return ""
 }
 
-// LoadFormula evaluates the formula file of the formula called name as brew
-// loads it on the platform tag, such as "arm64_tahoe".
 func LoadFormula(src []byte, name, tag string) (*Formula, error) {
 	code, data, _ := strings.Cut(string(src), "\n__END__\n")
 	toks, err := lex(code)
@@ -66,14 +59,11 @@ func LoadFormula(src []byte, name, tag string) (*Formula, error) {
 	return &Formula{b}, nil
 }
 
-// SkipClean are the formula's skip_clean paths, relative to its prefix; a
-// symbol such as :la is written with its colon.
+// SkipClean are skip_clean paths relative to the prefix; a symbol such as :la keeps its colon.
 func (f *Formula) SkipClean() []string { return f.b.skipClean }
 
-// PreserveRpath is the formula's preserve_rpath: keep @rpath dylib IDs.
 func (f *Formula) PreserveRpath() bool { return f.b.preserveRpath }
 
-// symListKeep flattens skip_clean's arguments, keeping symbols apart from paths.
 func symListKeep(args []value) []string {
 	var out []string
 	for _, a := range args {
@@ -89,9 +79,7 @@ func symListKeep(args []value) []string {
 	return out
 }
 
-// MarshalJSON writes brew's Formula#to_hash for what the file decides. The
-// tap supplies the rest: full_name, tap, aliases, oldnames, versioned_formulae
-// and where the file came from.
+// MarshalJSON writes brew's Formula#to_hash for what the file decides; the tap supplies the rest.
 func (f *Formula) MarshalJSON() (b []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -105,10 +93,9 @@ func (f *Formula) MarshalJSON() (b []byte, err error) {
 	return json.Marshal(f.b.hash())
 }
 
-// spec is a SoftwareSpec: the stable or head download, or a resource.
 type spec struct {
 	url      string
-	specs    *hash // tag, revision, branch and the other url options
+	specs    *hash
 	using    value
 	checksum string
 	version  string
@@ -117,7 +104,7 @@ type spec struct {
 	reqs     []req
 	patches  []value
 	resource []*spec
-	name     string // a resource's
+	name     string
 }
 
 func (s *spec) detectedVersion() string {
@@ -129,8 +116,8 @@ func (s *spec) detectedVersion() string {
 
 type dep struct {
 	name   string
-	tags   []string // build, test, optional, recommended, no_linkage
-	macos  bool     // from uses_from_macos
+	tags   []string
+	macos  bool
 	bounds *hash
 }
 
@@ -146,9 +133,9 @@ type formulaB struct {
 	plat          *platform
 	desc, home    value
 	license       value
-	stable, head  *spec // head always exists, as in brew; hasHead says it has a url
+	stable, head  *spec
 	hasHead       bool
-	cur           *spec // the spec of a stable, head or resource block; nil in the class body
+	cur           *spec
 	revision      int64
 	scheme        int64
 	compat        value
@@ -163,23 +150,21 @@ type formulaB struct {
 	postSteps     *stepsDSL
 	skipClean     []string
 	preserveRpath bool
-	noAutobump    value // no_autobump!'s because: a symbol or a message
+	noAutobump    value
 	skipLivecheck bool
-	// the service block, run again for its files once the keg is linked
-	serviceBlk   *blockN
-	serviceScope *scope
-	data         string // after __END__, for patch :DATA
+	serviceBlk    *blockN
+	serviceScope  *scope
+	data          string
 
 	deprecationDate, deprecationReason, depReplF, depReplC value
 	disableDate, disableReason, disReplF, disReplC         value
 	deprecated, disabled                                   bool
 	deprecateArgs, disableArgs                             value
 
-	defs      map[string]*defN // instance methods: install, caveats, helpers
-	classDefs map[string]*defN // def self.name
+	defs      map[string]*defN
+	classDefs map[string]*defN
 }
 
-// knownRequires are files brew loads anyway; requiring them changes nothing.
 var knownRequires = map[string]bool{
 	"etc": true, "json": true, "fileutils": true, "open3": true, "utils/linkage": true,
 	"language/node": true, "language/perl": true, "language/python": true, "language/php": true,
@@ -249,7 +234,6 @@ func (b *formulaB) define(d *defN) {
 	}
 }
 
-// inSpec runs a block with url, sha256 and depends_on applying to sp.
 func (b *formulaB) inSpec(in *interp, s *scope, sp *spec, blk *blockN) {
 	prev := b.cur
 	b.cur = sp
@@ -470,7 +454,6 @@ func (b *formulaB) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		}
 		b.noAutobump = because
 	case "livecheck":
-		// Of the livecheck block, the hash only says whether it skips.
 		if c.block != nil {
 			for _, n := range c.block.body {
 				if call, ok := n.(*callN); ok && call.recv == nil && call.name == "skip" {
@@ -480,7 +463,6 @@ func (b *formulaB) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		}
 	case "test", "autobump", "allow_network_access!", "deny_network_access!",
 		"cxxstdlib_check", "fails_with", "needs", "env", "plist_options", "opoo", "pour_bottle":
-		// These change nothing brw installs.
 	default:
 		return nil, false
 	}
@@ -514,8 +496,6 @@ func (b *formulaB) patch(in *interp, s *scope, sp *spec, c *callN, args []value)
 		fail("patch without a source")
 	}
 	r := &spec{specs: &hash{}}
-	// brew's variations show on_* in a patch block answering for the machine
-	// itself, not the simulated platform.
 	plat := in.plat
 	in.plat = plat.real()
 	b.inSpec(in, s, r, c.block)
@@ -536,7 +516,6 @@ func (b *formulaB) lifecycle(name string, kw *hash) {
 		fail("%s without a date", name)
 	}
 	d := str(date)
-	// The args keep the reason even before the date, unlike deprecation_reason.
 	args := lifecycleArgs(rstr(d), because, rf, rc)
 	if name == "deprecate!" {
 		b.deprecateArgs = args
@@ -602,8 +581,6 @@ func (b *formulaB) dependsOn(sp *spec, args []value, kw *hash) {
 	}
 }
 
-// depOption is SoftwareSpec#add_dep_option: an optional dependency adds a
-// --with option and a recommended one a --without option.
 func (b *formulaB) depOption(d dep) {
 	short := d.name[strings.LastIndex(d.name, "/")+1:]
 	var flag, desc string
@@ -626,8 +603,6 @@ func (b *formulaB) depOption(d dep) {
 	b.options = append(b.options, o)
 }
 
-// forSpecs applies a class-level call to every spec, as brew's Formula class
-// methods do, and a call in a stable or head block to that spec alone.
 func (b *formulaB) forSpecs(f func(*spec)) {
 	if b.cur != nil {
 		f(b.cur)
