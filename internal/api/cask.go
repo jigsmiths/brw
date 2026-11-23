@@ -70,6 +70,7 @@ type CaskDependsOn struct {
 		Type string `json:"type"` // arm or intel
 		Bits int    `json:"bits"`
 	} `json:"arch"`
+	Linux json.RawMessage `json:"linux"` // set for depends_on :linux; brew writes an object's inspect string
 }
 
 // MacOSRequirement is a cask's depends_on macos, such as ">= 12". Brew's

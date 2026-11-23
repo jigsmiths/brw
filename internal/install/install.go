@@ -257,6 +257,11 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	}
 	if len(f.PostInstallSteps) > 0 {
 		in.logf("==> Running post_install for %s", f.Name)
+		// brew makes it for every post_install, so steps can link into it.
+		if err := in.Root.MkdirAll("libexec", 0o755); err != nil {
+			result.PostInstallErr = err
+			return result, nil
+		}
 		result.PostInstallErr = poststep.Run(poststep.Context{
 			Root: in.Root, Prefix: in.Prefix, Name: f.Name, Version: f.Versions.Stable, Keg: keg,
 			OS: cmp.Or(in.OS, runtime.GOOS), User: in.User, Log: in.Log,

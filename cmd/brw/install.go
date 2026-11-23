@@ -12,6 +12,7 @@ import (
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/bottle"
+	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/info"
 	"github.com/jigsmiths/brw/internal/install"
@@ -159,19 +160,25 @@ func (e *env) tapCask(ctx context.Context, prefix, tapName, token string) (*api.
 	return &c, nil
 }
 
+func (e *env) newPlanner(prefix string, idx *api.Index, client *api.Client, kegs []cellar.Keg) *install.Planner {
+	isDir := func(p string) bool {
+		fi, err := os.Stat(p)
+		return err == nil && fi.IsDir()
+	}
+	return &install.Planner{
+		Index: idx, Host: e.host, Prefix: prefix, Bottles: client, Kegs: kegs,
+		Linked:    func(name string) bool { return isDir(filepath.Join(prefix, "var/homebrew/linked", name)) },
+		Optlinked: func(name string) bool { return isDir(filepath.Join(prefix, "opt", name)) },
+	}
+}
+
 func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) error {
 	idx, client, names := r.idx, r.client, r.formulae
 	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
 	}
-	plan, planErrs := (&install.Planner{
-		Index: idx, Host: e.host, Prefix: prefix, Bottles: client, Kegs: kegs,
-		Linked: func(name string) bool {
-			fi, err := os.Stat(filepath.Join(prefix, "var/homebrew/linked", name))
-			return err == nil && fi.IsDir()
-		},
-	}).PlanEach(names)
+	plan, planErrs := e.newPlanner(prefix, idx, client, kegs).PlanEach(names)
 	for _, err := range planErrs {
 		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 	}

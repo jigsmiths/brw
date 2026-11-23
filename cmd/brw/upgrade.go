@@ -181,13 +181,7 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 		return false, errors.Join(failures...)
 	}
 
-	planner := &install.Planner{
-		Index: idx, Host: e.host, Prefix: prefix, Bottles: client, Kegs: kegs,
-		Linked: func(name string) bool {
-			fi, err := os.Stat(filepath.Join(prefix, "var/homebrew/linked", name))
-			return err == nil && fi.IsDir()
-		},
-	}
+	planner := e.newPlanner(prefix, idx, client, kegs)
 	upgradeNames := make([]string, len(upgrade))
 	for i, r := range upgrade {
 		upgradeNames[i] = r.Name
