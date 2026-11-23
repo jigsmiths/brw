@@ -58,6 +58,7 @@ type Formula struct {
 	Versions                      struct{ Stable, Head string } `json:"versions"`
 	Revision                      int                           `json:"revision"`
 	VersionScheme                 int                           `json:"version_scheme"`
+	CompatibilityVersion          int                           `json:"compatibility_version"` // 0 when unset
 	Bottle                        struct{ Stable Bottle }       `json:"bottle"`
 	Dependencies                  []string                      `json:"dependencies"`
 	BuildDependencies             []string                      `json:"build_dependencies"`

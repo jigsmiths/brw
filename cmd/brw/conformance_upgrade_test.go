@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -82,12 +83,12 @@ func TestConformanceUpgrade(t *testing.T) {
 	brewIn(theirs, "upgrade")
 	brwIn("upgrade")
 
-	// brew update links brew's own completions, man pages and docs, which brw
+	// Older brew update links brew's own completions, man pages and docs, which brw
 	// update has no reason to do. brew's first run in the brw prefix also fetches
 	// its Ruby, so that happens before the doctor output is compared.
 	for _, l := range []string{"etc/bash_completion.d/brew", "share/doc/homebrew", "share/fish/vendor_completions.d/brew.fish",
 		"share/man/man1/README.md", "share/man/man1/brew.1", "share/zsh/site-functions/_brew"} {
-		if err := os.Remove(filepath.Join(theirs, l)); err != nil {
+		if err := os.Remove(filepath.Join(theirs, l)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			t.Error(err)
 		}
 	}

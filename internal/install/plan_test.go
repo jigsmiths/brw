@@ -68,7 +68,8 @@ func (b fakeBottles) Bottles(want map[string]string) (map[string]api.BottleFile,
 
 func planner(t *testing.T, host platform.Host, idx *api.Index) *Planner {
 	t.Helper()
-	p := &Planner{Index: idx, Host: host, Prefix: "/opt/homebrew", Bottles: fakeBottles{}, Linked: func(string) bool { return false }}
+	p := &Planner{Index: idx, Host: host, Prefix: "/opt/homebrew", Bottles: fakeBottles{},
+		Linked: func(string) bool { return false }, Optlinked: func(string) bool { return false }}
 	if host.OS == "linux" { // only bottles that need no relocation can be installed there
 		p.Prefix, p.Bottles = "/home/linuxbrew/.linuxbrew", fakeBottles{"*": ":any_skip_relocation"}
 	}
@@ -135,6 +136,7 @@ func TestPlanRecordsTheArchOfTheHost(t *testing.T) {
 func TestPlanListsRuntimeDependenciesLikeBrew(t *testing.T) {
 	lib := with(with(f("lib", "base"), "versions", map[string]any{"stable": "2.1"}), "revision", 1)
 	lib["bottle"] = map[string]any{"stable": map[string]any{"rebuild": 3, "files": map[string]any{"arm64_tahoe": map[string]any{}}}}
+	lib["compatibility_version"] = 2
 	idx := index(t, f("app", "lib"), lib, f("base"))
 	plan, err := planner(t, mac, idx).Plan([]string{"app"})
 	if err != nil {
@@ -148,7 +150,8 @@ func TestPlanListsRuntimeDependenciesLikeBrew(t *testing.T) {
 	}
 	want := []cellar.Dependency{
 		{FullName: "base", Version: "1.0", PkgVersion: "1.0"},
-		{FullName: "lib", Version: "2.1", Revision: 1, BottleRebuild: 3, PkgVersion: "2.1_1", DeclaredDirectly: true},
+		{FullName: "lib", Version: "2.1", Revision: 1, BottleRebuild: 3, PkgVersion: "2.1_1", DeclaredDirectly: true,
+			CompatibilityVersion: json.RawMessage("2")},
 	}
 	if !reflect.DeepEqual(app.RuntimeDeps, want) {
 		t.Errorf("runtime dependencies = %+v\nwant %+v", app.RuntimeDeps, want)
@@ -465,6 +468,7 @@ func upgradePlanner(t *testing.T, idx *api.Index, linked bool, kegs ...cellar.Ke
 	p := planner(t, mac, idx)
 	p.Kegs = kegs
 	p.Linked = func(string) bool { return linked }
+	p.Optlinked = func(string) bool { return true }
 	return p
 }
 
@@ -492,13 +496,23 @@ func TestPlanUpgradeCarriesOverHowTheOldKegWasInstalled(t *testing.T) {
 	}
 }
 
-// Brew links what it upgrades unless the formula is keg-only, whatever the old
-// keg was (formula_installer.rb: link_keg ||= !formula.keg_only?).
-func TestPlanUpgradeLinksAnUnlinkedKeg(t *testing.T) {
+// brew keeps a keg the user unlinked unlinked (upgrade.rb: link_keg = keg.linked?).
+func TestPlanUpgradeKeepsAnUnlinkedKegUnlinked(t *testing.T) {
 	idx := index(t, f("app"))
 	plan, errs := upgradePlanner(t, idx, false, keg("app", "0.9")).PlanUpgrade([]string{"app"})
+	if len(errs) != 0 || plan.Items[0].Linked == nil || *plan.Items[0].Linked {
+		t.Errorf("errs = %v, linked = %v: brew leaves it unlinked", errs, plan.Items[0].Linked)
+	}
+}
+
+// Without an opt link brew has no keg to copy, so it links unless keg-only.
+func TestPlanUpgradeLinksAKegWithoutAnOptLink(t *testing.T) {
+	idx := index(t, f("app"))
+	p := upgradePlanner(t, idx, false, keg("app", "0.9"))
+	p.Optlinked = func(string) bool { return false }
+	plan, errs := p.PlanUpgrade([]string{"app"})
 	if len(errs) != 0 || plan.Items[0].Linked == nil || !*plan.Items[0].Linked {
-		t.Errorf("errs = %v, linked = %v: brew links it again", errs, plan.Items[0].Linked)
+		t.Errorf("errs = %v, linked = %v: brew links it", errs, plan.Items[0].Linked)
 	}
 }
 
@@ -625,12 +639,12 @@ func TestPlanReinstallPlansAFormulaWhoseCurrentVersionIsInstalled(t *testing.T) 
 }
 
 func TestPlanReinstallOfAnOutdatedFormulaIsAnUpgradeToo(t *testing.T) {
-	plan, errs := upgradePlanner(t, index(t, f("app")), false, keg("app", "0.9")).PlanReinstall([]string{"app"})
+	plan, errs := upgradePlanner(t, index(t, f("app")), true, keg("app", "0.9")).PlanReinstall([]string{"app"})
 	if len(errs) != 0 || plan.Items[0].PkgVersion != "1.0" || !plan.Items[0].Reinstall || plan.Items[0].Upgrade[0].Version != "0.9" {
 		t.Fatalf("errs = %v, item = %+v", errs, plan.Items[0])
 	}
 	if plan.Items[0].Linked == nil || !*plan.Items[0].Linked {
-		t.Error("brew links what it reinstalls unless it is keg-only")
+		t.Error("the reinstalled keg should stay linked")
 	}
 }
 
