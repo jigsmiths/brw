@@ -2,12 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/tap"
 )
 
 // listingsUpdated is what a first update of the test listings prints.
@@ -62,6 +67,45 @@ func TestUpdateLeavesHomebrewCoreAlone(t *testing.T) {
 	}
 	if w := e.err.(*bytes.Buffer).String(); w != "" {
 		t.Errorf("stderr = %q", w)
+	}
+}
+
+func TestUpdatePullsTapsTogetherAndReportsThemInOrder(t *testing.T) {
+	e := &env{host: linux, client: apiServer(t), err: &bytes.Buffer{}}
+	prefix := t.TempDir()
+	names := []string{"a", "b", "c"}
+	for _, n := range names {
+		if err := os.MkdirAll(filepath.Join(prefix, "Library/Taps/u/homebrew-"+n), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var started sync.WaitGroup
+	started.Add(len(names))
+	e.pull = func(ctx context.Context, tp tap.Tap) (bool, error) {
+		started.Done()
+		all := make(chan struct{})
+		go func() { started.Wait(); close(all) }()
+		select {
+		case <-all:
+		case <-time.After(5 * time.Second):
+			return false, errors.New("pulled alone")
+		}
+		switch tp.Name {
+		case "u/a":
+			time.Sleep(50 * time.Millisecond) // finishes last
+			return false, errors.New("a offline")
+		case "u/b":
+			return false, errors.New("b offline")
+		}
+		return true, nil
+	}
+	out, err := runCmd(t, e, "update", "-prefix", prefix)
+	if err != nil || out != listingsUpdated+"Updated 1 tap (u/c).\n" {
+		t.Errorf("update = %q, %v", out, err)
+	}
+	want := "brw: warning: could not update u/a: a offline\nbrw: warning: could not update u/b: b offline\n"
+	if w := e.err.(*bytes.Buffer).String(); w != want {
+		t.Errorf("stderr = %q, want %q", w, want)
 	}
 }
 
