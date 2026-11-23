@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -43,6 +46,22 @@ func TestUpdateFailsWhenTheCaskListingFails(t *testing.T) {
 	out, err := runCmd(t, &env{host: linux, client: c}, "update", "-prefix", t.TempDir())
 	if err == nil || out != "" {
 		t.Errorf("update = %q, %v; want an error and no output", out, err)
+	}
+}
+
+// brw reads homebrew/core from the API, so pulling its tap is wasted time.
+func TestUpdateLeavesHomebrewCoreAlone(t *testing.T) {
+	e := &env{host: linux, client: apiServer(t), err: &bytes.Buffer{}}
+	prefix := t.TempDir()
+	// Not a clone, so a pull would fail and warn.
+	if err := os.MkdirAll(filepath.Join(prefix, "Library/Taps/homebrew/homebrew-core"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCmd(t, e, "update", "-prefix", prefix); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.err.(*bytes.Buffer).String(); w != "" {
+		t.Errorf("stderr = %q", w)
 	}
 }
 

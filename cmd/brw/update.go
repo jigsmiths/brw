@@ -42,7 +42,8 @@ func updateCommand(e *env, args []string) error {
 	return err
 }
 
-// pullTaps pulls every tap, as brew update does, and names those that moved.
+// pullTaps pulls every tap but homebrew/core, as brew update does, and names
+// those that moved.
 // A tap that cannot be pulled is left with a warning.
 func (e *env) pullTaps(ctx context.Context, prefix string) ([]string, error) {
 	taps, err := tap.List(prefix)
@@ -51,6 +52,9 @@ func (e *env) pullTaps(ctx context.Context, prefix string) ([]string, error) {
 	}
 	var updated []string
 	for _, t := range taps {
+		if t.Name == "homebrew/core" {
+			continue // read from the API, as brew does unless told not to
+		}
 		changed, err := tap.Pull(ctx, t)
 		if err != nil {
 			_, _ = fmt.Fprintf(e.err, "brw: warning: could not update %s: %v\n", t.Name, err)
