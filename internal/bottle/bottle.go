@@ -95,9 +95,6 @@ func (r Request) stem() string {
 
 // Manifest annotations are cached beside the bottle, so a cached bottle needs no request.
 func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
-	if req.File.SHA256 == "" {
-		return Result{}, fmt.Errorf("%s: the bottle has no checksum to verify", req.Name)
-	}
 	stem := filepath.Join(f.Dir, req.stem())
 	path, tabPath, suppPath := stem+".tar.gz", stem+".tab.json", stem+".sbom.json"
 	haveBottle := verified(path, req.File.SHA256)
@@ -120,7 +117,7 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 	if !haveBottle {
-		if err := f.download(ctx, req.Name+" ("+req.PkgVersion+")", req.File, path); err != nil {
+		if err := f.download(ctx, req.Name+" ("+req.PkgVersion+")", req.File, path, verify); err != nil {
 			return Result{}, err
 		}
 	}
@@ -144,7 +141,7 @@ func (f *Fetcher) FetchSource(ctx context.Context, name, version, url, sha256 st
 	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
 		return "", err
 	}
-	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url, SHA256: sha256}, path)
+	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url, SHA256: sha256}, path, verify)
 }
 
 func (f *Fetcher) FetchUnverified(ctx context.Context, name, version, url string) (string, error) {
@@ -155,7 +152,7 @@ func (f *Fetcher) FetchUnverified(ctx context.Context, name, version, url string
 	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
 		return "", err
 	}
-	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url}, path)
+	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url}, path, skipVerify)
 }
 
 func (f *Fetcher) sourcePath(name, version, url string) string {
@@ -173,7 +170,7 @@ func (f *Fetcher) fetchPlain(ctx context.Context, req Request, path, tabPath, su
 		return Result{}, err
 	}
 	if !haveBottle {
-		if err := f.download(ctx, req.Name+" ("+req.PkgVersion+")", req.File, path); err != nil {
+		if err := f.download(ctx, req.Name+" ("+req.PkgVersion+")", req.File, path, verify); err != nil {
 			return Result{}, err
 		}
 	}
@@ -265,7 +262,14 @@ func (f *Fetcher) annotations(ctx context.Context, req Request) (annotations, er
 	return annotations{}, fmt.Errorf("%s: no manifest matches the bottle checksum %s", req.Name, req.File.SHA256)
 }
 
-func (f *Fetcher) download(ctx context.Context, name string, file api.BottleFile, path string) error {
+type verification int
+
+const (
+	verify     verification = iota
+	skipVerify              // a head archive, which has no checksum
+)
+
+func (f *Fetcher) download(ctx context.Context, name string, file api.BottleFile, path string, check verification) error {
 	resp, err := f.get(ctx, file.URL, "")
 	if err != nil {
 		return err
@@ -288,7 +292,7 @@ func (f *Fetcher) download(ctx context.Context, name string, file api.BottleFile
 	if err != nil {
 		return err
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != file.SHA256 && file.SHA256 != "" { // empty only from FetchUnverified
+	if got := hex.EncodeToString(h.Sum(nil)); check == verify && got != file.SHA256 {
 		return fmt.Errorf("%s: sha256 is %s, want %s", file.URL, got, file.SHA256)
 	}
 	// keep the server's time, as curl --remote-time does for brew
@@ -311,7 +315,6 @@ func (f *Fetcher) get(ctx context.Context, url, accept string) (*http.Response, 
 	}
 	c := f.client()
 	if req.URL.Scheme == "file" {
-		// as brew's curl reads them, with the file's time as Last-Modified
 		c = &http.Client{Transport: http.NewFileTransport(http.Dir("/"))}
 	}
 	resp, err := c.Do(req)

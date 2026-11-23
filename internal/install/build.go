@@ -177,7 +177,7 @@ func newestFile(dir string) time.Time {
 // bottleBlock is what brew strips from the formula file it keeps in the keg.
 var bottleBlock = regexp.MustCompile(`(?s)  bottle do.+?end\n\n?`)
 
-func (in *Installer) build(ctx context.Context, it Item, download string, head *headSource) (result Result, err error) {
+func (in *Installer) build(ctx context.Context, it Item, fetched buildSource) (result Result, err error) {
 	f := it.Formula
 	if in.LoadSource == nil {
 		return Result{}, ErrNoSource
@@ -186,11 +186,10 @@ func (in *Installer) build(ctx context.Context, it Item, download string, head *
 	if err != nil {
 		return Result{}, err
 	}
-	srcURL, srcSHA, headVersion := f.URLs.Stable.URL, f.URLs.Stable.Checksum, f.Versions.Head
-	if head != nil {
-		src.Formula.UseHead(head.version())
-		srcURL, srcSHA, headVersion = head.url, "", head.version()
-		download = head.archive
+	srcSHA, headVersion, version := f.URLs.Stable.Checksum, f.Versions.Head, f.Versions.Stable
+	if fetched.isHead() {
+		src.Formula.UseHead(fetched.version())
+		srcSHA, headVersion, version = "", fetched.version(), fetched.version()
 	}
 	var old *oldKegs
 	if len(it.Upgrade) > 0 {
@@ -228,10 +227,10 @@ func (in *Installer) build(ctx context.Context, it Item, download string, head *
 		}
 	}
 	stage, scratch := filepath.Join(top, "src"), filepath.Join(top, "resources")
-	if head != nil && head.dir != "" {
-		err = copyCheckout(head.dir, stage)
+	if fetched.kind == headCheckout {
+		err = copyCheckout(fetched.dir, stage)
 	} else {
-		err = in.unpack(broot, download, path.Base(srcURL), stage)
+		err = in.unpack(broot, fetched.archive, path.Base(fetched.url), stage)
 	}
 	if err != nil {
 		return Result{}, err
@@ -240,9 +239,9 @@ func (in *Installer) build(ctx context.Context, it Item, download string, head *
 	if err != nil {
 		return Result{}, err
 	}
-	modified, commit := newestFile(bp), tarCommit(download)
-	if head != nil && head.dir != "" {
-		modified, commit = head.time, head.revision
+	modified, commit := newestFile(bp), tarCommit(fetched.archive)
+	if fetched.kind == headCheckout {
+		modified, commit = fetched.time, fetched.revision
 	}
 	resources, files := map[string]string{}, map[string]string{}
 	for _, r := range src.Formula.Resources() {
@@ -300,8 +299,8 @@ func (in *Installer) build(ctx context.Context, it Item, download string, head *
 		Stable: f.Versions.Stable, Head: headVersion, Scheme: f.VersionScheme, Compatibility: f.CompatibilityVersion,
 		Arch: it.Arch, BuiltOn: in.BuiltOn,
 	}
-	if head != nil {
-		b.HeadBuild, b.SCMRevision = true, head.revision
+	if fetched.isHead() {
+		b.HeadBuild, b.SCMRevision = true, fetched.revision
 	}
 	receipt, err := cellar.NewBuildReceipt(b)
 	if err != nil {
@@ -357,11 +356,7 @@ func (in *Installer) build(ctx context.Context, it Item, download string, head *
 	if err := in.Root.WriteFile(path.Join(keg, ".brew", f.Name+".rb"), kept, 0o644); err != nil {
 		return Result{}, err
 	}
-	version := f.Versions.Stable
-	if head != nil {
-		version = head.version()
-	}
-	if err := in.writeBuiltSBOM(keg, f, version, srcURL, srcSHA, modified, it.RuntimeDeps); err != nil {
+	if err := in.writeBuiltSBOM(keg, f, version, fetched.url, srcSHA, modified, it.RuntimeDeps); err != nil {
 		return Result{}, err
 	}
 	return in.finish(it, keg, f.Aliases, old), nil

@@ -77,7 +77,7 @@ func cleanupCommand(e *env, args []string) (err error) {
 				if err != nil {
 					return cleanup.Formula{}, false
 				}
-				return cleanup.Formula{PkgVersion: v.String(), Scheme: f.VersionScheme, Rebuild: f.Bottle.Stable.Rebuild, Head: f.Versions.Head != ""}, true
+				return cleanup.Formula{PkgVersion: v.String(), Scheme: f.VersionScheme, Rebuild: f.Bottle.Stable.Rebuild, HasHead: f.Versions.Head != ""}, true
 			}
 		}
 		var failed []error

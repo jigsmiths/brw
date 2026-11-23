@@ -160,7 +160,7 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun, fetchHead bool, nam
 				}
 			case i < 0:
 				f, group, _ := outdated.Formula(idx, rack, finder.Installed(rack))
-				if def := cellar.Prefix(prefix).DefaultKeg(group); f.Versions.Head != "" && def.Receipt != nil && def.Receipt.Source.Spec == "head" {
+				if def := cellar.Prefix(prefix).DefaultKeg(group); f.Versions.Head != "" && def.Receipt.IsHeadBuild() {
 					_, _ = fmt.Fprintf(e.err, "brw: warning: %s %s already installed\n", f.FullName, def.Version)
 					continue
 				}
@@ -189,11 +189,12 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun, fetchHead bool, nam
 	}
 
 	planner := e.newPlanner(prefix, idx, client, kegs)
-	planner.Head = map[string]bool{}
 	upgradeNames := make([]string, len(upgrade))
 	for i, r := range upgrade {
 		upgradeNames[i] = r.FullName
-		planner.Head[r.FullName] = r.Head
+		if r.Head {
+			planner.HeadNames = append(planner.HeadNames, r.FullName)
+		}
 	}
 	plan, planErrs := planner.PlanUpgrade(upgradeNames)
 	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures, withBuilds(e, prefix, idx, client))
@@ -283,7 +284,7 @@ func cleanAfterUpgrade(e *env, root *fsx.Root, prefix string, it install.Item) {
 			if name != it.Formula.Name {
 				return cleanup.Formula{}, false
 			}
-			return cleanup.Formula{PkgVersion: it.PkgVersion, Scheme: it.Formula.VersionScheme, Rebuild: it.Formula.Bottle.Stable.Rebuild, Head: it.Head}, true
+			return cleanup.Formula{PkgVersion: it.PkgVersion, Scheme: it.Formula.VersionScheme, Rebuild: it.Formula.Bottle.Stable.Rebuild, HasHead: it.Formula.Versions.Head != ""}, true
 		},
 		Now: time.Now, Out: &out, Warn: e.err, LocksHeld: true, // the installer still holds them
 	}

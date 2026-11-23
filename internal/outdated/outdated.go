@@ -19,14 +19,9 @@ type Result struct {
 	CurrentVersion    string
 	Pinned            bool
 	PinnedVersion     string
-	// LatestHead says a HEAD formula is outdated with no newer commit known:
-	// brew prints "latest HEAD" for it, and "HEAD" in JSON.
-	LatestHead bool
-	// Head says the formula is installed from its head spec, so an upgrade
-	// builds the head again. JSONVersion is then brew's JSON current_version:
-	// "HEAD" unless a fetch found the newer commit.
-	Head        bool
-	JSONVersion string
+	NoNewerHead       bool // brew prints "latest HEAD" for it
+	Head              bool
+	JSONVersion       string // brew's JSON current_version: "HEAD" for a HEAD formula unless a fetch found a newer commit
 }
 
 type installed struct {
@@ -36,12 +31,15 @@ type installed struct {
 	scheme  int
 }
 
-// HeadCommit is the latest commit of a formula's head repository, and with
-// fetch, whether it is newer than installed, the commit of the HEAD keg.
-// vcs is false for a head brew cannot ask.
-type HeadCommit func(f *api.Formula, installed string, fetch bool) (latest string, newer, vcs bool, err error)
+// HeadState is what a formula's head repository says about installed.
+type HeadState struct {
+	Repository bool   // false for a head brw cannot ask, which is never outdated
+	Latest     string // empty when unknown
+	Newer      bool   // set only when asked to fetch
+}
 
-// Options are outdated's --fetch-HEAD: Head finds the commits it compares.
+type HeadCommit func(f *api.Formula, installed string, fetch bool) (HeadState, error)
+
 type Options struct {
 	Head      HeadCommit
 	FetchHead bool
@@ -54,7 +52,6 @@ func Check(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg) ([]Result, e
 	return CheckWith(idx, prefix, kegs, Options{})
 }
 
-// CheckWith is Check, asking head repositories for their commits as o says.
 func CheckWith(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg, o Options) ([]Result, error) {
 	var out []Result
 	for name, group := range racks(kegs) {
@@ -135,7 +132,7 @@ func FromTap(kegs []cellar.Keg, tap string) []cellar.Keg {
 
 // evaluate follows Formula#outdated_kegs: the formula is current if any keg is at
 // least the latest version (on the same or a newer scheme) and is linked or
-// pinned. Else the latest HEAD keg keeps it current unless headOutdated.
+// pinned.
 func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg, o Options) (Result, bool, error) {
 	latest, err := version.NewPkg(f.Versions.Stable, f.Revision)
 	if err != nil {
@@ -178,14 +175,12 @@ func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg, o Options
 	if current {
 		return Result{}, false, nil
 	}
-	var newCommit string
-	var fetched bool
+	var verdict headVerdict
 	if head != nil {
-		outdated, commit, didFetch, err := headOutdated(f, *head, o)
-		if err != nil || !outdated {
+		var err error
+		if verdict, err = headOutdated(f, *head, o); err != nil || !verdict.outdated {
 			return Result{}, false, err
 		}
-		newCommit, fetched = commit, didFetch
 	}
 
 	slices.SortStableFunc(all, func(a, b installed) int {
@@ -209,15 +204,14 @@ func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg, o Options
 	for _, in := range all {
 		r.InstalledVersions = append(r.InstalledVersions, in.version)
 	}
-	// brew's Formula#latest_head_pkg_version, for a formula loaded from a HEAD keg
-	if def := prefix.DefaultKeg(kegs); head != nil && f.Versions.Head != "" && def.Receipt != nil && def.Receipt.Source.Spec == "head" {
+	if head != nil && f.Versions.Head != "" && prefix.DefaultKeg(kegs).Receipt.IsHeadBuild() {
 		r.Head, r.CurrentVersion = true, head.Version
-		if newCommit != "" {
-			r.CurrentVersion = withRevision("HEAD-"+newCommit, f.Revision)
+		if verdict.latest != "" {
+			r.CurrentVersion = withRevision("HEAD-"+verdict.latest, f.Revision)
 		}
-		r.LatestHead = slices.Contains(r.InstalledVersions, r.CurrentVersion)
+		r.NoNewerHead = slices.Contains(r.InstalledVersions, r.CurrentVersion)
 		r.JSONVersion = "HEAD"
-		if fetched {
+		if verdict.fetched {
 			r.JSONVersion = r.CurrentVersion
 		}
 	}
@@ -231,8 +225,6 @@ func withRevision(v string, revision int) string {
 	return v
 }
 
-// newerHead orders HEAD kegs as brew's latest_head_version does: by the
-// receipt's source time, then revision.
 func newerHead(a, b cellar.Keg) bool {
 	ta, tb := modified(a), modified(b)
 	if ta != tb {
@@ -252,36 +244,39 @@ func modified(k cellar.Keg) int64 {
 
 // headOutdated is brew's head_version_outdated?: the formula moved to a newer
 // version scheme or stable version than the HEAD keg's receipt records, or,
-// with FetchHead, its repository has a commit the keg is not at. commit is
-// the repository's latest as fetched, else as the cached clone has it.
-func headOutdated(f *api.Formula, k cellar.Keg, o Options) (outdated bool, commit string, fetched bool, err error) {
+// with FetchHead, its repository has a commit the keg is not at.
+func headOutdated(f *api.Formula, k cellar.Keg, o Options) (headVerdict, error) {
 	if k.Receipt != nil {
 		if k.Receipt.VersionScheme() < f.VersionScheme {
-			return true, cachedCommit(f, o), false, nil
+			return headVerdict{outdated: true, latest: cachedCommit(f, o)}, nil
 		}
-		was, err1 := version.Parse(k.Receipt.Source.Stable)
+		was, err1 := version.Parse(k.Receipt.Source.StableAtInstall)
 		now, err2 := version.Parse(f.Versions.Stable)
-		if k.Receipt.Source.Stable != "" && err1 == nil && err2 == nil && was.Compare(now) < 0 {
-			return true, cachedCommit(f, o), false, nil
+		if k.Receipt.Source.StableAtInstall != "" && err1 == nil && err2 == nil && was.Compare(now) < 0 {
+			return headVerdict{outdated: true, latest: cachedCommit(f, o)}, nil
 		}
 	}
 	if !o.FetchHead || o.Head == nil || f.Versions.Head == "" {
-		return false, "", false, nil
+		return headVerdict{}, nil
 	}
 	pv, _ := version.ParsePkg(k.Version)
-	commit, newer, vcs, err := o.Head(f, strings.TrimPrefix(pv.Version.String(), "HEAD-"), true)
-	if err != nil || !vcs {
-		return false, "", false, err
+	s, err := o.Head(f, strings.TrimPrefix(pv.Version.String(), "HEAD-"), true)
+	if err != nil || !s.Repository {
+		return headVerdict{}, err
 	}
-	return newer, commit, true, nil
+	return headVerdict{outdated: s.Newer, latest: s.Latest, fetched: true}, nil
 }
 
-// cachedCommit is the commit brew's last_commit reads without fetching: from
-// GitHub's API or the cached clone, or "" when neither has one.
+type headVerdict struct {
+	outdated bool
+	latest   string
+	fetched  bool // latest came from asking the repository, not the cached clone
+}
+
 func cachedCommit(f *api.Formula, o Options) string {
 	if o.Head == nil || f.Versions.Head == "" {
 		return ""
 	}
-	commit, _, _, _ := o.Head(f, "", false)
-	return commit
+	s, _ := o.Head(f, "", false)
+	return s.Latest
 }

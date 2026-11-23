@@ -50,18 +50,15 @@ func reinstallCommand(e *env, args []string) error {
 		return errors.Join(problems...)
 	}
 	planner := e.newPlanner(prefix, idx, client, kegs)
-	planner.Head = map[string]bool{}
 	for _, name := range formulae {
-		// brew reinstalls the spec the current keg was built from
 		var own []cellar.Keg
 		for _, k := range kegs {
 			if k.Name == name {
 				own = append(own, k)
 			}
 		}
-		if f, group, ok := outdated.Formula(idx, name, own); ok {
-			def := cellar.Prefix(prefix).DefaultKeg(group)
-			planner.Head[name] = f.Versions.Head != "" && def.Receipt != nil && def.Receipt.Source.Spec == "head"
+		if f, group, ok := outdated.Formula(idx, name, own); ok && f.Versions.Head != "" && cellar.Prefix(prefix).DefaultKeg(group).Receipt.IsHeadBuild() {
+			planner.HeadNames = append(planner.HeadNames, name)
 		}
 	}
 	plan, planErrs := planner.PlanReinstall(formulae)

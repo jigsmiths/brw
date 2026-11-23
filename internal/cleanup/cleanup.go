@@ -23,8 +23,8 @@ import (
 type Formula struct {
 	PkgVersion string // the version and revision, such as "1.2_1"
 	Scheme     int
-	Rebuild    int  // of the bottle
-	Head       bool // it has a head spec
+	Rebuild    int // of the bottle
+	HasHead    bool
 }
 
 type Cleaner struct {
@@ -146,7 +146,7 @@ func (c *Cleaner) cleanFormula(name string, kegs []cellar.Keg) (err error) {
 		return nil
 	}
 	var old []cellar.Keg
-	if def := c.cellar().DefaultKeg(kegs); current.Head && def.Receipt != nil && def.Receipt.Source.Spec == "head" && slices.ContainsFunc(kegs, isHead) {
+	if current.HasHead && c.cellar().DefaultKeg(kegs).Receipt.IsHeadBuild() && slices.ContainsFunc(kegs, isHead) {
 		old = oldOfHead(kegs)
 	} else {
 		latestInstalled := slices.ContainsFunc(kegs, func(k cellar.Keg) bool { return k.Version == current.PkgVersion })
@@ -201,9 +201,7 @@ func isHead(k cellar.Keg) bool {
 	return err == nil && pv.Version.IsHead()
 }
 
-// oldOfHead is brew's eligible_kegs_for_cleanup for a formula on its head
-// spec: every keg but the newest HEAD one, by source time then revision, and
-// the newest stable one.
+// oldOfHead is brew's eligible_kegs_for_cleanup for a formula on its head spec.
 func oldOfHead(kegs []cellar.Keg) []cellar.Keg {
 	var heads, stable []cellar.Keg
 	for _, k := range kegs {

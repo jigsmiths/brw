@@ -311,9 +311,6 @@ func TestOldKegsKeepsHeadKegs(t *testing.T) {
 	}
 }
 
-// A formula on its head spec keeps its newest HEAD keg and its newest stable
-// keg, as brew's eligible_kegs_for_cleanup does, even when that stable keg is
-// not the current version.
 func TestOldKegsOfAHeadFormula(t *testing.T) {
 	f := newFixture(t)
 	headKeg := func(version string, modified int64, linked bool) {
@@ -326,7 +323,7 @@ func TestOldKegsOfAHeadFormula(t *testing.T) {
 	headKeg("HEAD-aaaaaaa", 2, false)
 	headKeg("HEAD-bbbbbbb", 1, false)
 	headKeg("HEAD-ccccccc", 3, true)
-	f.current["tool"] = Formula{PkgVersion: "1.0", Head: true}
+	f.current["tool"] = Formula{PkgVersion: "1.0", HasHead: true}
 	if err := f.cleaner().OldKegs(nil); err != nil {
 		t.Fatal(err)
 	}
@@ -398,8 +395,6 @@ func has(t *testing.T, p string) bool {
 	return err == nil
 }
 
-// The clones install --HEAD keeps beside the downloads go once they are older
-// than the limit, as brew prunes a cache directory named name--tag.
 func TestHeadClonesOlderThanTheLimitAreRemoved(t *testing.T) {
 	f := newFixture(t)
 	c, dir := f.downloadsCleaner()
@@ -425,7 +420,7 @@ func TestHeadClonesOlderThanTheLimitAreRemoved(t *testing.T) {
 	if has(t, old) || !has(t, fresh) || !has(t, other) {
 		t.Errorf("old %v, fresh %v, other %v", has(t, old), has(t, fresh), has(t, other))
 	}
-	c.PruneDays = 0 // --prune=all
+	c.PruneDays = 0
 	if err := c.CleanClones(nil); err != nil || has(t, fresh) {
 		t.Errorf("--prune=all left %s: %v", fresh, err)
 	}

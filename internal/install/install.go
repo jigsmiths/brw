@@ -118,7 +118,7 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 	if err != nil {
 		return nil, err
 	}
-	sources, heads := map[string]string{}, map[string]*headSource{}
+	sources := map[string]buildSource{}
 	for i, it := range plan.Items {
 		f := it.Formula
 		switch {
@@ -127,12 +127,14 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", f.FullName, err)
 			}
-			heads[f.Name] = &h
+			sources[f.Name] = h
 			plan.Items[i].PkgVersion = withRevision(h.version(), f.Revision)
 		case it.Build:
-			if sources[f.Name], err = in.Fetcher.FetchSource(ctx, f.Name, it.PkgVersion, f.URLs.Stable.URL, f.URLs.Stable.Checksum); err != nil {
+			archive, err := in.Fetcher.FetchSource(ctx, f.Name, it.PkgVersion, f.URLs.Stable.URL, f.URLs.Stable.Checksum)
+			if err != nil {
 				return nil, fmt.Errorf("%s: %w", f.FullName, err)
 			}
+			sources[f.Name] = buildSource{kind: stableArchive, url: f.URLs.Stable.URL, archive: archive}
 		}
 	}
 	next := 0
@@ -143,7 +145,7 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 		var r Result
 		var err error
 		if it.Build {
-			r, err = in.build(ctx, it, sources[it.Formula.Name], heads[it.Formula.Name])
+			r, err = in.build(ctx, it, sources[it.Formula.Name])
 		} else {
 			r, err = in.pour(it, fetched[next])
 			next++

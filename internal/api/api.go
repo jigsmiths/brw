@@ -104,9 +104,8 @@ type Formula struct {
 	HeadDependencies HeadDeps `json:"head_dependencies"`
 }
 
-// HeadDeps are a head spec's dependencies; Set says the listing had them.
 type HeadDeps struct {
-	Set                     bool                     `json:"-"`
+	Listed                  bool                     `json:"-"`
 	Dependencies            []string                 `json:"dependencies"`
 	BuildDependencies       []string                 `json:"build_dependencies"`
 	RecommendedDependencies []string                 `json:"recommended_dependencies"`
@@ -122,13 +121,12 @@ func (h *HeadDeps) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*h = HeadDeps(p)
-	h.Set = true
+	h.Listed = true
 	return nil
 }
 
-// HeadSpec is f as install --HEAD sees it: with the head spec's dependencies.
 func (f Formula) HeadSpec() Formula {
-	if h := f.HeadDependencies; h.Set {
+	if h := f.HeadDependencies; h.Listed {
 		f.Dependencies, f.BuildDependencies = h.Dependencies, h.BuildDependencies
 		f.RecommendedDependencies, f.OptionalDependencies = h.RecommendedDependencies, h.OptionalDependencies
 		f.UsesFromMacOS, f.UsesBounds = slices.Clone(h.UsesFromMacOS), h.UsesBounds
@@ -137,7 +135,7 @@ func (f Formula) HeadSpec() Formula {
 				f.UsesFromMacOS[j].Since = f.UsesBounds[j].Since
 			}
 		}
-		f.Variations = nil // a tap formula is evaluated for this host, so they repeat stable's
+		f.Variations = nil // brew builds variations from the stable spec
 	}
 	return f
 }

@@ -22,9 +22,9 @@ type Build struct {
 	Tap, TapGitHead string // the tap's commit; empty writes null
 	Path            string
 	Stable          string
-	Head            string // the head spec's version, "HEAD" before a fetch; empty when it has none
-	HeadBuild       bool   // built from the head spec, by install --HEAD
-	SCMRevision     string // the commit a head build checked out
+	Head            string
+	HeadBuild       bool
+	SCMRevision     string
 	Scheme          int
 	Compatibility   int // 0 when the formula sets none
 	Arch            string

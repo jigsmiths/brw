@@ -15,32 +15,40 @@ import (
 	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/outdated"
 	"github.com/jigsmiths/brw/internal/rb"
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// headSource is a formula's head download, fetched: a git checkout in the
-// cache, or an archive brew's curl strategy downloaded.
-type headSource struct {
-	url      string
-	dir      string // the checkout; empty for an archive
-	archive  string
-	short    string // the commit as brew abbreviates it, which names the keg
-	revision string // the full commit, which the receipt records
-	time     time.Time
+type sourceKind int
+
+const (
+	stableArchive sourceKind = iota
+	headCheckout             // a git clone in the cache
+	headArchive              // a download, as brew's curl strategy fetches a head
+)
+
+// buildSource is the fetched download a build stages.
+type buildSource struct {
+	kind    sourceKind
+	url     string
+	archive string // stableArchive and headArchive
+	// headCheckout only:
+	dir, short, revision string
+	time                 time.Time
 }
 
-// version is the head spec's version once fetched: HEAD-<commit> for a
-// repository, HEAD for an archive.
-func (h headSource) version() string {
-	if h.short == "" {
+func (s buildSource) isHead() bool { return s.kind != stableArchive }
+
+// version is the head spec's version once fetched.
+func (s buildSource) version() string {
+	if s.kind == headArchive {
 		return "HEAD"
 	}
-	return "HEAD-" + h.short
+	return "HEAD-" + s.short
 }
 
-// headStrategy is brew's DownloadStrategyDetector for a head URL: "git",
-// "curl", or the name of a strategy brw cannot use.
+// headStrategy is brew's DownloadStrategyDetector for a head URL.
 func headStrategy(h *rb.HeadSource) string {
 	if h.Using != "" {
 		return h.Using
@@ -71,69 +79,59 @@ var otherVCS = map[string]*regexp.Regexp{
 	"bzr": regexp.MustCompile(`^bzr://`), "fossil": regexp.MustCompile(`^fossil://`),
 }
 
-// fetchFormulaHead fetches f's head download into the cache, beside the
-// downloads, where brew keeps its clones.
-func (in *Installer) fetchFormulaHead(ctx context.Context, f *api.Formula) (headSource, error) {
+func (in *Installer) fetchFormulaHead(ctx context.Context, f *api.Formula) (buildSource, error) {
 	if in.LoadSource == nil {
-		return headSource{}, ErrNoSource
+		return buildSource{}, ErrNoSource
 	}
 	src, err := in.LoadSource(f)
 	if err != nil {
-		return headSource{}, err
+		return buildSource{}, err
 	}
-	h := src.Formula.Head()
-	if h == nil {
-		return headSource{}, fmt.Errorf("No head is defined for %s", f.FullName) //nolint:staticcheck // brew's message
+	h, ok := src.Formula.Head()
+	if !ok {
+		return buildSource{}, fmt.Errorf("No head is defined for %s", f.FullName) //nolint:staticcheck // brew's message
 	}
 	in.logf("==> Cloning %s", h.URL)
-	return in.fetchHead(ctx, filepath.Dir(in.Fetcher.Dir), f.Name, h)
+	return in.fetchHead(ctx, in.cacheRoot(), f.Name, &h)
 }
 
-// Heads reads the latest commits of formulae's head repositories as brew's
-// git strategies do: from GitHub's API for a head on GitHub, else from the
-// clone in Cache.
+// cacheRoot holds the downloads directory, and the head clones beside it as in brew's cache.
+func (in *Installer) cacheRoot() string { return filepath.Dir(in.Fetcher.Dir) }
+
 type Heads struct {
-	Cache string
-	API   string // GitHub's API
-	HTTP  *http.Client
+	Cache     string
+	GitHubAPI string
+	HTTP      *http.Client
 }
 
-// githubHead is the user and repository of a head brew's
-// DownloadStrategyDetector gives the GitHub git strategy.
 var githubHead = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)\.git$`)
 
-// Check is the latest commit of f's head repository, as brew's last_commit
-// reads it, and with fetch, whether it is newer than installed, as brew's
-// commit_outdated? says after fetching. vcs is false for a head that is not a
-// git repository.
-func (hs Heads) Check(ctx context.Context, f *api.Formula, installed string, fetch bool) (latest string, newer, vcs bool, err error) {
+func (hs Heads) Check(ctx context.Context, f *api.Formula, installed string, fetch bool) (outdated.HeadState, error) {
 	h := &rb.HeadSource{URL: f.URLs.Head.URL, Branch: f.URLs.Head.Branch, Using: f.URLs.Head.Using}
 	if h.URL == "" || headStrategy(h) != "git" {
-		return "", false, false, nil
+		return outdated.HeadState{}, nil
 	}
 	if m := githubHead.FindStringSubmatch(h.URL); m != nil && h.Using == "" && os.Getenv("HOMEBREW_NO_GITHUB_API") == "" {
 		_, ref := gitRef(h)
 		if c := hs.githubCommit(ctx, m[1], m[2], ref); c != "" {
 			newer := !strings.HasPrefix(c, installed) || hs.ambiguous(ctx, m[1], m[2], installed)
-			return c, fetch && newer, true, nil
+			return outdated.HeadState{Repository: true, Latest: c, Newer: fetch && newer}, nil
 		}
 	}
 	if fetch {
 		s, err := fetchGit(ctx, hs.Cache, f.Name, h)
-		return s.short, s.short != installed, true, err
+		return outdated.HeadState{Repository: true, Latest: s.short, Newer: s.short != installed}, err
 	}
 	cmd := exec.CommandContext(ctx, "git", "--git-dir", filepath.Join(hs.Cache, f.Name+"--git", ".git"), "rev-parse", "--short=7", "HEAD")
 	cmd.Env = tap.GitEnv()
 	out, err := cmd.Output()
 	if err != nil {
-		return "", false, true, nil // no clone: brew's last_commit is empty too
+		return outdated.HeadState{Repository: true}, nil // no clone: brew's last_commit is empty too
 	}
-	return strings.TrimSpace(string(out)), false, true, nil
+	return outdated.HeadState{Repository: true, Latest: strings.TrimSpace(string(out))}, nil
 }
 
-// githubCommit is brew's GitHub.last_commit: the commit ref is at, from the
-// ETag of a HEAD request, cut to 7 characters, or "" when the API cannot say
-// or that is not unique.
+// githubCommit is brew's GitHub.last_commit: GitHub's API puts the commit in a HEAD request's ETag.
 func (hs Heads) githubCommit(ctx context.Context, user, repo, ref string) string {
 	resp, err := hs.githubHEAD(ctx, user, repo, ref)
 	if err != nil {
@@ -159,7 +157,7 @@ func (hs Heads) githubHEAD(ctx context.Context, user, repo, ref string) (*http.R
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead,
-		hs.API+"/repos/"+url.PathEscape(user)+"/"+url.PathEscape(repo)+"/commits/"+url.PathEscape(ref), nil)
+		hs.GitHubAPI+"/repos/"+url.PathEscape(user)+"/"+url.PathEscape(repo)+"/commits/"+url.PathEscape(ref), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -179,22 +177,20 @@ func (hs Heads) githubHEAD(ctx context.Context, user, repo, ref string) (*http.R
 	return resp, nil
 }
 
-// fetchHead fetches a formula's head download into cache, as brew's fetch
-// does for install --HEAD.
-func (in *Installer) fetchHead(ctx context.Context, cache, name string, h *rb.HeadSource) (headSource, error) {
+func (in *Installer) fetchHead(ctx context.Context, cache, name string, h *rb.HeadSource) (buildSource, error) {
 	switch s := headStrategy(h); s {
 	case "git":
 		return fetchGit(ctx, cache, name, h)
 	case "curl", "nounzip", "homebrew_curl":
 		archive, err := in.Fetcher.FetchUnverified(ctx, name, "HEAD", h.URL)
-		return headSource{url: h.URL, archive: archive}, err
+		return buildSource{kind: headArchive, url: h.URL, archive: archive}, err
 	default:
-		return headSource{}, fmt.Errorf("brw cannot fetch a head from %s with the %s strategy yet", h.URL, s)
+		return buildSource{}, fmt.Errorf("brw cannot fetch a head from %s with the %s strategy yet", h.URL, s)
 	}
 }
 
 // copyCheckout stages a checkout as brew's Directory strategy does: cp -pR
-// of everything in it, .git included, which cp writes outside fsx as tar does.
+// of everything in it, .git included.
 func copyCheckout(dir, stage string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -210,8 +206,6 @@ func copyCheckout(dir, stage string) error {
 	return nil
 }
 
-// gitRef is the ref brew's GitDownloadStrategy checks out: the branch, tag or
-// revision the url names, else the branch master.
 func gitRef(h *rb.HeadSource) (kind, ref string) {
 	switch {
 	case h.Tag != "":
@@ -224,9 +218,7 @@ func gitRef(h *rb.HeadSource) (kind, ref string) {
 	return "branch", "master"
 }
 
-// fetchGit is brew's GitDownloadStrategy#fetch: clone into the cache, or
-// bring the clone there up to date, and check out the ref.
-func fetchGit(ctx context.Context, cache, name string, h *rb.HeadSource) (headSource, error) {
+func fetchGit(ctx context.Context, cache, name string, h *rb.HeadSource) (buildSource, error) {
 	kind, ref := gitRef(h)
 	onlyPath := h.OnlyPath
 	if onlyPath != "" {
@@ -362,27 +354,27 @@ func fetchGit(ctx context.Context, cache, name string, h *rb.HeadSource) (headSo
 		}
 	}
 	if err != nil {
-		return headSource{}, err
+		return buildSource{}, err
 	}
 	gitDir := filepath.Join(dir, ".git")
 	short, err := git(false, "--git-dir", gitDir, "rev-parse", "--short=7", "HEAD")
 	if err != nil {
-		return headSource{}, err
+		return buildSource{}, err
 	}
 	full, err := git(false, "--git-dir", gitDir, "rev-parse", "-q", "--verify", "HEAD")
 	if err != nil {
-		return headSource{}, err
+		return buildSource{}, err
 	}
 	when, err := git(false, "--git-dir", gitDir, "show", "-s", "--format=%ct")
 	if err != nil {
-		return headSource{}, err
+		return buildSource{}, err
 	}
 	secs, err := strconv.ParseInt(when, 10, 64)
 	if err != nil {
-		return headSource{}, fmt.Errorf("the commit time %q: %w", when, err)
+		return buildSource{}, fmt.Errorf("the commit time %q: %w", when, err)
 	}
 	if kind == "tag" && h.Revision != "" && full != h.Revision {
-		return headSource{}, errors.New(ref + " tag should be " + h.Revision + "\nbut is actually " + full)
+		return buildSource{}, errors.New(ref + " tag should be " + h.Revision + "\nbut is actually " + full)
 	}
-	return headSource{url: h.URL, dir: dir, short: short, revision: full, time: time.Unix(secs, 0)}, nil
+	return buildSource{kind: headCheckout, url: h.URL, dir: dir, short: short, revision: full, time: time.Unix(secs, 0)}, nil
 }

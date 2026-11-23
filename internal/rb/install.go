@@ -690,9 +690,9 @@ func (o buildOptions) method(name string, args []value) value {
 	case "bottle?", "include?", "any_args_or_options?":
 		return rbool(false)
 	case "head?":
-		return rbool(o.f.headVersion != "")
+		return rbool(o.f.installHead)
 	case "stable?":
-		return rbool(o.f.headVersion == "")
+		return rbool(!o.f.installHead)
 	case "used_options", "unused_options", "args":
 		return &arr{}
 	}

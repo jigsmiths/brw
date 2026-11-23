@@ -91,8 +91,6 @@ func TestInstallATapFormulaFromItsDownload(t *testing.T) {
 	}
 }
 
-// A meta package, as siderolabs/tap/sidero-tools is: its download is
-// file:///dev/null and its install writes a script.
 func TestInstallAMetaPackageFromDevNull(t *testing.T) {
 	e, prefix, origin, _ := tapBottleStore(t)
 	writeTapFormula(t, origin, "meta", "class Meta < Formula\n    desc \"Meta Package\"\n    version \"1.1.0\"\n"+
@@ -111,7 +109,6 @@ func TestInstallAMetaPackageFromDevNull(t *testing.T) {
 	}
 }
 
-// brew records a formula's head spec in a stable build's receipt too.
 func TestAStableBuildRecordsTheHeadSpec(t *testing.T) {
 	e, prefix, origin, _ := tapBottleStore(t)
 	writeTapFormula(t, origin, "meta", "class Meta < Formula\n  version \"1.0\"\n"+

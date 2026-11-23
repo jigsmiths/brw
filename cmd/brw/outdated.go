@@ -93,8 +93,8 @@ func outdatedCommand(e *env, args []string) error {
 		b.WriteString(r.FullName)
 		if long {
 			current := r.CurrentVersion
-			if r.LatestHead {
-				current = "latest HEAD" // a newer HEAD with the same version, as brew says
+			if r.NoNewerHead {
+				current = "latest HEAD"
 			}
 			b.WriteString(" (" + strings.Join(r.InstalledVersions, ", ") + ") < " + current + pinnedAt(r))
 		}
@@ -158,12 +158,9 @@ func (e *env) outdatedFormulae(prefix string, fetchHead bool) ([]outdated.Result
 	return outdated.CheckWith(idx, cellar.Prefix(prefix), kegs, e.headOptions(client, fetchHead))
 }
 
-// headOptions has outdated read head commits as brew does: from GitHub's API
-// for a head on GitHub, else from the clones in brw's cache, fetching them
-// first with --fetch-HEAD.
 func (e *env) headOptions(client *api.Client, fetchHead bool) outdated.Options {
-	heads := install.Heads{Cache: client.CacheDir, API: cmp.Or(e.githubAPI, tap.GitHubAPI)}
-	return outdated.Options{FetchHead: fetchHead, Head: func(f *api.Formula, installed string, fetch bool) (string, bool, bool, error) {
+	heads := install.Heads{Cache: client.CacheDir, GitHubAPI: cmp.Or(e.githubAPI, tap.GitHubAPI)}
+	return outdated.Options{FetchHead: fetchHead, Head: func(f *api.Formula, installed string, fetch bool) (outdated.HeadState, error) {
 		return heads.Check(context.Background(), f, installed, fetch)
 	}}
 }

@@ -808,8 +808,6 @@ func TestPlanEachKeepsANamedDependencyOnRequest(t *testing.T) {
 	}
 }
 
-// install --HEAD builds the named formula from its head spec, with that
-// spec's dependencies; its own dependencies stay stable.
 func TestPlanHeadUsesTheHeadSpecsDependencies(t *testing.T) {
 	tool := with(with(with(f("tool", "stabledep"), "tap", "u/t"), "full_name", "u/t/tool"),
 		"versions", map[string]any{"stable": "1.0", "head": "HEAD"})
@@ -817,7 +815,7 @@ func TestPlanHeadUsesTheHeadSpecsDependencies(t *testing.T) {
 	tool["head_dependencies"] = map[string]any{"dependencies": []string{"headdep"}, "build_dependencies": []string{"go"}}
 	idx := index(t, tool, f("stabledep"), f("headdep", "base"), f("base"), f("go"))
 	p := planner(t, mac, idx)
-	p.Head = map[string]bool{"tool": true}
+	p.HeadNames = []string{"tool"}
 	plan, err := p.Plan([]string{"tool"})
 	if err != nil {
 		t.Fatal(err)
@@ -845,13 +843,13 @@ func TestPlanHeadUsesTheHeadSpecsDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	p = planner(t, mac, idx)
-	p.Head = map[string]bool{"stabledep": true}
+	p.HeadNames = []string{"stabledep"}
 	if _, err := p.Plan([]string{"stabledep"}); err == nil || err.Error() != "No head is defined for stabledep" {
 		t.Errorf("no head: %v", err)
 	}
 	core := with(f("core"), "versions", map[string]any{"stable": "1.0", "head": "HEAD"})
 	p = planner(t, mac, index(t, core))
-	p.Head = map[string]bool{"core": true}
+	p.HeadNames = []string{"core"}
 	if _, err := p.Plan([]string{"core"}); !errors.Is(err, ErrHeadCore) {
 		t.Errorf("a core formula: %v, want ErrHeadCore", err)
 	}

@@ -21,7 +21,6 @@ func TestBuiltMatchesWhatBrewWritesByteForByte(t *testing.T) {
 	}
 }
 
-// A HEAD build names its repository and has no checksum.
 func TestBuiltFromHeadMatchesBrew(t *testing.T) {
 	got, err := Built(BuildParams{
 		Name: "headtool", FullName: "u/test/headtool", Version: "HEAD-cf6a8f9", URL: "https://example.com/headtool.git",

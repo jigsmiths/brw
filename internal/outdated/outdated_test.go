@@ -17,7 +17,7 @@ type formula struct {
 	version  string
 	revision int
 	scheme   int
-	head     bool // has a head URL
+	head     bool
 }
 
 func index(t *testing.T, formulae ...formula) *api.Index {
@@ -53,8 +53,8 @@ type keg struct {
 	tap           string // receipt tap; empty leaves it out
 	linked        bool   // opt and linked records point at this keg
 	pinned        bool
-	spec, stable  string // the receipt's spec and stable version; empty leaves them out
-	modified      int64  // the receipt's source_modified_time
+	spec, stable  string
+	modified      int64
 }
 
 func prefix(t *testing.T, kegs ...keg) cellar.Prefix {
@@ -200,21 +200,16 @@ func TestHeadKegIsNotOutdated(t *testing.T) {
 	}
 }
 
-// headCommits plays the formula's head repository: commit is its latest,
-// and cached what the clone in the cache has without fetching.
 func headCommits(cached, commit string, fetched *bool) HeadCommit {
-	return func(_ *api.Formula, installed string, fetch bool) (string, bool, bool, error) {
+	return func(_ *api.Formula, installed string, fetch bool) (HeadState, error) {
 		if fetch {
 			*fetched = true
-			return commit, commit != installed, true, nil
+			return HeadState{Repository: true, Latest: commit, Newer: commit != installed}, nil
 		}
-		return cached, false, true, nil
+		return HeadState{Repository: true, Latest: cached}, nil
 	}
 }
 
-// brew's head_version_outdated?: a HEAD keg is outdated when the formula's
-// stable version or version scheme moved past its receipt's, and with
-// --fetch-HEAD when the repository has a newer commit.
 func TestHeadKegOutdatedLikeBrew(t *testing.T) {
 	idx := index(t, formula{name: "tool", version: "1.0", head: true})
 	head := keg{name: "tool", version: "HEAD-cf6a8f9", spec: "head", stable: "1.0", modified: 2, linked: true}
@@ -239,10 +234,9 @@ func TestHeadKegOutdatedLikeBrew(t *testing.T) {
 		t.Errorf("--fetch-HEAD with no new commit: %+v", got)
 	}
 
-	// A newer stable release makes the HEAD keg outdated without a fetch.
 	old := head
 	old.stable = "0.9"
-	want = []Result{{Name: "tool", FullName: "tool", InstalledVersions: []string{"HEAD-cf6a8f9"}, CurrentVersion: "HEAD-cf6a8f9", LatestHead: true, Head: true, JSONVersion: "HEAD"}}
+	want = []Result{{Name: "tool", FullName: "tool", InstalledVersions: []string{"HEAD-cf6a8f9"}, CurrentVersion: "HEAD-cf6a8f9", NoNewerHead: true, Head: true, JSONVersion: "HEAD"}}
 	if got := run(prefix(t, old), Options{Head: headCommits("cf6a8f9", "a82d0d6", &fetched)}); !reflect.DeepEqual(got, want) {
 		t.Errorf("stable moved on:\n got %+v\nwant %+v", got, want)
 	}

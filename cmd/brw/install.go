@@ -287,10 +287,7 @@ func installFormulae(e *env, prefix, journal string, dryRun, head bool, r resolv
 	}
 	planner := e.newPlanner(prefix, idx, client, kegs)
 	if head {
-		planner.Head = map[string]bool{}
-		for _, n := range names {
-			planner.Head[n] = true
-		}
+		planner.HeadNames = names
 	}
 	plan, planErrs := planner.PlanEach(names)
 	for _, err := range planErrs {

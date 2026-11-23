@@ -30,7 +30,6 @@ func TestBuildReceiptMatchesBrewByteForByte(t *testing.T) {
 	}
 }
 
-// A stable build of a formula with a head URL records head as "HEAD".
 func TestBuildReceiptOfAFormulaWithAHead(t *testing.T) {
 	r, err := NewBuildReceipt(Build{
 		HomebrewVersion: "7.0.15-111-ge40c695", OnRequest: true, Time: time.Unix(1795440991, 0),
@@ -70,18 +69,19 @@ func TestBuildReceiptOfAHeadBuild(t *testing.T) {
 	}
 }
 
-// Upgrade and cleanup ask a receipt which spec it was built from, and the
-// stable version of the formula then.
 func TestReceiptSpecAndStableVersion(t *testing.T) {
-	for file, want := range map[string][2]string{
-		"build-headtool-head.receipt.json": {"head", "1.0"}, "build-crush.receipt.json": {"stable", "0.102.0"},
+	for file, want := range map[string]struct {
+		spec   Spec
+		stable string
+	}{
+		"build-headtool-head.receipt.json": {SpecHead, "1.0"}, "build-crush.receipt.json": {SpecStable, "0.102.0"},
 	} {
 		r, err := ParseReceipt(read(t, file))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if r.Source.Spec != want[0] || r.Source.Stable != want[1] {
-			t.Errorf("%s: spec %q, stable %q; want %q", file, r.Source.Spec, r.Source.Stable, want)
+		if r.Source.Spec != want.spec || r.Source.StableAtInstall != want.stable || r.IsHeadBuild() != (want.spec == SpecHead) {
+			t.Errorf("%s: spec %q, stable %q; want %+v", file, r.Source.Spec, r.Source.StableAtInstall, want)
 		}
 	}
 }

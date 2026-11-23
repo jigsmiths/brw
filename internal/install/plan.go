@@ -56,9 +56,7 @@ type Item struct {
 	// Upgrade holds the kegs of the older versions this one replaces, unset for a fresh install.
 	Upgrade   []cellar.Keg
 	Reinstall bool
-	// Head builds the formula's head spec, as install --HEAD does. PkgVersion
-	// is "HEAD" until the installer fetches the commit it names the keg after.
-	Head bool
+	Head      bool
 }
 
 // Locks holds the items and their runtime dependencies.
@@ -66,7 +64,7 @@ type Plan struct {
 	Items            []Item
 	Locks            []string
 	AlreadyInstalled []string
-	HeadInstalled    []string // full name and version of each --HEAD formula with a HEAD keg already
+	HeadInstalled    []string
 }
 
 type Planner struct {
@@ -79,8 +77,7 @@ type Planner struct {
 	Optlinked func(name string) bool
 	Now       time.Time // zero means now
 
-	// Head names the formulae, as given, to install from their head spec.
-	Head map[string]bool
+	HeadNames []string // names, as given, to build from their head spec
 
 	upgrading map[string]bool // count as not installed
 }
@@ -102,7 +99,7 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s: %w", name, deps.NotFound(p.Index, name))
 		}
-		if p.Head[name] {
+		if slices.Contains(p.HeadNames, name) {
 			done, err := w.head(f)
 			if err != nil {
 				return nil, err
@@ -112,7 +109,7 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 			}
 			hf := f.HeadSpec()
 			f = &hf
-			r.Use(f)
+			r.Override(f)
 			w.heads = append(w.heads, f.Name)
 		}
 		if err := w.visit(f, true); err != nil {
@@ -140,11 +137,9 @@ type planWalk struct {
 	problems []error
 	visited  map[string]bool // set before the dependencies are walked, so a cycle ends
 	skipped  map[string]bool
-	heads    []string // formulae to build from their head spec
+	heads    []string
 }
 
-// head checks a formula asked for with --HEAD as brew does. done says there
-// is nothing to install: a HEAD keg is there already.
 func (w *planWalk) head(f *api.Formula) (done bool, err error) {
 	p := w.p
 	if f.Versions.Head == "" {
@@ -157,7 +152,7 @@ func (w *planWalk) head(f *api.Formula) (done bool, err error) {
 		return false, fmt.Errorf("%s: %w: brw builds on macOS only", f.Name, ErrUnsupportedHost)
 	}
 	if p.upgrading[f.Name] {
-		return false, nil // upgrade and reinstall replace the HEAD keg
+		return false, nil
 	}
 	var linked string
 	for _, k := range p.Kegs {
@@ -493,7 +488,6 @@ func hostArch(h platform.Host) string {
 
 func pkgVersion(f *api.Formula) string { return withRevision(f.Versions.Stable, f.Revision) }
 
-// withRevision is version with the revision, as brew's PkgVersion writes it.
 func withRevision(version string, revision int) string {
 	if revision > 0 {
 		return version + "_" + strconv.Itoa(revision)
@@ -550,7 +544,7 @@ func (p *Planner) check(it *Item, problems *[]error) {
 		hostTag, _ := platform.Tag(p.Host)
 		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.FullName, ErrNoBottle, hostTag))
 	}
-	if !it.Head { // a HEAD build uses no bottle
+	if !it.Head {
 		it.Tag = tag
 	}
 	for _, name := range f.ConflictsWith {

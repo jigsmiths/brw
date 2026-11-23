@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jigsmiths/brw/internal/install/installtest"
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// headRepo is a project's git repository, as a formula's head URL names, with
-// one commit made at a fixed time. It returns the commit.
+var headCommitTime = time.Date(2026, 11, 23, 13, 36, 25, 0, time.UTC)
+
 func headRepo(t *testing.T, echo string) (dir, commit string) {
 	t.Helper()
 	dir = t.TempDir()
@@ -26,7 +27,8 @@ func headRepo(t *testing.T, echo string) (dir, commit string) {
 	gitIn(t, dir, "add", "-A")
 	cmd := exec.Command("git", "-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false",
 		"commit", "-q", "-m", echo)
-	cmd.Env = append(tap.GitEnv(), "GIT_COMMITTER_DATE=2026-11-23T13:36:25Z", "GIT_AUTHOR_DATE=2026-11-23T13:36:25Z")
+	date := headCommitTime.Format(time.RFC3339)
+	cmd.Env = append(tap.GitEnv(), "GIT_COMMITTER_DATE="+date, "GIT_AUTHOR_DATE="+date)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -79,7 +81,7 @@ func TestInstallHEADBuildsFromTheRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r.Source.Spec != "head" || r.Source.SCMRevision != commit || r.Source.Versions["head"] != version ||
-		r.Source.Versions["stable"] != "1.0" || r.SourceModifiedTime != 1795440985 { // the commit's time
+		r.Source.Versions["stable"] != "1.0" || r.SourceModifiedTime != headCommitTime.Unix() {
 		t.Errorf("receipt:\n%s", b)
 	}
 	sbom, _ := os.ReadFile(filepath.Join(keg, "sbom.spdx.json"))
@@ -97,7 +99,6 @@ func TestInstallHEADBuildsFromTheRepository(t *testing.T) {
 		}
 	}
 
-	// Again: the HEAD keg is there, so nothing is fetched or built.
 	e.err.(interface{ Reset() }).Reset()
 	if out, err := runCmd(t, e, "install", "-prefix", prefix, "--HEAD", "u/t/tool"); err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -107,8 +108,6 @@ func TestInstallHEADBuildsFromTheRepository(t *testing.T) {
 	}
 }
 
-// newCommit commits a new version of the tool to a head repository and
-// returns its short commit.
 func newCommit(t *testing.T, repo, echo string) string {
 	t.Helper()
 	writeFile(t, filepath.Join(repo, "tool"), "#!/bin/sh\necho "+echo+"\n")
@@ -122,9 +121,6 @@ func newCommit(t *testing.T, repo, echo string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// As brew: a HEAD keg is outdated only once --fetch-HEAD sees a new commit;
-// upgrade --fetch-HEAD builds it and removes the old HEAD keg; reinstall
-// builds the latest commit again.
 func TestHEADKegsAreUpgradedAndReinstalledFromTheirRepository(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	repo, commit := headRepo(t, "one")
@@ -172,8 +168,6 @@ func TestHEADKegsAreUpgradedAndReinstalledFromTheirRepository(t *testing.T) {
 	}
 }
 
-// brew will not install HEAD over a linked stable keg, nor for a formula
-// without a head.
 func TestInstallHEADRefusals(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	repo, _ := headRepo(t, "head")

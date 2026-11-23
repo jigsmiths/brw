@@ -65,20 +65,20 @@ func (f *Formula) SkipClean() []string { return f.b.skipClean }
 func (f *Formula) PreserveRpath() bool { return f.b.preserveRpath }
 
 type HeadSource struct {
-	URL, Using                      string // Using is the strategy's name, such as "git"; empty to detect it
+	URL, Using                      string
 	Branch, Tag, Revision, OnlyPath string
 }
 
-func (f *Formula) Head() *HeadSource {
+func (f *Formula) Head() (HeadSource, bool) {
 	if !f.b.hasHead || f.b.head.url == "" {
-		return nil
+		return HeadSource{}, false
 	}
 	get := func(k string) string { return str(kwGet(f.b.head.specs, k)) }
-	return &HeadSource{URL: f.b.head.url, Using: str(f.b.head.using), Branch: get("branch"), Tag: get("tag"),
-		Revision: get("revision"), OnlyPath: get("only_path")}
+	return HeadSource{URL: f.b.head.url, Using: str(f.b.head.using), Branch: get("branch"), Tag: get("tag"),
+		Revision: get("revision"), OnlyPath: get("only_path")}, true
 }
 
-func (f *Formula) UseHead(version string) { f.b.headVersion = version }
+func (f *Formula) UseHead(version string) { f.b.installHead, f.b.headVersion = true, version }
 
 func symListKeep(args []value) []string {
 	var out []string
@@ -151,6 +151,7 @@ type formulaB struct {
 	license       value
 	stable, head  *spec
 	hasHead       bool
+	installHead   bool // UseHead was called: install the head spec at headVersion
 	headVersion   string
 	cur           *spec
 	revision      int64
@@ -258,16 +259,15 @@ func (b *formulaB) inSpec(in *interp, s *scope, sp *spec, blk *blockN) {
 	in.run(blk.body, &scope{vars: map[string]value{}, parent: s})
 }
 
-// active is the spec being installed: stable, or head after UseHead.
 func (b *formulaB) active() *spec {
-	if b.headVersion != "" {
+	if b.installHead {
 		return b.head
 	}
 	return b.stable
 }
 
 func (b *formulaB) version() string {
-	if b.headVersion != "" {
+	if b.installHead {
 		return b.headVersion
 	}
 	if b.stable == nil {

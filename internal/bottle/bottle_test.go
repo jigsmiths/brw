@@ -398,7 +398,6 @@ func TestFetchSourceKeepsTheServersTime(t *testing.T) {
 	}
 }
 
-// brew's curl reads file:// URLs too; meta packages use file:///dev/null.
 func TestFetchSourceReadsAFileURL(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "tool.tar.gz")
 	when := time.Date(2026, 10, 26, 14, 49, 20, 0, time.UTC)
@@ -431,8 +430,6 @@ func TestFetchSourceReadsAFileURL(t *testing.T) {
 	}
 }
 
-// A head archive has no checksum; brew's curl strategy keeps the first one it
-// downloaded.
 func TestFetchUnverifiedKeepsWhatItHas(t *testing.T) {
 	var body atomic.Value
 	body.Store("one")

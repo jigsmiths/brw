@@ -115,7 +115,6 @@ end
 	}
 }
 
-// The file:///dev/null meta packages rely on Pathname#+ joining.
 func TestPathnamePlusJoins(t *testing.T) {
 	src := toolHead + `    (bin+"meta").write "m"
     (prefix + "/elsewhere").to_s
@@ -719,8 +718,6 @@ end
 	}
 }
 
-// A HEAD build installs the head spec: its version, resources and patches,
-// with the class-level ones it shares with stable.
 func TestInstallingTheHeadSpec(t *testing.T) {
 	asBrewHost(t, "brewuser")
 	src := `class Tool < Formula
@@ -756,8 +753,8 @@ __END__
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := f.Head(), (&HeadSource{URL: "https://example.com/tool.git", Branch: "main"}); got == nil || *got != *want {
-		t.Errorf("head = %+v, want %+v", got, want)
+	if got, ok := f.Head(); !ok || got != (HeadSource{URL: "https://example.com/tool.git", Branch: "main"}) {
+		t.Errorf("head = %+v, %v", got, ok)
 	}
 	f.UseHead("HEAD-abc1234")
 	if got := f.Resources(); len(got) != 2 || got[0].Name != "headonly" || got[1].Name != "shared" {
@@ -784,8 +781,9 @@ __END__
 	if got := stable.Resources(); len(got) != 1 || got[0].Name != "shared" {
 		t.Errorf("stable resources = %+v", got)
 	}
-	if noHead, _ := LoadFormula([]byte(toolHead+"  end\nend\n"), "tool", "arm64_golden_gate"); noHead.Head() != nil {
-		t.Errorf("a formula without a head has one: %+v", noHead.Head())
+	noHead, _ := LoadFormula([]byte(toolHead+"  end\nend\n"), "tool", "arm64_golden_gate")
+	if got, ok := noHead.Head(); ok {
+		t.Errorf("a formula without a head has one: %+v", got)
 	}
 }
 
