@@ -4,7 +4,7 @@
 
 A Go, Homebrew-compatible package client. It reads Homebrew's metadata and bottles and shares a prefix with `brew`.
 
-**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae. For casks, the queries work and brw installs, upgrades and uninstalls casks whose artifacts are apps and binaries.
+**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae, and for tap formulae with or without bottles. For casks, the queries work and brw installs, upgrades and uninstalls casks whose artifacts are apps and binaries.
 
 ## Install
 
@@ -34,7 +34,7 @@ Commands that change the prefix take `--dry-run` (`-n`) to show what they would 
 ```sh
 just run install jq              # bottle and its dependencies
 just run install --cask slack    # app and binary casks; also --appdir, --adopt; formulae and casks can be mixed
-just run install jigsmiths/tap/brw  # a tap's cask by full name, tapping it first if needed
+just run install jigsmiths/tap/brw  # a tap's cask or formula by full name, tapping it first if needed
 just run upgrade                 # all outdated formulae and casks, or name some
 just run reinstall jq
 just run uninstall jq            # also: --cask, --force, --ignore-dependencies
@@ -55,9 +55,11 @@ Commands take `--prefix` and default to Homebrew's prefix for this machine.
 
 ### Taps
 
-brw reads a tap's cask files with its own evaluator for the cask DSL, so it needs no Ruby. Simple `preflight` and `postflight` blocks become install steps; brw refuses a cask with Ruby it can't translate. Formulae from taps aren't supported.
+brw reads a tap's cask and formula files with its own Ruby evaluator, so it needs no Ruby. Simple `preflight` and `postflight` blocks become cask install steps. brw refuses a file with Ruby it can't translate.
 
-Like brew, brw only loads casks from taps you trust, and shares brew's trust store (`$XDG_CONFIG_HOME/homebrew/trust.json`, else `~/.homebrew/trust.json`). `brw trust jigsmiths/tap` trusts a tap, `brw untrust` removes it, and `brw trust` lists what's trusted. Installing a cask by its full name trusts that cask. `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` turns the check off.
+A tap formula installs from its bottle when it has one for this machine. On macOS, one without a bottle is built from its download as brew does: in `HOMEBREW_TEMP`, with brew's build environment, resources, patches and build dependencies. Its `post_install` runs, and its service files are written into the keg. `--HEAD` installs aren't supported yet.
+
+Like brew, brw only loads casks and formulae from taps you trust, and shares brew's trust store (`$XDG_CONFIG_HOME/homebrew/trust.json`, else `~/.homebrew/trust.json`). `brw trust jigsmiths/tap` trusts a tap, `brw trust jigsmiths/tap/brw` one cask or formula (`--cask` or `--formula` when the tap has both), `brw untrust` removes any of them, and `brw trust` lists what's trusted. Installing by full name trusts that cask or formula. `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` turns the check off.
 
 ## Development
 
@@ -72,7 +74,7 @@ just conformance-install      # and -uninstall, -upgrade, -cask-install, -tap, -
 just clean
 ```
 
-Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only. The conformance harnesses need a brew checkout at `~/.brw-oracle/hb`.
+Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only. The conformance harnesses need a brew checkout at `~/.brw-oracle/hb`. `BRW_FORMULA_GOLDEN` and `BRW_FORMULA_PREFIX` point `TestConformanceTapFormulae` at brew's hashes of tap formulae and the prefix with those taps.
 
 ## License
 
