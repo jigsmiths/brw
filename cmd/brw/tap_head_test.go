@@ -107,6 +107,71 @@ func TestInstallHEADBuildsFromTheRepository(t *testing.T) {
 	}
 }
 
+// newCommit commits a new version of the tool to a head repository and
+// returns its short commit.
+func newCommit(t *testing.T, repo, echo string) string {
+	t.Helper()
+	writeFile(t, filepath.Join(repo, "tool"), "#!/bin/sh\necho "+echo+"\n")
+	gitIn(t, repo, "commit", "-q", "-am", echo)
+	cmd := exec.Command("git", "-C", repo, "rev-parse", "--short=7", "HEAD")
+	cmd.Env = tap.GitEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// As brew: a HEAD keg is outdated only once --fetch-HEAD sees a new commit;
+// upgrade --fetch-HEAD builds it and removes the old HEAD keg; reinstall
+// builds the latest commit again.
+func TestHEADKegsAreUpgradedAndReinstalledFromTheirRepository(t *testing.T) {
+	e, prefix, origin, reg := tapBottleStore(t)
+	repo, commit := headRepo(t, "one")
+	url, sum := reg.AddSource("tool-1.0.tar.gz", []byte("unused"))
+	writeTapFormula(t, origin, "tool", headFormula(url, sum, repo))
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "--HEAD", "u/t/tool"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	first := "HEAD-" + commit[:7]
+	second := "HEAD-" + newCommit(t, repo, "two")
+	stderr := func() string { return e.err.(interface{ String() string }).String() }
+
+	if out, err := runCmd(t, e, "outdated", "-prefix", prefix, "--verbose"); err != nil || out != "" {
+		t.Errorf("outdated without --fetch-HEAD = %q, %v", out, err)
+	}
+	if out, err := runCmd(t, e, "outdated", "-prefix", prefix, "--verbose", "--fetch-HEAD"); err != nil ||
+		out != "u/t/tool ("+first+") < "+second+"\n" {
+		t.Errorf("outdated --fetch-HEAD = %q, %v", out, err)
+	}
+	if out, err := runCmd(t, e, "outdated", "-prefix", prefix, "--json", "--fetch-HEAD"); err != nil ||
+		!strings.Contains(out, `"current_version": "`+second+`"`) {
+		t.Errorf("outdated --json --fetch-HEAD = %s, %v", out, err)
+	}
+
+	e.err.(interface{ Reset() }).Reset()
+	if out, err := runCmd(t, e, "upgrade", "-prefix", prefix, "tool"); err != nil || !strings.Contains(stderr(), "u/t/tool "+first+" already installed") {
+		t.Errorf("upgrade without --fetch-HEAD: %v\n%s\n%s", err, out, stderr())
+	}
+	if out, err := runCmd(t, e, "upgrade", "-prefix", prefix, "--fetch-HEAD", "tool"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, stderr())
+	}
+	if exists(t, prefix, "Cellar/tool/"+first) || !exists(t, prefix, "Cellar/tool/"+second) {
+		t.Errorf("after upgrade --fetch-HEAD: %s kept %v, %s there %v", first, exists(t, prefix, "Cellar/tool/"+first), second, exists(t, prefix, "Cellar/tool/"+second))
+	}
+	if b, _ := os.ReadFile(filepath.Join(prefix, "bin/tool")); string(b) != "#!/bin/sh\necho two\n" {
+		t.Errorf("bin/tool = %q", b)
+	}
+
+	third := "HEAD-" + newCommit(t, repo, "three")
+	if out, err := runCmd(t, e, "reinstall", "-prefix", prefix, "tool"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, stderr())
+	}
+	if exists(t, prefix, "Cellar/tool/"+second) || !exists(t, prefix, "Cellar/tool/"+third) {
+		t.Errorf("after reinstall: %s kept %v, %s there %v", second, exists(t, prefix, "Cellar/tool/"+second), third, exists(t, prefix, "Cellar/tool/"+third))
+	}
+}
+
 // brew will not install HEAD over a linked stable keg, nor for a formula
 // without a head.
 func TestInstallHEADRefusals(t *testing.T) {

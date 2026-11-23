@@ -69,3 +69,19 @@ func TestBuildReceiptOfAHeadBuild(t *testing.T) {
 		t.Errorf("receipt differs from brew's\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// Upgrade and cleanup ask a receipt which spec it was built from, and the
+// stable version of the formula then.
+func TestReceiptSpecAndStableVersion(t *testing.T) {
+	for file, want := range map[string][2]string{
+		"build-headtool-head.receipt.json": {"head", "1.0"}, "build-crush.receipt.json": {"stable", "0.102.0"},
+	} {
+		r, err := ParseReceipt(read(t, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Source.Spec != want[0] || r.Source.Stable != want[1] {
+			t.Errorf("%s: spec %q, stable %q; want %q", file, r.Source.Spec, r.Source.Stable, want)
+		}
+	}
+}

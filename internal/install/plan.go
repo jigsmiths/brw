@@ -156,6 +156,9 @@ func (w *planWalk) head(f *api.Formula) (done bool, err error) {
 	if p.Host.OS != "darwin" {
 		return false, fmt.Errorf("%s: %w: brw builds on macOS only", f.Name, ErrUnsupportedHost)
 	}
+	if p.upgrading[f.Name] {
+		return false, nil // upgrade and reinstall replace the HEAD keg
+	}
 	var linked string
 	for _, k := range p.Kegs {
 		if k.Name != f.Name {

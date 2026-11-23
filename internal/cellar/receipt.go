@@ -50,6 +50,8 @@ type Dependency struct {
 // Source keeps its raw JSON because brew's key order varies.
 type Source struct {
 	Tap    string
+	Spec   string // "stable" or "head"
+	Stable string // the formula's stable version when the keg was installed
 	scheme int
 	raw    json.RawMessage
 }
@@ -57,14 +59,16 @@ type Source struct {
 func (s *Source) UnmarshalJSON(b []byte) error {
 	var v struct {
 		Tap      string `json:"tap"`
+		Spec     string `json:"spec"`
 		Versions struct {
-			Scheme int `json:"version_scheme"`
+			Stable string `json:"stable"`
+			Scheme int    `json:"version_scheme"`
 		} `json:"versions"`
 	}
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
-	s.Tap, s.scheme = v.Tap, v.Versions.Scheme
+	s.Tap, s.Spec, s.Stable, s.scheme = v.Tap, v.Spec, v.Versions.Stable, v.Versions.Scheme
 	s.raw = append(s.raw[:0], b...)
 	return nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,8 +14,10 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/cellar"
+	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/outdated"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/tap"
 )
 
 type outdatedJSON struct {
@@ -34,6 +37,7 @@ func outdatedCommand(e *env, args []string) error {
 	fs.BoolVar(&quiet, "q", false, "names only")
 	fs.BoolVar(&verbose, "verbose", false, "show versions")
 	fs.BoolVar(&verbose, "v", false, "show versions")
+	fetchHead := fs.Bool("fetch-HEAD", false, "fetch each HEAD formula's repository to see whether it is outdated")
 	kinds := kindFlags(fs)
 	var o outdated.CaskOptions
 	fs.BoolVar(&o.Greedy, "greedy", false, "include casks that update themselves or are unversioned")
@@ -42,7 +46,7 @@ func outdatedCommand(e *env, args []string) error {
 	if pos, err := parse(fs, args); err != nil {
 		return err
 	} else if len(pos) != 0 {
-		return errors.New("usage: brw outdated [--formula|--cask] [--greedy] [--json] [--quiet] [--verbose]")
+		return errors.New("usage: brw outdated [--formula|--cask] [--fetch-HEAD] [--greedy] [--json] [--quiet] [--verbose]")
 	}
 	formulaOnly, caskOnly, err := kinds()
 	if err != nil {
@@ -60,7 +64,7 @@ func outdatedCommand(e *env, args []string) error {
 	}
 	var formulae []outdated.Result
 	if !caskOnly {
-		formulae, err = e.outdatedFormulae(*prefix)
+		formulae, err = e.outdatedFormulae(*prefix, *fetchHead)
 	}
 	wg.Wait()
 	if err != nil {
@@ -88,7 +92,11 @@ func outdatedCommand(e *env, args []string) error {
 	for _, r := range formulae {
 		b.WriteString(r.FullName)
 		if long {
-			b.WriteString(" (" + strings.Join(r.InstalledVersions, ", ") + ") < " + r.CurrentVersion + pinnedAt(r))
+			current := r.CurrentVersion
+			if r.LatestHead {
+				current = "latest HEAD" // a newer HEAD with the same version, as brew says
+			}
+			b.WriteString(" (" + strings.Join(r.InstalledVersions, ", ") + ") < " + current + pinnedAt(r))
 		}
 		b.WriteByte('\n')
 	}
@@ -117,7 +125,7 @@ func outdatedEntries(results []outdated.Result) []outdatedJSON {
 		if name == "" {
 			name = r.Name
 		}
-		j := outdatedJSON{name, r.InstalledVersions, r.CurrentVersion, r.Pinned, nil}
+		j := outdatedJSON{name, r.InstalledVersions, cmp.Or(r.JSONVersion, r.CurrentVersion), r.Pinned, nil}
 		if r.Pinned {
 			j.PinnedVersion = &r.PinnedVersion
 		}
@@ -137,17 +145,27 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	return l.w.Write(p)
 }
 
-func (e *env) outdatedFormulae(prefix string) ([]outdated.Result, error) {
+func (e *env) outdatedFormulae(prefix string, fetchHead bool) ([]outdated.Result, error) {
 	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return nil, err
 	}
-	idx, err := e.index(context.Background(), prefix)
+	idx, client, err := e.indexAndClient(context.Background(), prefix)
 	if err != nil {
 		return nil, err
 	}
 	e.warnOtherTap(idx, kegs, outdated.OtherTap(idx, kegs))
-	return outdated.Check(idx, cellar.Prefix(prefix), kegs)
+	return outdated.CheckWith(idx, cellar.Prefix(prefix), kegs, e.headOptions(client, fetchHead))
+}
+
+// headOptions has outdated read head commits as brew does: from GitHub's API
+// for a head on GitHub, else from the clones in brw's cache, fetching them
+// first with --fetch-HEAD.
+func (e *env) headOptions(client *api.Client, fetchHead bool) outdated.Options {
+	heads := install.Heads{Cache: client.CacheDir, API: cmp.Or(e.githubAPI, tap.GitHubAPI)}
+	return outdated.Options{FetchHead: fetchHead, Head: func(f *api.Formula, installed string, fetch bool) (string, bool, bool, error) {
+		return heads.Check(context.Background(), f, installed, fetch)
+	}}
 }
 
 func (e *env) warnOtherTap(idx *api.Index, kegs []cellar.Keg, names []string) {

@@ -60,6 +60,11 @@ type Formula struct {
 			URL      string `json:"url"`
 			Checksum string `json:"checksum"`
 		} `json:"stable"`
+		Head struct {
+			URL    string `json:"url"`
+			Branch string `json:"branch"`
+			Using  string `json:"using"` // a strategy such as "git"; empty to detect it from the URL
+		} `json:"head"`
 	} `json:"urls"`
 	Deprecated           bool     `json:"deprecated"`
 	Disabled             bool     `json:"disabled"`

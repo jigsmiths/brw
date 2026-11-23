@@ -311,6 +311,32 @@ func TestOldKegsKeepsHeadKegs(t *testing.T) {
 	}
 }
 
+// A formula on its head spec keeps its newest HEAD keg and its newest stable
+// keg, as brew's eligible_kegs_for_cleanup does, even when that stable keg is
+// not the current version.
+func TestOldKegsOfAHeadFormula(t *testing.T) {
+	f := newFixture(t)
+	headKeg := func(version string, modified int64, linked bool) {
+		f.keg("tool", version, linked)
+		f.write("Cellar/tool/"+version+"/INSTALL_RECEIPT.json", fmt.Sprintf(
+			`{"homebrew_version":"x","aliases":[],"source_modified_time":%d,"source":{"tap":"u/t","spec":"head","versions":{"stable":"1.0","version_scheme":0}}}`, modified))
+	}
+	f.keg("tool", "0.9", false)
+	f.keg("tool", "0.8", false)
+	headKeg("HEAD-aaaaaaa", 2, false)
+	headKeg("HEAD-bbbbbbb", 1, false)
+	headKeg("HEAD-ccccccc", 3, true)
+	f.current["tool"] = Formula{PkgVersion: "1.0", Head: true}
+	if err := f.cleaner().OldKegs(nil); err != nil {
+		t.Fatal(err)
+	}
+	for version, kept := range map[string]bool{"0.9": true, "0.8": false, "HEAD-ccccccc": true, "HEAD-aaaaaaa": false, "HEAD-bbbbbbb": false} {
+		if f.exists("Cellar/tool/"+version) != kept {
+			t.Errorf("%s kept = %v, want %v", version, !kept, kept)
+		}
+	}
+}
+
 func TestOldKegsNeverRemovesAKegFromANewerSchemeThanTheFormulaHas(t *testing.T) {
 	f := newFixture(t)
 	f.schemeKeg("odd", "1.0", 1, false) // scheme 1, though the formula is back on scheme 0
@@ -370,6 +396,39 @@ func has(t *testing.T, p string) bool {
 	t.Helper()
 	_, err := os.Lstat(p)
 	return err == nil
+}
+
+// The clones install --HEAD keeps beside the downloads go once they are older
+// than the limit, as brew prunes a cache directory named name--tag.
+func TestHeadClonesOlderThanTheLimitAreRemoved(t *testing.T) {
+	f := newFixture(t)
+	c, dir := f.downloadsCleaner()
+	clone := func(name string, ageDays int) string {
+		p := filepath.Join(filepath.Dir(dir), name)
+		f.download(filepath.Join(p, ".git"), "HEAD", 0)
+		when := now.Add(-time.Duration(ageDays) * 24 * time.Hour)
+		if err := os.Chtimes(p, when, when); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	old, sparse, fresh, other := clone("tool--git", 200), clone("lib--git-sparse", 200), clone("new--git", 1), clone("api", 200)
+	if err := c.CleanClones([]string{"lib"}); err != nil {
+		t.Fatal(err)
+	}
+	if !has(t, old) || has(t, sparse) {
+		t.Errorf("with a name, only its clone goes: tool %v, lib %v", has(t, old), has(t, sparse))
+	}
+	if err := c.CleanClones(nil); err != nil {
+		t.Fatal(err)
+	}
+	if has(t, old) || !has(t, fresh) || !has(t, other) {
+		t.Errorf("old %v, fresh %v, other %v", has(t, old), has(t, fresh), has(t, other))
+	}
+	c.PruneDays = 0 // --prune=all
+	if err := c.CleanClones(nil); err != nil || has(t, fresh) {
+		t.Errorf("--prune=all left %s: %v", fresh, err)
+	}
 }
 
 func TestDownloadsOfOldVersionsAreStale(t *testing.T) {

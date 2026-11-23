@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,6 +87,96 @@ func (in *Installer) fetchFormulaHead(ctx context.Context, f *api.Formula) (head
 	}
 	in.logf("==> Cloning %s", h.URL)
 	return in.fetchHead(ctx, filepath.Dir(in.Fetcher.Dir), f.Name, h)
+}
+
+// Heads reads the latest commits of formulae's head repositories as brew's
+// git strategies do: from GitHub's API for a head on GitHub, else from the
+// clone in Cache.
+type Heads struct {
+	Cache string
+	API   string // GitHub's API
+	HTTP  *http.Client
+}
+
+// githubHead is the user and repository of a head brew's
+// DownloadStrategyDetector gives the GitHub git strategy.
+var githubHead = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)\.git$`)
+
+// Check is the latest commit of f's head repository, as brew's last_commit
+// reads it, and with fetch, whether it is newer than installed, as brew's
+// commit_outdated? says after fetching. vcs is false for a head that is not a
+// git repository.
+func (hs Heads) Check(ctx context.Context, f *api.Formula, installed string, fetch bool) (latest string, newer, vcs bool, err error) {
+	h := &rb.HeadSource{URL: f.URLs.Head.URL, Branch: f.URLs.Head.Branch, Using: f.URLs.Head.Using}
+	if h.URL == "" || headStrategy(h) != "git" {
+		return "", false, false, nil
+	}
+	if m := githubHead.FindStringSubmatch(h.URL); m != nil && h.Using == "" && os.Getenv("HOMEBREW_NO_GITHUB_API") == "" {
+		_, ref := gitRef(h)
+		if c := hs.githubCommit(ctx, m[1], m[2], ref); c != "" {
+			newer := !strings.HasPrefix(c, installed) || hs.ambiguous(ctx, m[1], m[2], installed)
+			return c, fetch && newer, true, nil
+		}
+	}
+	if fetch {
+		s, err := fetchGit(ctx, hs.Cache, f.Name, h)
+		return s.short, s.short != installed, true, err
+	}
+	cmd := exec.CommandContext(ctx, "git", "--git-dir", filepath.Join(hs.Cache, f.Name+"--git", ".git"), "rev-parse", "--short=7", "HEAD")
+	cmd.Env = tap.GitEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false, true, nil // no clone: brew's last_commit is empty too
+	}
+	return strings.TrimSpace(string(out)), false, true, nil
+}
+
+// githubCommit is brew's GitHub.last_commit: the commit ref is at, from the
+// ETag of a HEAD request, cut to 7 characters, or "" when the API cannot say
+// or that is not unique.
+func (hs Heads) githubCommit(ctx context.Context, user, repo, ref string) string {
+	resp, err := hs.githubHEAD(ctx, user, repo, ref)
+	if err != nil {
+		return ""
+	}
+	m := etagSHA.FindStringSubmatch(resp.Header.Get("ETag"))
+	if m == nil || len(m[1]) < 7 || hs.ambiguous(ctx, user, repo, m[1][:7]) {
+		return ""
+	}
+	return m[1][:7]
+}
+
+var etagSHA = regexp.MustCompile(`^"([0-9a-fA-F]+)"$`)
+
+// ambiguous is brew's multiple_short_commits_exist?: true unless GitHub finds
+// exactly one commit for the short one.
+func (hs Heads) ambiguous(ctx context.Context, user, repo, commit string) bool {
+	resp, err := hs.githubHEAD(ctx, user, repo, commit)
+	return err != nil || resp.StatusCode != http.StatusOK
+}
+
+func (hs Heads) githubHEAD(ctx context.Context, user, repo, ref string) (*http.Response, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead,
+		hs.API+"/repos/"+url.PathEscape(user)+"/"+url.PathEscape(repo)+"/commits/"+url.PathEscape(ref), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github.sha")
+	if token := os.Getenv("HOMEBREW_GITHUB_API_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "token "+token)
+	}
+	client := hs.HTTP
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	_ = resp.Body.Close()
+	return resp, nil
 }
 
 // fetchHead fetches a formula's head download into cache, as brew's fetch

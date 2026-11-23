@@ -31,6 +31,7 @@ func upgradeCommand(e *env, args []string) error {
 	fs.BoolVar(&o.Greedy, "greedy", false, "include casks that update themselves or are unversioned")
 	fs.BoolVar(&o.GreedyLatest, "greedy-latest", false, "include unversioned casks")
 	fs.BoolVar(&o.GreedyAutoUpdates, "greedy-auto-updates", false, "include casks that update themselves")
+	fetchHead := fs.Bool("fetch-HEAD", false, "fetch each HEAD formula's repository and upgrade it if there is a newer commit")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -52,7 +53,7 @@ func upgradeCommand(e *env, args []string) error {
 	var failures []error
 	found := false
 	if !caskOnly && (len(names) == 0 || len(formulae) > 0) {
-		f, err := upgradeFormulae(e, prefix, *journal, dryRun, formulae)
+		f, err := upgradeFormulae(e, prefix, *journal, dryRun, *fetchHead, formulae)
 		found = found || f
 		failures = append(failures, err)
 	}
@@ -110,7 +111,7 @@ func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (f
 	return formulae, casks, nil
 }
 
-func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string) (found bool, err error) {
+func upgradeFormulae(e *env, prefix, journal string, dryRun, fetchHead bool, names []string) (found bool, err error) {
 	idx, client, err := e.indexAndClient(context.Background(), prefix)
 	if err != nil {
 		return false, err
@@ -119,7 +120,7 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 	if err != nil {
 		return false, err
 	}
-	stale, err := outdated.Check(idx, cellar.Prefix(prefix), kegs)
+	stale, err := outdated.CheckWith(idx, cellar.Prefix(prefix), kegs, e.headOptions(client, fetchHead))
 	if err != nil {
 		return false, err
 	}
@@ -158,7 +159,11 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 					problems = append(problems, fmt.Errorf("%s: %w", rack, install.ErrOtherTap))
 				}
 			case i < 0:
-				f, _, _ := outdated.Formula(idx, rack, finder.Installed(rack))
+				f, group, _ := outdated.Formula(idx, rack, finder.Installed(rack))
+				if def := cellar.Prefix(prefix).DefaultKeg(group); f.Versions.Head != "" && def.Receipt != nil && def.Receipt.Source.Spec == "head" {
+					_, _ = fmt.Fprintf(e.err, "brw: warning: %s %s already installed\n", f.FullName, def.Version)
+					continue
+				}
 				_, _ = fmt.Fprintf(e.err, "brw: warning: %s %s already installed\n", rack, pkgVersionOf(f.Versions.Stable, f.Revision))
 			case stale[i].Pinned:
 				pinned = append(pinned, stale[i])
@@ -184,9 +189,11 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 	}
 
 	planner := e.newPlanner(prefix, idx, client, kegs)
+	planner.Head = map[string]bool{}
 	upgradeNames := make([]string, len(upgrade))
 	for i, r := range upgrade {
 		upgradeNames[i] = r.FullName
+		planner.Head[r.FullName] = r.Head
 	}
 	plan, planErrs := planner.PlanUpgrade(upgradeNames)
 	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures, withBuilds(e, prefix, idx, client))
@@ -276,7 +283,7 @@ func cleanAfterUpgrade(e *env, root *fsx.Root, prefix string, it install.Item) {
 			if name != it.Formula.Name {
 				return cleanup.Formula{}, false
 			}
-			return cleanup.Formula{PkgVersion: it.PkgVersion, Scheme: it.Formula.VersionScheme, Rebuild: it.Formula.Bottle.Stable.Rebuild}, true
+			return cleanup.Formula{PkgVersion: it.PkgVersion, Scheme: it.Formula.VersionScheme, Rebuild: it.Formula.Bottle.Stable.Rebuild, Head: it.Head}, true
 		},
 		Now: time.Now, Out: &out, Warn: e.err, LocksHeld: true, // the installer still holds them
 	}
