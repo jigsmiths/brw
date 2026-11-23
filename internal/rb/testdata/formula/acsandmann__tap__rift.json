@@ -1,0 +1,79 @@
+{
+  "formulae": [
+    {
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": "Rift requires Accessibility permissions to control windows.\nGrant permissions in System Settings > Privacy & Security > Accessibility.\n\nTo copy the example configuration:\n  mkdir -p ~/.config/rift && cp $HOMEBREW_PREFIX/Cellar/rift/0.8.5/share/rift/rift.default.toml ~/.config/rift/config.toml\n",
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Tiling window manager for macOS",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://github.com/acsandmann/rift",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": "Apache-2.0",
+      "link_overwrite": [],
+      "name": "rift",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": true,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": {
+        "environment_variables": {
+          "LANG": "en_US.UTF-8",
+          "PATH": "$HOMEBREW_PREFIX/bin:$HOMEBREW_PREFIX/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+        },
+        "error_log_path": "/tmp/rift_brewuser.err.log",
+        "keep_alive": {
+          "always": true
+        },
+        "log_path": "/tmp/rift_brewuser.out.log",
+        "process_type": "interactive",
+        "run": "$HOMEBREW_PREFIX/opt/rift/Rift.app/Contents/MacOS/rift",
+        "run_type": "immediate"
+      },
+      "test_dependencies": [],
+      "urls": {
+        "head": {
+          "branch": "main",
+          "url": "https://github.com/acsandmann/rift.git",
+          "using": null
+        },
+        "stable": {
+          "checksum": "b69933fa15d8f02482c8d3a20aa73d27ad0996a492dcf87401559129bab81c4b",
+          "revision": null,
+          "tag": null,
+          "url": "https://github.com/acsandmann/rift/releases/download/v0.8.5/rift-app-universal-macos-0.8.5.tar.gz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": "HEAD",
+        "stable": "0.8.5"
+      }
+    }
+  ]
+}

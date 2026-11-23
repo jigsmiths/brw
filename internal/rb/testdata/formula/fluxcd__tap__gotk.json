@@ -1,0 +1,68 @@
+{
+  "formulae": [
+    {
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "GitOps Toolkit CLI",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://toolkit.fluxcd.io/",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": null,
+      "link_overwrite": [],
+      "name": "gotk",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [
+        "kubectl"
+      ],
+      "options": [
+        {
+          "description": "Build with kubectl support",
+          "option": "--with-kubectl"
+        }
+      ],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "bc9ba4159d70c11c8d2eb9d1703314486a7dc2305064c553eb865dd7e7b0483d",
+          "revision": null,
+          "tag": null,
+          "url": "https://github.com/fluxcd/toolkit/releases/download/v0.1.8/gotk_0.1.8_darwin_amd64.tar.gz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "0.1.8"
+      }
+    }
+  ]
+}

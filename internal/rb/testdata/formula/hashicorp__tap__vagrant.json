@@ -1,0 +1,86 @@
+{
+  "formulae": [
+    {
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [
+        "vagrant"
+      ],
+      "conflicts_with_reasons": [
+        null
+      ],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Development environment",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://www.vagrantup.com/",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": null,
+      "link_overwrite": [],
+      "name": "vagrant",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [
+        {
+          "cask": null,
+          "contexts": [],
+          "download": null,
+          "name": "linux",
+          "specs": [
+            "stable"
+          ],
+          "version": null
+        },
+        {
+          "cask": null,
+          "contexts": [],
+          "download": null,
+          "name": "arch",
+          "specs": [
+            "stable"
+          ],
+          "version": "x86_64"
+        }
+      ],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "77d4d533c82c420b6b594992a902ec43fcd9f50380dc002a599e93fc744f8cfa",
+          "revision": null,
+          "tag": null,
+          "url": "https://releases.hashicorp.com/vagrant/2.4.9/vagrant_2.4.9_linux_amd64.zip",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "2.4.9"
+      }
+    }
+  ]
+}

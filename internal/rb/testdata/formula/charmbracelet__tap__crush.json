@@ -1,0 +1,85 @@
+{
+  "formulae": [
+    {
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "A powerful terminal-based AI assistant for developers, providing intelligent coding assistance directly in your terminal.",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://charm.sh/crush",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": "FSL-1.1-MIT",
+      "link_overwrite": [],
+      "name": "crush",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "3b0d7bce51065bee09fa21acdc328467a4996509ae221e601f388fb7d17aff16",
+          "revision": null,
+          "tag": null,
+          "url": "https://github.com/charmbracelet/crush/releases/download/v0.102.0/crush_0.102.0_Darwin_arm64.tar.gz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "variations": {
+        "arm64_linux": {
+          "urls": {
+            "stable": {
+              "checksum": "311e0a5b67e595ad2b6f2276181bcea78c396ac220541544fdd1b419c4ba62d1",
+              "revision": null,
+              "tag": null,
+              "url": "https://github.com/charmbracelet/crush/releases/download/v0.102.0/crush_0.102.0_Linux_arm64.tar.gz",
+              "using": null
+            }
+          }
+        },
+        "x86_64_linux": {
+          "urls": {
+            "stable": {
+              "checksum": "311e0a5b67e595ad2b6f2276181bcea78c396ac220541544fdd1b419c4ba62d1",
+              "revision": null,
+              "tag": null,
+              "url": "https://github.com/charmbracelet/crush/releases/download/v0.102.0/crush_0.102.0_Linux_arm64.tar.gz",
+              "using": null
+            }
+          }
+        }
+      },
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "0.102.0"
+      }
+    }
+  ]
+}

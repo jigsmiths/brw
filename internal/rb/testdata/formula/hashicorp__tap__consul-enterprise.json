@@ -1,0 +1,80 @@
+{
+  "formulae": [
+    {
+      "bottle": {},
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [
+        "consul-enterprise"
+      ],
+      "conflicts_with_reasons": [
+        null
+      ],
+      "dependencies": [],
+      "deprecate_args": null,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Consul Enterprise",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://www.consul.io",
+      "keg_only": false,
+      "keg_only_reason": null,
+      "license": null,
+      "link_overwrite": [],
+      "name": "consul-enterprise",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 0,
+      "service": {
+        "error_log_path": "$HOMEBREW_PREFIX/var/log/consul.log",
+        "keep_alive": {
+          "successful_exit": false
+        },
+        "log_path": "$HOMEBREW_PREFIX/var/log/consul.log",
+        "run": [
+          "$HOMEBREW_PREFIX/Cellar/consul-enterprise/2.1.0+ent/bin/consul",
+          "agent",
+          "-dev",
+          "-bind",
+          "127.0.0.1"
+        ],
+        "run_type": "immediate",
+        "working_dir": "$HOMEBREW_PREFIX/var"
+      },
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "911fed82485cddc2a25c8212988e8469bd746220254285033c2e4fc26f36ee09",
+          "revision": null,
+          "tag": null,
+          "url": "https://releases.hashicorp.com/consul/2.1.0+ent/consul_2.1.0+ent_darwin_arm64.zip",
+          "using": null
+        }
+      },
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": false,
+        "head": null,
+        "stable": "2.1.0+ent"
+      }
+    }
+  ]
+}

@@ -132,7 +132,9 @@ func readWant(t *testing.T, path string) map[string]any {
 // for homebrew/cask, and from brew info --json=v2 --variations for taps.
 func TestEvaluateMatchesBrew(t *testing.T) {
 	asBrew(t)
-	files, _ := filepath.Glob(filepath.Join("testdata", "*", "*.rb"))
+	files, _ := filepath.Glob(filepath.Join("testdata", "cask", "*.rb"))
+	tapFiles, _ := filepath.Glob(filepath.Join("testdata", "tap", "*.rb"))
+	files = append(files, tapFiles...)
 	if len(files) == 0 {
 		t.Fatal("no fixtures")
 	}

@@ -1,0 +1,125 @@
+{
+  "formulae": [
+    {
+      "bottle": {
+        "stable": {
+          "files": {
+            "arm64_golden_gate": {
+              "cellar": "/opt/homebrew/Cellar",
+              "sha256": "d4b5fba6d01e0eeaac279bb1adb1d8b79c8e3ee9ef533c20fdf9dcbbcb8b7ea8",
+              "url": "https://ghcr.io/v2/shivammathur/php/bison/2.7/blobs/sha256:d4b5fba6d01e0eeaac279bb1adb1d8b79c8e3ee9ef533c20fdf9dcbbcb8b7ea8"
+            },
+            "arm64_linux": {
+              "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+              "sha256": "a8739940d5f98c22eee45316e4bd5c923ccf8280b3cece385aaf2f4379d6ba0d",
+              "url": "https://ghcr.io/v2/shivammathur/php/bison/2.7/blobs/sha256:a8739940d5f98c22eee45316e4bd5c923ccf8280b3cece385aaf2f4379d6ba0d"
+            },
+            "arm64_sequoia": {
+              "cellar": "/opt/homebrew/Cellar",
+              "sha256": "0196e4f5dafa98d2a1375f8bf33b4c7f60624590186ceaca965d6fbb45594f4e",
+              "url": "https://ghcr.io/v2/shivammathur/php/bison/2.7/blobs/sha256:0196e4f5dafa98d2a1375f8bf33b4c7f60624590186ceaca965d6fbb45594f4e"
+            },
+            "arm64_sonoma": {
+              "cellar": "/opt/homebrew/Cellar",
+              "sha256": "2f1156966985c9dc1c641c781aab983949ecfc0e1dc5bb68efe26c4bb941e88b",
+              "url": "https://ghcr.io/v2/shivammathur/php/bison/2.7/blobs/sha256:2f1156966985c9dc1c641c781aab983949ecfc0e1dc5bb68efe26c4bb941e88b"
+            },
+            "arm64_tahoe": {
+              "cellar": "/opt/homebrew/Cellar",
+              "sha256": "600dba731d797c878249c7d5f1cf9c953f01bb3a60fc623f781a91345f87487c",
+              "url": "https://ghcr.io/v2/shivammathur/php/bison/2.7/blobs/sha256:600dba731d797c878249c7d5f1cf9c953f01bb3a60fc623f781a91345f87487c"
+            },
+            "sonoma": {
+              "cellar": "/usr/local/Cellar",
+              "sha256": "e7b19f2de9cba260d5059d395373b7ba6c88ea7fe999b623797b6e619ed7d9f1",
+              "url": "https://ghcr.io/v2/shivammathur/php/bison/2.7/blobs/sha256:e7b19f2de9cba260d5059d395373b7ba6c88ea7fe999b623797b6e619ed7d9f1"
+            },
+            "x86_64_linux": {
+              "cellar": "/home/linuxbrew/.linuxbrew/Cellar",
+              "sha256": "14e5e8be74f6becdf03d8c7114f36db6dcb2cb966af79ab3a62b8253fcc3952b",
+              "url": "https://ghcr.io/v2/shivammathur/php/bison/2.7/blobs/sha256:14e5e8be74f6becdf03d8c7114f36db6dcb2cb966af79ab3a62b8253fcc3952b"
+            }
+          },
+          "rebuild": 1,
+          "root_url": "https://ghcr.io/v2/shivammathur/php"
+        }
+      },
+      "build_dependencies": [],
+      "caveats": null,
+      "compatibility_version": null,
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "dependencies": [],
+      "deprecate_args": {
+        "because": "versioned_formula",
+        "date": "2023-12-14",
+        "replacement_cask": null,
+        "replacement_formula": null
+      },
+      "deprecated": true,
+      "deprecation_date": "2023-12-14",
+      "deprecation_reason": "versioned_formula",
+      "deprecation_replacement_cask": null,
+      "deprecation_replacement_formula": null,
+      "desc": "Parser generator",
+      "disable_args": null,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_cask": null,
+      "disable_replacement_formula": null,
+      "disabled": false,
+      "homepage": "https://www.gnu.org/software/bison/",
+      "keg_only": true,
+      "keg_only_reason": {
+        "explanation": "",
+        "reason": ":versioned_formula"
+      },
+      "license": "GPL-3.0-or-later",
+      "link_overwrite": [],
+      "name": "bison@2.7",
+      "no_linkage_dependencies": [],
+      "optional_dependencies": [],
+      "options": [],
+      "patches": [
+        {
+          "data": true,
+          "strip": "p1"
+        },
+        {
+          "sha256": "57f972940a10d448efbd3d5ba46e65979ae4eea93681a85e1d998060b356e0d2",
+          "strip": "p0",
+          "url": "https://raw.githubusercontent.com/macports/macports-ports/b76d1e48dac/editors/nano/files/secure_snprintf.patch"
+        }
+      ],
+      "post_install_defined": false,
+      "post_install_steps": [],
+      "pour_bottle_only_if": null,
+      "recommended_dependencies": [],
+      "requirements": [],
+      "revision": 1,
+      "service": null,
+      "test_dependencies": [],
+      "urls": {
+        "stable": {
+          "checksum": "08e2296b024bab8ea36f3bb3b91d071165b22afda39a17ffc8ff53ade2883431",
+          "revision": null,
+          "tag": null,
+          "url": "https://ftpmirror.gnu.org/bison/bison-2.7.1.tar.gz",
+          "using": null
+        }
+      },
+      "uses_from_macos": [
+        "m4"
+      ],
+      "uses_from_macos_bounds": [
+        {}
+      ],
+      "version_scheme": 0,
+      "versions": {
+        "bottle": true,
+        "head": null,
+        "stable": "2.7.1"
+      }
+    }
+  ]
+}

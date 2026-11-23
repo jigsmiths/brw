@@ -5,11 +5,13 @@ import (
 	"strings"
 )
 
-// stepsDSL mirrors Homebrew::InstallSteps::DSL for casks: every base defaults to staged_path.
+// stepsDSL mirrors Homebrew::InstallSteps::DSL. In a cask every base defaults
+// to staged_path; a formula names each base.
 type stepsDSL struct {
 	steps   []value
 	guards  []value
 	guardID int
+	formula bool
 }
 
 var absoluteTokens = strings.Fields(`HOMEBREW_PREFIX HOMEBREW_CELLAR prefix opt_prefix bin sbin lib libexec share pkgshare var etc pkgetc
@@ -162,8 +164,19 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		return nil
 	}
 	no, yes := rbool(false), rbool(true)
+	def := !d.formula
 	f := &hash{}
 	switch c.name {
+	case "configure_php", "gdk_pixbuf_query_loaders", "update_gdk_pixbuf_loaders_cache":
+		if !d.formula || len(args) > 0 || kw != nil {
+			return nil, false
+		}
+		typ := c.name
+		if typ == "update_gdk_pixbuf_loaders_cache" {
+			typ = "gdk_pixbuf_query_loaders"
+		}
+		d.add(typ, f)
+		return nil, true
 	case "version":
 		return tmplV{}, true
 	case "token":
@@ -178,7 +191,7 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 			g.put("condition", rstr("on"))
 			g.put("value", rstr(strings.TrimPrefix(c.name, "on_")))
 		default:
-			g = pathSpec(a(0), kwGet(kw, "base"), nil, true)
+			g = pathSpec(a(0), kwGet(kw, "base"), nil, def)
 			g.put("condition", rstr(strings.TrimSuffix(c.name, "_path_exists")+"_exists"))
 		}
 		d.guardID++
@@ -189,10 +202,10 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		d.guards = prev
 		return nil, true
 	case "mkdir_p", "touch":
-		f.put("path", pathSpec(a(0), kwGet(kw, "base"), nil, true))
+		f.put("path", pathSpec(a(0), kwGet(kw, "base"), nil, def))
 		d.add(c.name, f)
 	case "move", "copy", "symlink", "move_contents", "symlink_tree", "symlink_children", "install_gzipped_executable":
-		f.put("source", pathSpec(a(0), kwGet(kw, "source_base"), kwGet(kw, "source_formula"), true))
+		f.put("source", pathSpec(a(0), kwGet(kw, "source_base"), kwGet(kw, "source_formula"), def))
 		tgt := a(1)
 		if tgt == nil && c.name == "symlink_children" {
 			tgt = a(0)
@@ -201,7 +214,7 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		if tb == nil && (c.name == "symlink_tree" || c.name == "symlink_children") {
 			tb = rstr("homebrew_prefix")
 		}
-		f.put("target", pathSpec(tgt, tb, kwGet(kw, "target_formula"), true))
+		f.put("target", pathSpec(tgt, tb, kwGet(kw, "target_formula"), def))
 		typ := c.name
 		switch c.name {
 		case "move":
@@ -234,19 +247,19 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		}
 		d.add(typ, f)
 	case "remove":
-		f.put("paths", pathSpecs(a(0), kwGet(kw, "base"), true))
+		f.put("paths", pathSpecs(a(0), kwGet(kw, "base"), def))
 		f.put("recursive", kwOr(kw, "recursive", no))
 		f.put("sudo", symStr(kwOr(kw, "sudo", no)))
 		f.put("symlink_target_contains", kwGet(kw, "symlink_target_contains"))
 		f.put("content_contains", kwGet(kw, "content_contains"))
 		d.add("remove", f)
 	case "set_permissions":
-		f.put("paths", pathSpecs(a(0), kwGet(kw, "base"), true))
+		f.put("paths", pathSpecs(a(0), kwGet(kw, "base"), def))
 		f.put("permissions", a(1))
 		f.put("non_recursive", rbool(!truthy(kwOr(kw, "recursive", yes))))
 		d.add("set_permissions", f)
 	case "set_ownership":
-		f.put("paths", pathSpecs(a(0), kwGet(kw, "base"), true))
+		f.put("paths", pathSpecs(a(0), kwGet(kw, "base"), def))
 		f.put("user", kwGet(kw, "user"))
 		if g := kwOr(kw, "group", rstr("staff")); str(g) != "staff" {
 			f.put("group", g)
@@ -263,10 +276,10 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		f.put("suppress_stderr", rbool(!truthy(kwOr(kw, "print_stderr", yes))))
 		for _, k := range []string{"stdin_path", "stdout_path", "chdir"} {
 			if v := kwGet(kw, k); v != nil {
-				f.put(k, pathSpec(v, nil, nil, true))
+				f.put(k, pathSpec(v, nil, nil, def))
 			}
 		}
-		f.put("writable_paths", pathSpecs(kwOr(kw, "writable_paths", &arr{}), kwGet(kw, "writable_base"), true))
+		f.put("writable_paths", pathSpecs(kwOr(kw, "writable_paths", &arr{}), kwGet(kw, "writable_base"), def))
 		f.put("network_access", kwOr(kw, "network_access", no))
 		d.add("run", f)
 	case "terminate_process":
@@ -297,7 +310,7 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		if truthy(kwOr(kw, "append_newline", no)) && !strings.HasSuffix(content, "\n") {
 			content += "\n"
 		}
-		f.put("path", pathSpec(a(0), kwGet(kw, "base"), nil, true))
+		f.put("path", pathSpec(a(0), kwGet(kw, "base"), nil, def))
 		f.put("content", rstr(content))
 		if truthy(kwOr(kw, "overwrite", yes)) {
 			f.put("overwrite", yes)
@@ -307,7 +320,7 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		f.put("message", a(0))
 		d.add("warn", f)
 	case "inreplace":
-		f.put("path", pathSpec(a(0), kwGet(kw, "base"), nil, true))
+		f.put("path", pathSpec(a(0), kwGet(kw, "base"), nil, def))
 		before := a(1)
 		if r, ok := before.(*regex); ok {
 			f.put("before", rstr(r.src))
