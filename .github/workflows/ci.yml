@@ -22,4 +22,7 @@ jobs:
           version: v2.14.0
       - run: test -z "$(go fix -diff ./...)" || { go fix -diff ./...; exit 1; }
         if: matrix.os == 'ubuntu-latest'
+      - run: |
+          if git grep -nI -e "$(printf '\342\200\224')"; then echo "remove the em dashes above" >&2; exit 1; fi
+        if: matrix.os == 'ubuntu-latest'
       - run: go test -race ./...
