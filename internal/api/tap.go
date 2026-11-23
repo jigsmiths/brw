@@ -36,6 +36,9 @@ func (e *tapFormula) fullName() string { return e.tap + "/" + e.name }
 // coreFormulaTap is the tap of the API's formulae.
 const coreFormulaTap = "homebrew/core"
 
+// FromTap says whether the formula is a tap's rather than the API's.
+func (f *Formula) FromTap() bool { return f.Tap != "" && f.Tap != coreFormulaTap }
+
 // AddTap adds the formulae a tap lists, found by tap/name and, when neither
 // the API nor another tap has it, by name. alt maps the tap's aliases and old
 // names to its formula names.

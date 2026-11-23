@@ -135,6 +135,7 @@ func TestPlanRecordsTheArchOfTheHost(t *testing.T) {
 func TestPlanListsRuntimeDependenciesLikeBrew(t *testing.T) {
 	lib := with(with(f("lib", "base"), "versions", map[string]any{"stable": "2.1"}), "revision", 1)
 	lib["bottle"] = map[string]any{"stable": map[string]any{"rebuild": 3, "files": map[string]any{"arm64_tahoe": map[string]any{}}}}
+	lib["compatibility_version"] = 2
 	idx := index(t, f("app", "lib"), lib, f("base"))
 	plan, err := planner(t, mac, idx).Plan([]string{"app"})
 	if err != nil {
@@ -148,7 +149,8 @@ func TestPlanListsRuntimeDependenciesLikeBrew(t *testing.T) {
 	}
 	want := []cellar.Dependency{
 		{FullName: "base", Version: "1.0", PkgVersion: "1.0"},
-		{FullName: "lib", Version: "2.1", Revision: 1, BottleRebuild: 3, PkgVersion: "2.1_1", DeclaredDirectly: true},
+		// a formula's compatibility_version goes in, as brew's Tab.formula_to_dep_hash writes it
+		{FullName: "lib", Version: "2.1", Revision: 1, BottleRebuild: 3, PkgVersion: "2.1_1", DeclaredDirectly: true, CompatibilityVersion: json.RawMessage("2")},
 	}
 	if !reflect.DeepEqual(app.RuntimeDeps, want) {
 		t.Errorf("runtime dependencies = %+v\nwant %+v", app.RuntimeDeps, want)

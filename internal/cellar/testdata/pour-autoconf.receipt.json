@@ -1,0 +1,58 @@
+{
+  "homebrew_version": "7.0.0",
+  "used_options": [],
+  "unused_options": [],
+  "built_as_bottle": true,
+  "poured_from_bottle": true,
+  "loaded_from_api": false,
+  "loaded_from_internal_api": false,
+  "installed_on_request": true,
+  "changed_files": [
+    "bin/autoconf",
+    "bin/autoheader",
+    "bin/autom4te",
+    "bin/autoreconf",
+    "bin/autoscan",
+    "bin/autoupdate",
+    "bin/ifnames",
+    "share/autoconf/autom4te.cfg"
+  ],
+  "linkage_files": [],
+  "binary_relocation_files": [],
+  "time": 1795419431,
+  "source_modified_time": 1335323187,
+  "compiler": "clang",
+  "aliases": [],
+  "runtime_dependencies": [
+    {
+      "full_name": "m4",
+      "version": "1.4.21",
+      "revision": 0,
+      "bottle_rebuild": 0,
+      "pkg_version": "1.4.21",
+      "declared_directly": true,
+      "compatibility_version": 1
+    }
+  ],
+  "source": {
+    "spec": "stable",
+    "versions": {
+      "stable": "2.69",
+      "head": null,
+      "version_scheme": 0,
+      "compatibility_version": null
+    },
+    "path": "/prefix/Library/Taps/shivammathur/homebrew-php/Formula/autoconf@2.69.rb",
+    "tap_git_head": "6093a3693ebb6966226eb02a88ddfd0ffd51ce20",
+    "tap": "shivammathur/php"
+  },
+  "arch": "arm64",
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27",
+    "cpu_family": "dunno",
+    "xcode": "27.0",
+    "clt": "27.0.0.0.1787197235",
+    "preferred_perl": "5.34"
+  }
+}

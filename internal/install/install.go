@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -188,10 +189,16 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	}
 	staged := path.Join(dest, f.Name, it.PkgVersion)
 
-	receipt, err := cellar.NewPourReceipt(res.Tab, cellar.Pour{
+	pour := cellar.Pour{
 		OnRequest: it.OnRequest, Time: in.now(), Aliases: f.Aliases, Stable: f.Versions.Stable,
 		Scheme: f.VersionScheme, Tap: f.Tap, Path: in.APIPath, Arch: it.Arch,
-	})
+	}
+	if f.FromTap() {
+		user, repo, _ := strings.Cut(f.Tap, "/")
+		pour.Path = filepath.Join(in.Prefix, "Library", "Taps", user, "homebrew-"+repo, filepath.FromSlash(f.RubySourcePath))
+		pour.TapGitHead = f.TapGitHead
+	}
+	receipt, err := cellar.NewPourReceipt(res.Tab, pour)
 	if err != nil {
 		return Result{}, err
 	}
@@ -199,7 +206,14 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := in.Root.WriteFile(path.Join(staged, "INSTALL_RECEIPT.json"), data, 0o644); err != nil {
+	receiptPath := path.Join(staged, "INSTALL_RECEIPT.json")
+	if in.exists(receiptPath) {
+		// a bottle served outside a registry carries its tab; brew writes over it
+		err = in.Root.Replace(receiptPath, data)
+	} else {
+		err = in.Root.WriteFile(receiptPath, data, 0o644)
+	}
+	if err != nil {
 		return Result{}, err
 	}
 	if err := in.relocate(it, staged, receipt); err != nil {

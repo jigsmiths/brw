@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
@@ -71,13 +72,30 @@ type resolved struct {
 func (e *env) resolve(ctx context.Context, prefix string, names []string, formulaOnly, caskOnly bool) (resolved, error) {
 	var r resolved
 	var err error
+	unknown, total := 0, len(names)
+	failed, err := e.trustNamed(ctx, prefix, names, formulaOnly, caskOnly)
+	if err != nil {
+		return r, err
+	}
+	unknown += len(failed)
+	names = slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(failed, n) })
 	if !caskOnly {
 		if r.idx, r.client, err = e.indexAndClient(ctx, prefix); err != nil {
 			return r, err
 		}
+		// tapping a dependency's tap can bring in formulae that name further taps
+		for missing := untappedTaps(r.idx, prefix, names); len(missing) > 0; missing = untappedTaps(r.idx, prefix, names) {
+			for _, name := range missing {
+				if _, err := e.ensureTap(ctx, prefix, name); err != nil {
+					return r, err
+				}
+			}
+			if r.idx, r.client, err = e.indexAndClient(ctx, prefix); err != nil {
+				return r, err
+			}
+		}
 	}
 	var casks *api.CaskIndex
-	unknown := 0
 	for _, name := range names {
 		if r.idx != nil {
 			if _, ok := r.idx.Lookup(name); ok {
@@ -118,21 +136,103 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 		unknown++
 	}
 	if unknown > 0 {
-		r.failures = append(r.failures, fmt.Errorf("%d of %d names are neither a formula nor a cask", unknown, len(names)))
+		r.failures = append(r.failures, fmt.Errorf("%d of %d names are neither a formula nor a cask", unknown, total))
 	}
 	return r, nil
+}
+
+// untappedTaps are the taps, sorted, that the dependencies of the named
+// formulae and of theirs name but the prefix has not tapped.
+func untappedTaps(idx *api.Index, prefix string, names []string) []string {
+	seen := map[string]bool{}
+	var missing []string
+	queue := slices.Clone(names)
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		if tapName, _, ok := tap.Split(name); ok && !strings.HasPrefix(tapName, "homebrew/") {
+			if _, err := os.Stat(tap.Dir(prefix, tapName)); err != nil {
+				if !slices.Contains(missing, tapName) {
+					missing = append(missing, tapName)
+				}
+				continue
+			}
+		}
+		if f, ok := idx.Lookup(name); ok {
+			queue = append(queue, f.Dependencies...)
+		}
+	}
+	slices.Sort(missing)
+	return missing
+}
+
+// ensureTap is the tap called name, cloned first when the prefix lacks it, as brew does.
+func (e *env) ensureTap(ctx context.Context, prefix, name string) (tap.Tap, error) {
+	t := tap.Tap{Name: name, Dir: tap.Dir(prefix, name)}
+	if _, err := os.Stat(t.Dir); err == nil {
+		return t, nil
+	}
+	_, _ = fmt.Fprintf(e.err, "==> Tapping %s\n", name)
+	t, err := tap.Clone(ctx, prefix, name, e.tapRemoteURL(name))
+	if err != nil {
+		return t, fmt.Errorf("could not tap %s: %w", name, err)
+	}
+	return t, nil
+}
+
+// trustNamed taps the tap of each full name and trusts what it names, as brew
+// does for names given to install before it loads anything: the tap's formula
+// of that name, else its cask. failed are the names whose tap could not be
+// tapped, already reported.
+func (e *env) trustNamed(ctx context.Context, prefix string, names []string, formulaOnly, caskOnly bool) (failed []string, err error) {
+	var store *trust.Store
+	for _, name := range names {
+		tapName, token, ok := tap.Split(name)
+		if !ok || strings.HasPrefix(tapName, "homebrew/") {
+			continue
+		}
+		t, err := e.ensureTap(ctx, prefix, tapName)
+		if err != nil {
+			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
+			failed = append(failed, name)
+			continue
+		}
+		var kind trust.Kind
+		switch {
+		case !caskOnly && t.HasFormula(token):
+			kind = trust.KindFormula
+		case !formulaOnly && t.HasCask(token):
+			kind = trust.KindCask
+		default:
+			continue
+		}
+		if store == nil {
+			if store, err = trust.Load(trust.Path()); err != nil {
+				return nil, err
+			}
+		}
+		added, err := store.Trust(kind, trust.Reference(tapName, t.Remote())+"/"+strings.ToLower(token))
+		if err != nil {
+			return nil, err
+		}
+		if added {
+			_, _ = fmt.Fprintf(e.err, "==> Trusted %s %s/%s\n", map[trust.Kind]string{trust.KindFormula: "formula", trust.KindCask: "cask"}[kind], tapName, token)
+		}
+	}
+	return failed, nil
 }
 
 // tapCask finds a cask by full name, tapping its tap first when it is not
 // there, as brew does. Naming it so trusts it, as brew records. It is nil
 // when the tap does not have the cask.
 func (e *env) tapCask(ctx context.Context, prefix, tapName, token string) (*api.Cask, error) {
-	t := tap.Tap{Name: tapName, Dir: tap.Dir(prefix, tapName)}
-	if _, err := os.Stat(t.Dir); err != nil {
-		_, _ = fmt.Fprintf(e.err, "==> Tapping %s\n", tapName)
-		if t, err = tap.Clone(ctx, prefix, tapName, e.tapRemoteURL(tapName)); err != nil {
-			return nil, fmt.Errorf("could not tap %s: %w", tapName, err)
-		}
+	t, err := e.ensureTap(ctx, prefix, tapName)
+	if err != nil {
+		return nil, err
 	}
 	tag, err := platform.Tag(e.host)
 	if err != nil {

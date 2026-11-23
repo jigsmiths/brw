@@ -2,6 +2,7 @@
 package install
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -97,7 +98,7 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 	for _, name := range names {
 		f, ok := p.Index.Lookup(name)
 		if !ok {
-			return nil, fmt.Errorf("%s: %w", name, deps.ErrNotFound)
+			return nil, fmt.Errorf("%s: %w", name, deps.NotFound(p.Index, name))
 		}
 		if err := w.visit(f, true); err != nil {
 			return nil, err
@@ -151,7 +152,7 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	for _, d := range direct {
 		df, ok := p.Index.Lookup(d)
 		if !ok {
-			return fmt.Errorf("%s: dependency %s: %w", f.Name, d, deps.ErrNotFound)
+			return fmt.Errorf("%s: dependency %s: %w", f.Name, d, deps.NotFound(p.Index, d))
 		}
 		if err := w.visit(df, false); err != nil {
 			return err
@@ -177,7 +178,7 @@ func (p *Planner) attachBottles(plan *Plan, problems *[]error) error {
 	for i := range plan.Items {
 		it := &plan.Items[i]
 		p.check(it, problems)
-		if it.Tag != "" {
+		if it.Tag != "" && !it.Formula.FromTap() {
 			want[it.Formula.Name] = it.Tag
 		}
 	}
@@ -191,6 +192,12 @@ func (p *Planner) attachBottles(plan *Plan, problems *[]error) error {
 			continue
 		}
 		it.Bottle = files[it.Formula.Name]
+		if it.Formula.FromTap() {
+			// a tap formula's bottle is in its own hash, not the API's
+			if it.Bottle, err = p.Index.TapBottle(it.Formula.FullName, it.Tag); err != nil {
+				return err
+			}
+		}
 		if err := p.checkCellar(it); err != nil {
 			*problems = append(*problems, err)
 		}
@@ -340,13 +347,17 @@ func (p *Planner) runtimeDeps(r *deps.Resolver, f *api.Formula) ([]cellar.Depend
 	for _, name := range order {
 		d, ok := p.Index.Lookup(name)
 		if !ok {
-			return nil, fmt.Errorf("%s: dependency %s: %w", f.Name, name, deps.ErrNotFound)
+			return nil, fmt.Errorf("%s: dependency %s: %w", f.Name, name, deps.NotFound(p.Index, name))
 		}
-		out = append(out, cellar.Dependency{
+		dep := cellar.Dependency{
 			FullName: d.FullName, Version: d.Versions.Stable, Revision: d.Revision,
 			BottleRebuild: d.Bottle.Stable.Rebuild, PkgVersion: pkgVersion(d),
 			DeclaredDirectly: slices.Contains(direct, d.Name),
-		})
+		}
+		if d.CompatibilityVersion != 0 {
+			dep.CompatibilityVersion = json.RawMessage(strconv.Itoa(d.CompatibilityVersion))
+		}
+		out = append(out, dep)
 	}
 	return out, nil
 }

@@ -14,8 +14,10 @@ type Pour struct {
 	Stable    string // the formula's version, without its revision
 	Scheme    int
 	Tap       string
-	Path      string // where the API data brew would have read from lives
-	Arch      string // the CPU of this host, "arm64" or "x86_64"; empty keeps the bottle's
+	Path      string // where the API data brew would have read from lives, or a tap's formula file
+	// TapGitHead is the commit of the tap a tap formula came from; empty for the API's.
+	TapGitHead string
+	Arch       string // the CPU of this host, "arm64" or "x86_64"; empty keeps the bottle's
 }
 
 // NewPourReceipt builds a poured bottle's receipt like brew: the manifest tab
@@ -32,6 +34,10 @@ func NewPourReceipt(tab []byte, p Pour) (*Receipt, error) {
 	r.UsedOptions, r.UnusedOptions = []string{}, []string{}
 	r.BuiltAsBottle, r.PouredFromBottle = true, true
 	r.LoadedFromAPI, r.LoadedFromInternalAPI = true, &yes
+	if p.TapGitHead != "" {
+		no := false
+		r.LoadedFromAPI, r.LoadedFromInternalAPI = false, &no
+	}
 	r.InstalledOnRequest = p.OnRequest
 	r.InstalledAsDependency = nil
 	r.Time = p.Time.Unix()
@@ -61,6 +67,10 @@ func pourSource(p Pour, scm string) (Source, error) {
 		VersionScheme        int     `json:"version_scheme"`
 		CompatibilityVersion *int    `json:"compatibility_version"`
 	}
+	var head *string
+	if p.TapGitHead != "" {
+		head = &p.TapGitHead
+	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -71,7 +81,7 @@ func pourSource(p Pour, scm string) (Source, error) {
 		Path        string   `json:"path"`
 		TapGitHead  *string  `json:"tap_git_head"`
 		Tap         string   `json:"tap"`
-	}{scm, "stable", versions{Stable: p.Stable, VersionScheme: p.Scheme}, p.Path, nil, p.Tap})
+	}{scm, "stable", versions{Stable: p.Stable, VersionScheme: p.Scheme}, p.Path, head, p.Tap})
 	if err != nil {
 		return Source{}, err
 	}

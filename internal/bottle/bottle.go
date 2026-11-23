@@ -1,7 +1,10 @@
-// Package bottle downloads bottles from GitHub Packages and checks them.
+// Package bottle downloads bottles, from GitHub Packages or a tap's own
+// root_url, and checks them.
 package bottle
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -107,6 +110,9 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 		}
 	}
 
+	if !strings.Contains(req.File.URL, "/blobs/") {
+		return f.fetchPlain(ctx, req, path, tabPath, suppPath, haveBottle)
+	}
 	ann, err := f.annotations(ctx, req)
 	if err != nil {
 		return Result{}, err
@@ -126,6 +132,57 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 	return Result{Path: path, Tab: ann.tab, SBOMSupplement: ann.supplement}, nil
+}
+
+// fetchPlain fetches a bottle served outside a registry, as a tap's root_url
+// may be. It has no manifest, so its tab is its own INSTALL_RECEIPT.json, as
+// brew reads it, and no registry token is sent.
+func (f *Fetcher) fetchPlain(ctx context.Context, req Request, path, tabPath, suppPath string, haveBottle bool) (Result, error) {
+	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
+		return Result{}, err
+	}
+	if !haveBottle {
+		if err := f.download(ctx, req.Name+" ("+req.PkgVersion+")", req.File, path); err != nil {
+			return Result{}, err
+		}
+	}
+	tab, err := tabInBottle(path, req.Name+"/"+req.PkgVersion+"/INSTALL_RECEIPT.json")
+	if err != nil {
+		return Result{}, fmt.Errorf("%s: %w", req.Name, err)
+	}
+	if err := writeAtomic(tabPath, tab); err != nil {
+		return Result{}, err
+	}
+	if err := writeAtomic(suppPath, nil); err != nil {
+		return Result{}, err
+	}
+	return Result{Path: path, Tab: tab}, nil
+}
+
+// tabInBottle reads one file from a bottle.
+func tabInBottle(path, name string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return nil, err
+	}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return nil, fmt.Errorf("the bottle has no %s", name)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimPrefix(h.Name, "./") == name {
+			return io.ReadAll(io.LimitReader(tr, 1<<20))
+		}
+	}
 }
 
 func verified(path, want string) bool {
@@ -214,7 +271,9 @@ func (f *Fetcher) get(ctx context.Context, url, accept string) (*http.Response, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", auth)
+	if strings.Contains(url, "/blobs/") || strings.Contains(url, "/manifests/") {
+		req.Header.Set("Authorization", auth) // a registry's; a plain download gets none
+	}
 	if accept != "" {
 		req.Header.Set("Accept", accept)
 	}

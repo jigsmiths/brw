@@ -36,6 +36,8 @@ type Formula struct {
 	License              string   `json:"license"`
 	Caveats              string   `json:"caveats"`
 	RubySourcePath       string   `json:"ruby_source_path"`
+	TapGitHead           string   `json:"tap_git_head"`          // a tap formula's tap commit
+	CompatibilityVersion int      `json:"compatibility_version"` // 0 when the formula sets none
 	Deprecated           bool     `json:"deprecated"`
 	Disabled             bool     `json:"disabled"`
 	DeprecationReason    string   `json:"deprecation_reason"`
@@ -725,6 +727,15 @@ func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) 
 		}
 	}
 	return out, nil
+}
+
+// TapBottle is the bottle for tag of a tap formula, by full name.
+func (i *Index) TapBottle(fullName, tag string) (BottleFile, error) {
+	raw, ok := i.TapRaw(fullName)
+	if !ok {
+		return BottleFile{}, fmt.Errorf("%s: %w", fullName, fs.ErrNotExist)
+	}
+	return bottleFile(fullName, tag, raw)
 }
 
 func bottleFile(name, tag string, raw json.RawMessage) (BottleFile, error) {
