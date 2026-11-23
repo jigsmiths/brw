@@ -1,5 +1,4 @@
-// Package info renders what brew info prints for a formula, as brew prints it
-// when its output is not a terminal.
+// Package info renders brew info's non-terminal output for a formula.
 package info
 
 import (
@@ -35,7 +34,6 @@ type Env struct {
 	Now      time.Time // for deprecation dates; the zero value means the current time
 }
 
-// keg is an installed keg with its parsed version.
 type keg struct {
 	cellar.Keg
 	pkg    version.PkgVersion
@@ -71,7 +69,6 @@ func (a keg) compare(b keg) int {
 	return a.pkg.Compare(b.pkg)
 }
 
-// Text returns the info text for f.
 func Text(f *api.Formula, env Env) (string, error) {
 	var b strings.Builder
 	tag, err := platform.Tag(env.Host)
@@ -161,9 +158,8 @@ func Text(f *api.Formula, env Env) (string, error) {
 	return b.String(), nil
 }
 
-// Caveats is the formula's own caveats text, with the prefix filled in and a
-// single final newline, or "". Brew adds more, such as keg-only advice, which
-// depends on the user's shell and tools.
+// Caveats is the formula's own caveats with the prefix filled in, leaving out
+// brew's additions (such as keg-only advice) that depend on the user's shell.
 func Caveats(f *api.Formula, prefix string) string {
 	if f.Caveats == "" {
 		return ""
@@ -314,7 +310,6 @@ func (e Env) outdatedResult(name string) *outdated.Result {
 	return nil
 }
 
-// bottledHere reports whether f has a bottle this host can use.
 func (e Env) bottledHere(f *api.Formula) bool {
 	_, ok := platform.Select(e.Host, f.BottleTags())
 	return ok
@@ -348,8 +343,7 @@ func (e Env) installStatus(f *api.Formula, kegs []keg) string {
 
 var versionedName = regexp.MustCompile(`@[\d.]+$`)
 
-// installedVersions lists the installed kegs of f and its related versioned
-// formulae, newest formula first.
+// installedVersions lists installed kegs of f and related versioned formulae, newest formula first.
 func (e Env) installedVersions(f *api.Formula) ([]string, error) {
 	related := []*api.Formula{f}
 	if versionedName.MatchString(f.Name) {

@@ -578,8 +578,7 @@ func TestFormulaeRebuildsAnUnusableIndex(t *testing.T) {
 				t.Fatal(err)
 			}
 		},
-		// An index that is well formed but not for this listing must not be used. It
-		// holds no formulae, so using it would be noticed.
+		// Well formed but for another listing; it holds no formulae, so using it would show.
 		"for another listing": func(t *testing.T, dir string) {
 			writeIndex(t, dir, listingIndex[Formula]{Fingerprint: indexFingerprint, ETag: `"v0"`})
 		},

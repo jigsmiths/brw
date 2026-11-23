@@ -62,7 +62,6 @@ func kindFlags(fs *flag.FlagSet) func() (formulaOnly, caskOnly bool, err error) 
 	}
 }
 
-// plural is one when n is 1, else many.
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return one

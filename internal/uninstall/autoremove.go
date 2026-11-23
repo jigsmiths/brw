@@ -68,16 +68,6 @@ func (r *Remover) namesToKeep(kegs []cellar.Keg) map[string]bool {
 	return keep
 }
 
-// Unneeded lists the formulae Autoremove would remove, in the order it removes them.
-func (r *Remover) Unneeded() ([]string, error) {
-	kegs, err := r.unneeded()
-	names := make([]string, len(kegs))
-	for i, k := range kegs {
-		names[i] = k.Name
-	}
-	return names, err
-}
-
 // Autoremove uninstalls the formulae nothing needs any more.
 func (r *Remover) Autoremove() error {
 	kegs, err := r.unneeded()

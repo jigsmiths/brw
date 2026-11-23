@@ -23,7 +23,6 @@ var (
 
 type formula map[string]any
 
-// index builds an API index from minimal formula definitions.
 func index(t *testing.T, formulae ...formula) *api.Index {
 	t.Helper()
 	b, err := json.Marshal(formulae)

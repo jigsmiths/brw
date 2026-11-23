@@ -43,8 +43,7 @@ type Installer struct {
 	// "Tool: https://github.com/jigsmiths/brw@abc1234".
 	SBOMCreator string
 
-	// KeepGoing records a formula's failure in its Result and carries on with the
-	// next, as an upgrade of many formulae does.
+	// KeepGoing records a formula's failure in its Result and carries on, as a multi-formula upgrade does.
 	KeepGoing bool
 	// After runs once a formula is installed, for the work that follows each one.
 	After func(Item, Result)
@@ -53,8 +52,7 @@ type Installer struct {
 // standardDirs are the directories every prefix has, which linking relies on.
 var standardDirs = []string{"Cellar", "bin", "etc", "include", "lib", "sbin", "share", "opt", "var/homebrew/linked"}
 
-// MakeStandardDirs creates the prefix's standard directories, as brew does
-// before installing a formula or a cask.
+// MakeStandardDirs creates the prefix's standard directories, as brew does before any install.
 func MakeStandardDirs(root *fsx.Root, goos string) error {
 	dirs := standardDirs
 	if goos == "darwin" {
@@ -80,8 +78,7 @@ type Result struct {
 	Upgraded    bool
 	Reinstalled bool
 	OldVersion  string // the version an upgrade or reinstall replaced
-	// Err is why the formula was not installed, when the installer is told to
-	// keep going after a failure.
+	// Err is why the formula was not installed, when KeepGoing is set.
 	Err error
 }
 
@@ -91,11 +88,8 @@ func (in *Installer) logf(format string, args ...any) {
 	}
 }
 
-// Install pours each item in order. It locks every formula first and fetches
-// all the bottles in parallel. If a formula fails, those before it stay
-// installed and the ones after it are not touched, unless KeepGoing is set,
-// which records the failure in the Result and carries on. A formula that cannot
-// be linked stays poured and is reported in its Result.
+// Install locks every formula, fetches all bottles in parallel, then pours each item in order.
+// A failure stops the later items unless KeepGoing is set; a link failure leaves the keg poured.
 func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result, err error) {
 	if len(plan.Items) == 0 {
 		return nil, nil

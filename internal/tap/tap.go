@@ -20,7 +20,6 @@ import (
 	"github.com/jigsmiths/brw/internal/caskrb"
 )
 
-// Tap is a tapped repository.
 type Tap struct {
 	Name string // user/repo
 	Dir  string

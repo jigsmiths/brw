@@ -188,11 +188,9 @@ func receipt(t *testing.T, prefix, name string) []string {
 	return out
 }
 
-// kegDiff compares the files of a keg in the two prefixes: names, modes, link
-// targets, and the contents of text files with the prefix paths made equal.
-// Mach-O files are not compared, since signatures differ; other binaries
-// are compared by size. The receipt is compared on its own. The SBOM is compared
-// with the time and the tool that wrote it made equal; sbomTime checks the time.
+// kegDiff compares a keg's files in the two prefixes, with prefix paths made
+// equal. Mach-O files are skipped since signatures differ, other binaries are
+// compared by size, and the SBOM ignores its time and tool (sbomTime checks the time).
 func kegDiff(t *testing.T, theirs, mine, name string) []string {
 	t.Helper()
 	list := func(prefix string) map[string]string {

@@ -190,10 +190,8 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures)
 }
 
-// applyPlan reports what could not be planned, then shows the plan or carries it
-// out, cleaning up each formula's old kegs after it. The failures passed in are
-// returned with any new ones. what ends the "cannot be ..." message, for example
-// "upgraded".
+// applyPlan shows or carries out the plan, cleaning up old kegs after each
+// formula. what ends the "cannot be ..." message, for example "upgraded".
 func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error) error {
 	for _, err := range planErrs {
 		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)

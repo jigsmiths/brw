@@ -17,7 +17,6 @@ import (
 )
 
 type platform struct {
-	tag   string
 	os    string // macos or linux
 	arch  string // arm or intel
 	macos string // "27", "10.15"; empty on Linux
@@ -64,17 +63,13 @@ func evaluate(src []byte, tag string) (*caskB, error) {
 }
 
 func newPlatform(tag string) *platform {
-	p := &platform{tag: tag, os: "macos", arch: "intel"}
-	name := tag
-	if strings.HasPrefix(tag, "arm64_") {
+	p := &platform{os: "macos", arch: "intel"}
+	name, arm := strings.CutPrefix(tag, "arm64_")
+	if arm {
 		p.arch = "arm"
-		name = strings.TrimPrefix(tag, "arm64_")
 	}
-	if name == "linux" || strings.HasSuffix(tag, "_linux") {
+	if strings.HasSuffix(tag, "_linux") {
 		p.os = "linux"
-		if strings.HasPrefix(tag, "x86_64") {
-			p.arch = "intel"
-		}
 		return p
 	}
 	p.macos = macSymbols[name]
@@ -115,7 +110,6 @@ func (d *flightDSL) file(in *interp, s *scope, name string, args []value) value 
 	return nil
 }
 
-// guarded runs a flight block's branch under a File.exist? guard.
 func (d *flightDSL) guarded(in *interp, s *scope, g *guardV, negate bool, body []node) {
 	cond := "if_exists"
 	if negate != g.negate {
@@ -183,9 +177,7 @@ type caskB struct {
 	url       value
 	urlSpecs  *hash
 	archV     value
-	archSet   bool
 	osV       value
-	osSet     bool
 	langs     []langBlock
 	langDef   *proc
 	langEval  value
@@ -231,7 +223,7 @@ func evalCask(prog []node, plat *platform) (c *caskB, err error) {
 		}
 	}()
 	c = &caskB{}
-	in := &interp{plat: plat, ctx: []dsl{&topDSL{}}}
+	in := &interp{plat: plat}
 	top := &scope{vars: map[string]value{}}
 	for _, n := range prog {
 		call, ok := n.(*callN)
@@ -247,12 +239,6 @@ func evalCask(prog []node, plat *platform) (c *caskB, err error) {
 		fail("no cask")
 	}
 	return c, nil
-}
-
-type topDSL struct{}
-
-func (topDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) (value, bool) {
-	return nil, false
 }
 
 func kwGet(kw *hash, k string) value {
@@ -363,7 +349,7 @@ func resolveTarget(key, source, target string) string {
 	}
 	switch key {
 	case "manpage":
-		m := regexp.MustCompile(`\.([1-8nl])(?:\.gz)?$`).FindStringSubmatch(source)
+		m := manSection.FindStringSubmatch(source)
 		sec := ""
 		if m != nil {
 			sec = m[1]
@@ -587,7 +573,7 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 		b.urlSpecs = specs
 	case "name":
 		if len(args) == 0 {
-			return &arr{toValues(b.names)}, true
+			return strs(b.names), true
 		}
 		for _, a := range args {
 			b.names = append(b.names, str(a))
@@ -606,7 +592,7 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 		if kw == nil {
 			return b.archV, true
 		}
-		b.archV, b.archSet = b.pick(kwGet(kw, "arm"), kwGet(kw, "intel"), plat), true
+		b.archV = b.pick(kwGet(kw, "arm"), kwGet(kw, "intel"), plat)
 	case "os":
 		if kw == nil {
 			return b.osV, true
@@ -616,7 +602,6 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 		} else {
 			b.osV = kwGet(kw, "macos")
 		}
-		b.osSet = true
 	case "on_system_conditional":
 		if plat.os == "linux" {
 			return kwGet(kw, "linux"), true
@@ -712,7 +697,6 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 		h.put("steps", &arr{st.steps})
 		b.artifacts = append(b.artifacts, artifact{key: c.name, args: []value{h}})
 	case "preflight", "postflight", "uninstall_preflight", "uninstall_postflight":
-		// Ruby blocks: translate the idioms taps use into install steps, refuse the rest.
 		if c.block == nil {
 			fail("%s without block", c.name)
 		}
@@ -737,16 +721,14 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 	return nil, true
 }
 
-func toValues(ss []string) []value {
-	out := make([]value, len(ss))
-	for i, s := range ss {
-		out[i] = rstr(s)
-	}
-	return out
-}
+var (
+	trailingSpace = regexp.MustCompile(`\s*\z`)
+	manSection    = regexp.MustCompile(`\.([1-8nl])(?:\.gz)?$`)
+	macComparison = regexp.MustCompile(`^\s*(<|>|[=<>]=)\s*:?(\S+)\s*$`)
+)
 
 func caveatText(s string) string {
-	return regexp.MustCompile(`\s*\z`).ReplaceAllString(s, "") + "\n"
+	return trailingSpace.ReplaceAllString(s, "") + "\n"
 }
 
 func (b *caskB) language(in *interp) value {
@@ -866,7 +848,7 @@ func macReq(v value, cmp string) *hash {
 		h.put("==", vers(x.v))
 	case rstr:
 		s := string(x)
-		m := regexp.MustCompile(`^\s*(<|>|[=<>]=)\s*:?(\S+)\s*$`).FindStringSubmatch(s)
+		m := macComparison.FindStringSubmatch(s)
 		if m == nil {
 			fail("macos %q", s)
 		}

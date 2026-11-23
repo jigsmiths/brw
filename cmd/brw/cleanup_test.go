@@ -12,7 +12,6 @@ import (
 	"github.com/jigsmiths/brw/internal/install/installtest"
 )
 
-// freshDownload writes a cached bottle into the cache the command will use.
 func downloads(t *testing.T, e *env) string {
 	t.Helper()
 	dir := filepath.Join(e.client.CacheDir, "downloads")

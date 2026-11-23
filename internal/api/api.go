@@ -150,7 +150,6 @@ type Bottle struct {
 	Tags    []string // sorted
 }
 
-// UnmarshalJSON keeps the tags of the bottle files and drops their URLs and checksums.
 func (b *Bottle) UnmarshalJSON(data []byte) error {
 	var v struct {
 		Rebuild int                 `json:"rebuild"`
@@ -164,10 +163,8 @@ func (b *Bottle) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// BottleTags returns the tags in sorted order.
 func (f *Formula) BottleTags() []string { return f.Bottle.Stable.Tags }
 
-// Parse decodes the formula listing.
 func Parse(b []byte) ([]Formula, error) {
 	var formulae []Formula
 	if err := json.Unmarshal(b, &formulae); err != nil {
@@ -210,7 +207,6 @@ func NewIndex(formulae []Formula) *Index {
 // Formulae returns every formula once, in listing order.
 func (i *Index) Formulae() []*Formula { return i.all }
 
-// Lookup finds a formula by name, alias or old name.
 func (i *Index) Lookup(name string) (*Formula, bool) {
 	f, ok := i.byName[name]
 	return f, ok
@@ -220,16 +216,12 @@ func (i *Index) Lookup(name string) (*Formula, bool) {
 // The server allows ten minutes (Cache-Control: max-age=600).
 const freshFor = 10 * time.Minute
 
-// indexVersion changes when Parse or ParseCasks starts building something
-// different, or the index itself changes shape, so an index written by an older
-// brw is not trusted. Changes to the Formula or Cask type are caught by their
-// fingerprints.
+// indexVersion is bumped when parsing or the index shape changes, so an older
+// brw's index is not trusted. Type changes are caught by fingerprints.
 const indexVersion = "4"
 
-// Client fetches the formula and cask listings and caches each in CacheDir by
-// ETag. It also keeps an index of each parsed listing, which is much faster to
-// load than the listing. When a fetch fails and a cache exists, the cache is
-// used and Warn is called.
+// Client caches the formula and cask listings in CacheDir by ETag, plus a parsed
+// index that loads much faster. A failed fetch falls back to the cache and calls Warn.
 type Client struct {
 	URL      string // the formula listing
 	CaskURL  string // the cask listing
@@ -254,14 +246,12 @@ func (c *Client) now() time.Time {
 type Update struct {
 	Changed bool
 	Total   int
-	// Added and Removed name the formulae or casks that came or went. They are
-	// empty when there was no listing before.
+	// Added and Removed are empty when there was no listing before.
 	Added, Removed []string
 }
 
-// Refresh asks the server for the listing even when the cached one is fresh.
-// Unlike Formulae it fails when the server cannot be reached, rather than
-// settling for the cache.
+// Refresh fetches the listing even when the cache is fresh, and unlike Formulae
+// fails rather than falling back to the cache.
 func (c *Client) Refresh(ctx context.Context) (Update, error) {
 	return refresh(ctx, c, c.formulaListing(), func(f Formula) string { return f.Name })
 }
@@ -349,8 +339,7 @@ func (c *Client) formulaListing() listing[Formula] {
 	return listing[Formula]{stem: "formula", url: c.URL, parse: Parse, fingerprint: indexFingerprint}
 }
 
-// load loads a listing. With force it skips the freshness shortcut and reports
-// a failed fetch instead of using the cache.
+// With force, load skips the freshness shortcut and fails rather than using the cache.
 func load[T any](ctx context.Context, c *Client, l listing[T], force bool) ([]T, error) {
 	body := l.file(c.CacheDir, ".json")
 	etagFile := l.file(c.CacheDir, ".etag")
@@ -433,7 +422,6 @@ func load[T any](ctx context.Context, c *Client, l listing[T], force bool) ([]T,
 	return items, err
 }
 
-// fresh reports whether the listing was validated recently enough to use as is.
 func (c *Client) fresh(etagFile string) bool {
 	fi, err := os.Stat(etagFile)
 	if err != nil {
@@ -478,7 +466,6 @@ type listingIndex[T any] struct {
 // span is where one entry is in a cached listing, in bytes.
 type span struct{ Off, Len int64 }
 
-// entrySpans finds every entry of a listing, in order.
 func entrySpans(data []byte) ([]span, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if _, err := dec.Token(); err != nil { // the opening bracket
@@ -617,7 +604,6 @@ func (c *Client) each(fn func(name string, raw json.RawMessage) (done bool, err 
 	return nil
 }
 
-// readEntry reads one entry of a cached listing.
 func readEntry(file string, s span) ([]byte, error) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -678,9 +664,8 @@ type BottleFile struct {
 	SHA256 string `json:"sha256"`
 }
 
-// Bottles looks up the bottle of each formula for its tag: where Formulae
-// found its entry, else in one pass over the cached listing. want maps a
-// formula name to a bottle tag.
+// Bottles maps formula names to bottle tags and looks up each bottle, scanning
+// the cached listing once for any entry Formulae did not locate.
 func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) {
 	out := make(map[string]BottleFile, len(want))
 	rest := map[string]string{} // not found by entry
@@ -723,7 +708,6 @@ func (c *Client) Bottles(want map[string]string) (map[string]BottleFile, error) 
 	return out, nil
 }
 
-// bottleFile reads the bottle for tag from a formula's entry.
 func bottleFile(name, tag string, raw json.RawMessage) (BottleFile, error) {
 	var e struct {
 		Bottle struct {

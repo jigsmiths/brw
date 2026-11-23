@@ -5,7 +5,7 @@ import (
 	"strconv"
 )
 
-// node is an expression or statement of the syntax tree; the types below are all of them.
+// node is a node of the syntax tree.
 type node interface{ node() }
 
 func (*litN) node()    {}
@@ -60,7 +60,6 @@ type (
 	}
 	assignN struct {
 		name string
-		op   string
 		v    node
 	}
 )
@@ -146,26 +145,13 @@ func (p *parser) stmt() node {
 }
 
 func (p *parser) expr() node {
-	if p.cur().k == tIdent && p.at(1).k == tOp {
-		switch op := p.at(1).s; op {
-		case "=", "||=", "+=", "-=", "&&=":
-			name := p.next().s
-			p.next()
-			p.skipNL()
-			return &assignN{name: name, op: op, v: p.expr()}
-		}
-	}
-	if p.isKw("not") {
-		p.i++
-		return &notN{p.expr()}
-	}
-	n := p.ternary()
-	for p.isKw("and") || p.isKw("or") {
-		op := map[string]string{"and": "&&", "or": "||"}[p.next().s]
+	if p.cur().k == tIdent && p.at(1).k == tOp && p.at(1).s == "=" {
+		name := p.next().s
+		p.next()
 		p.skipNL()
-		n = &binN{op, n, p.ternary()}
+		return &assignN{name: name, v: p.expr()}
 	}
-	return n
+	return p.ternary()
 }
 
 func (p *parser) ternary() node {
@@ -295,7 +281,6 @@ func (p *parser) startsArg() bool {
 	return false
 }
 
-// callArgs parses arguments and a block after a method name.
 func (p *parser) callArgs(c *callN, allowCommand bool) {
 	switch {
 	case p.isOp("(") && !p.cur().spaceBef:
@@ -378,7 +363,7 @@ func (p *parser) block(end string) *blockN {
 	return b
 }
 
-// argList parses comma-separated arguments; label/=> pairs collect into a trailing hash.
+// argList collects `key: v` and `k => v` pairs into a trailing hash, as Ruby does.
 func (p *parser) argList(close string) []node {
 	var args []node
 	var h *hashN
@@ -401,19 +386,19 @@ func (p *parser) argList(close string) []node {
 			if p.isOp(",") || (bracketed && p.isOp(close)) { // shorthand `key:`
 				h.pairs = append(h.pairs, pair{&symN{k}, &callN{name: k, bare: true}})
 			} else {
-				h.pairs = append(h.pairs, pair{&symN{k}, p.argExpr()})
+				h.pairs = append(h.pairs, pair{&symN{k}, p.expr()})
 			}
 		} else if p.isOp("&") || p.isOp("*") || p.isOp("**") {
 			p.fail("unsupported splat or block argument")
 		} else {
-			e := p.argExpr()
+			e := p.expr()
 			if p.isOp("=>") {
 				p.i++
 				p.skipNL()
 				if h == nil {
 					h = &hashN{}
 				}
-				h.pairs = append(h.pairs, pair{e, p.argExpr()})
+				h.pairs = append(h.pairs, pair{e, p.expr()})
 			} else {
 				args = append(args, e)
 			}
@@ -431,12 +416,6 @@ func (p *parser) argList(close string) []node {
 		args = append(args, h)
 	}
 	return args
-}
-
-func (p *parser) argExpr() node {
-	n := p.expr()
-	// `foo x if y` inside an argument list is not valid; leave modifiers to stmt
-	return n
 }
 
 func (p *parser) primary() node {
@@ -521,13 +500,6 @@ func (p *parser) primary() node {
 		case "if", "unless":
 			p.i++
 			return p.ifExpr(t.s == "unless")
-		case "next", "return", "break":
-			p.i++
-			var v node
-			if p.cur().k != tNL && !p.isKw("if") && !p.isKw("unless") && !p.isKw("end") && !p.isOp("}") {
-				v = p.expr()
-			}
-			return &callN{name: "__" + t.s, args: nilOr(v)}
 		default:
 			p.fail("unsupported %s", t.s)
 		}
@@ -535,12 +507,11 @@ func (p *parser) primary() node {
 		switch t.s {
 		case "(":
 			p.i++
-			body := p.stmts(")")
+			p.skipNL()
+			e := p.stmt()
+			p.skipNL()
 			p.expectOp(")")
-			if len(body) == 1 {
-				return body[0]
-			}
-			return &callN{name: "__seq", args: body}
+			return e
 		case "[":
 			p.i++
 			elems := p.argList("]")
@@ -566,13 +537,6 @@ func (p *parser) primary() node {
 	}
 	p.fail("unexpected %q", t.s)
 	return nil
-}
-
-func nilOr(n node) []node {
-	if n == nil {
-		return nil
-	}
-	return []node{n}
 }
 
 func (p *parser) ifExpr(negate bool) node {

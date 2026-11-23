@@ -11,11 +11,8 @@ import (
 	"testing"
 )
 
-// This test installs the same casks with brew and with brw into two fresh
-// copies of a brew checkout, each with its own applications folder, and
-// compares them; then each forgets and adopts its own, then uninstalls them,
-// and they are compared after each.
-// It needs a checkout at
+// This test installs, forgets, adopts and uninstalls the same casks with brew
+// and brw in two copies of a brew checkout, comparing after each step. It needs
 // $BRW_ORACLE (default ~/.brw-oracle/hb) and BRW_CONFORMANCE_CASK_INSTALL=1.
 
 // Small casks that nobody has running, since brew's uninstall quits them: an

@@ -15,6 +15,14 @@ import (
 	"github.com/jigsmiths/brw/internal/caskroom"
 )
 
+func (in *Installer) Upgrade(ctx context.Context, old caskroom.Cask, c api.Cask) error {
+	u, err := in.PrepareUpgrade(ctx, old, c)
+	if err != nil {
+		return err
+	}
+	return u.Run(ctx)
+}
+
 var appTarball2 = func() []byte {
 	var t testing.T
 	return tarGzBytes(&t,

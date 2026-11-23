@@ -31,7 +31,6 @@ type Finder struct {
 	Resolve func(name string) (canonical string, known bool)
 }
 
-// Installed lists the installed kegs of a formula.
 func (f Finder) Installed(name string) []cellar.Keg {
 	var out []cellar.Keg
 	for _, k := range f.Kegs {

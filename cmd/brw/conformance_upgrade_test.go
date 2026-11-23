@@ -14,9 +14,8 @@ import (
 // This test compares brew update and brew upgrade with brw's. It needs the
 // checkout described in conformance_install_test.go and BRW_CONFORMANCE_UPGRADE=1.
 //
-// Both tools install the same formulae into their own prefix, some are pinned or
-// unlinked, and then every keg is renamed to 0.0.1 in both prefixes so that the
-// formulae count as outdated. The upgrades must leave the same prefix behind.
+// Every keg is renamed to 0.0.1 so the formulae count as outdated, and the
+// upgrades must leave the same prefix behind.
 
 // jq needs oniguruma, sqlite is keg-only and needs readline, just is pinned and
 // c-ares is unlinked.
@@ -122,7 +121,6 @@ func TestConformanceUpgrade(t *testing.T) {
 	}
 }
 
-// cellarRacks lists the racks in the prefix's Cellar.
 func cellarRacks(t *testing.T, prefix string) []string {
 	t.Helper()
 	racks, err := os.ReadDir(filepath.Join(prefix, "Cellar"))
