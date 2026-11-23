@@ -38,7 +38,7 @@ var ErrNoSource = errors.New("cannot be built: no formula file")
 // unpack extracts a download into dir as brew's unpack strategies do: tar
 // and zip archives are extracted, anything else is copied in under its name.
 // Extraction is left to tar and unzip, which write outside fsx as git does.
-func (in *Installer) unpack(archive, name, dir string) error {
+func (in *Installer) unpack(root *fsx.Root, archive, name, dir string) error {
 	lower := strings.ToLower(name)
 	var cmd *exec.Cmd
 	switch {
@@ -58,10 +58,10 @@ func (in *Installer) unpack(archive, name, dir string) error {
 			return err
 		}
 		dst := filepath.Join(dir, name)
-		if err := in.Root.WriteFile(dst, data, fi.Mode().Perm()); err != nil {
+		if err := root.WriteFile(dst, data, fi.Mode().Perm()); err != nil {
 			return err
 		}
-		return in.Root.Chtimes(dst, fi.ModTime(), fi.ModTime())
+		return root.Chtimes(dst, fi.ModTime(), fi.ModTime())
 	}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("unpacking %s: %w: %s", name, err, out)
@@ -145,6 +145,21 @@ func (in *Installer) applyPatches(ctx context.Context, name string, patches []rb
 	return nil
 }
 
+// removeBuildDir removes a build directory, making read-only directories in
+// it writable first, as brew's rm_rf does.
+func removeBuildDir(dir string) error {
+	if os.RemoveAll(dir) == nil { //fsx:allow the build directory, outside the prefix
+		return nil
+	}
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			_ = os.Chmod(p, 0o755) //fsx:allow the build directory, outside the prefix
+		}
+		return nil
+	})
+	return os.RemoveAll(dir) //fsx:allow the build directory, outside the prefix
+}
+
 // makeJobs is HOMEBREW_MAKE_JOBS, else the number of CPUs, as brew picks it.
 func makeJobs() int {
 	if n, err := strconv.Atoi(os.Getenv("HOMEBREW_MAKE_JOBS")); err == nil && n > 0 {
@@ -198,22 +213,29 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	}
 	in.logf("==> Installing %s from %s", f.Name, f.Tap)
 
-	dest := path.Join(fsx.Staging, randomID())
-	defer func() {
-		err = errors.Join(err, in.Root.RemoveStaging(dest))
-		_ = in.Root.Remove(fsx.Staging) // only succeeds when empty
-	}()
-	for _, d := range []string{"src", "resources"} {
-		if err := in.Root.MkdirAll(path.Join(dest, d), 0o755); err != nil {
-			return Result{}, err
-		}
-	}
-	top, err := in.Root.Abs(dest)
+	// As brew's, the build directory is in HOMEBREW_TEMP: inside the prefix,
+	// which may be brew's git repository, git and Go would see that repository.
+	temp := cmp.Or(os.Getenv("HOMEBREW_TEMP"), "/private/tmp")
+	top, err := os.MkdirTemp(temp, f.Name+"-"+it.PkgVersion+"-") //fsx:allow the build directory, outside the prefix
 	if err != nil {
 		return Result{}, err
 	}
+	defer func() { err = errors.Join(err, removeBuildDir(top)) }()
+	if top, err = filepath.EvalSymlinks(top); err != nil {
+		return Result{}, err
+	}
+	broot, err := fsx.Open(top, nil)
+	if err != nil {
+		return Result{}, err
+	}
+	defer func() { _ = broot.Close() }()
+	for _, d := range []string{"src", "resources"} {
+		if err := broot.MkdirAll(d, 0o755); err != nil {
+			return Result{}, err
+		}
+	}
 	stage, scratch := filepath.Join(top, "src"), filepath.Join(top, "resources")
-	if err := in.unpack(download, path.Base(f.URLs.Stable.URL), stage); err != nil {
+	if err := in.unpack(broot, download, path.Base(f.URLs.Stable.URL), stage); err != nil {
 		return Result{}, err
 	}
 	bp, err := buildpath(stage)
@@ -258,15 +280,15 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	}
 	envVars := stdenv(stdenvParams{
 		Prefix: in.Prefix, Buildpath: bp, Cache: filepath.Dir(in.Fetcher.Dir), SDK: in.SDK, MacVersion: in.MacVersion,
-		Temp: cmp.Or(os.Getenv("HOMEBREW_TEMP"), "/private/tmp"), Jobs: makeJobs(), DepBins: bins,
+		Temp: temp, Jobs: makeJobs(), DepBins: bins, Keg: filepath.Join(in.Prefix, keg), SourceModified: modified,
 	})
-	if err := in.Root.MkdirAll(filepath.Join(bp, ".brew_home"), 0o755); err != nil {
+	if err := broot.MkdirAll(filepath.Join(bp, ".brew_home"), 0o755); err != nil {
 		return Result{}, err
 	}
-	host := &kegHost{root: in.Root, run: in.Run}
+	host := &kegHost{root: in.Root, build: broot, run: in.Run}
 	env := &rb.InstallEnv{Host: host, Prefix: in.Prefix, Buildpath: bp, Env: envVars, Tap: f.Tap,
-		Resources: resources, Scratch: scratch,
-		Unpack: func(archive, dir string) error { return in.unpack(archive, files[archive], dir) }}
+		Resources: resources, Scratch: scratch, TarCommit: tarCommit(download),
+		Unpack: func(archive, dir string) error { return in.unpack(broot, archive, files[archive], dir) }}
 	if err := src.Formula.Install(env); err != nil {
 		return Result{}, err
 	}
@@ -288,7 +310,7 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	if err := in.Root.WriteFile(path.Join(keg, "INSTALL_RECEIPT.json"), data, 0o644); err != nil {
 		return Result{}, err
 	}
-	if err := in.installMetafiles(bp, keg); err != nil {
+	if err := in.installMetafiles(broot, bp, keg); err != nil {
 		return Result{}, err
 	}
 	if err := clean(in.Root, keg, src.Formula.SkipClean()); err != nil {
@@ -388,7 +410,7 @@ func isMetafile(name string) bool {
 
 // installMetafiles is Pathname#install_metafiles: the licence, readme and the
 // like at the top of the build directory go into the keg, made 0644.
-func (in *Installer) installMetafiles(buildpath, keg string) error {
+func (in *Installer) installMetafiles(build *fsx.Root, buildpath, keg string) error {
 	entries, err := os.ReadDir(buildpath)
 	if err != nil {
 		return err
@@ -406,7 +428,7 @@ func (in *Installer) installMetafiles(buildpath, keg string) error {
 		if in.exists(dst) {
 			continue
 		}
-		if err := in.Root.Rename(src, dst); err != nil {
+		if err := build.MoveTo(in.Root, src, dst); err != nil {
 			return err
 		}
 		if err := in.Root.Chmod(dst, 0o644); err != nil {

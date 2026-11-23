@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -220,6 +221,37 @@ end
 	_ = prefix
 }
 
+// std_go_args(ldflags: :goreleaser) is GoReleaser's ldflags: the commit is the
+// spec's revision, else the tarball's, else the tap's owner.
+func TestGoreleaserLdflags(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	for _, tt := range []struct{ url, commit, want string }{
+		{`url "https://example.com/tool-1.0.tar.gz"`, "abc123", "abc123"},
+		{`url "https://example.com/tool-1.0.tar.gz"`, "", "acme"},
+		{`url "https://example.com/tool.git", tag: "v1.0", revision: "fff000"`, "abc123", "fff000"},
+	} {
+		src := "class Tool < Formula\n  " + tt.url + "\n  version \"1.0\"\n  def install\n" +
+			"    (prefix/\"args\").write std_go_args(ldflags: :goreleaser).join(\"\\n\")\n  end\nend\n"
+		f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+		if err != nil {
+			t.Fatal(err)
+		}
+		prefix := t.TempDir()
+		// Formula#time is the build's SOURCE_DATE_EPOCH, which brew sets.
+		env := &InstallEnv{Host: &dirHost{t: t}, Prefix: prefix, Buildpath: t.TempDir(), Tap: "acme/tools", TarCommit: tt.commit,
+			Env: map[string]string{"SOURCE_DATE_EPOCH": "1795425211"}}
+		if err := f.Install(env); err != nil {
+			t.Fatal(err)
+		}
+		b, _ := os.ReadFile(filepath.Join(prefix, "Cellar/tool/1.0/args"))
+		want := "-trimpath\n-o=" + prefix + "/Cellar/tool/1.0/bin/tool\n-ldflags=-s -w -X 'main.version=1.0' -X 'main.commit=" + tt.want +
+			"' -X 'main.date=2026-11-23T09:13:31Z' -X 'main.builtBy=acme'"
+		if string(b) != want {
+			t.Errorf("%s:\n%s\nwant\n%s", tt.url, b, want)
+		}
+	}
+}
+
 // std_cmake_args traps FetchContent with brew's file when the prefix has it.
 func TestStdCmakeArgsUseBrewsTrapWhenThere(t *testing.T) {
 	asBrewHost(t, "brewuser")
@@ -240,6 +272,78 @@ func TestStdCmakeArgsUseBrewsTrapWhenThere(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(prefix, "Cellar/tool/1.0/a")); !strings.Contains(string(b), "-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="+trap) {
 		t.Errorf("args = %s", b)
+	}
+}
+
+// shellParameter is Utils::ShellCompletion.completion_shell_parameter.
+func TestShellParameterIsBrews(t *testing.T) {
+	for _, tt := range []struct {
+		format     value
+		shell      string
+		args       []string
+		envKey, ev string
+	}{
+		{nil, "zsh", []string{"zsh"}, "", ""},
+		{sym("arg"), "pwsh", []string{"--shell=powershell"}, "", ""},
+		{sym("clap"), "fish", nil, "COMPLETE", "fish"},
+		{sym("click"), "bash", nil, "_MY_TOOL_COMPLETE", "bash_source"},
+		{sym("cobra"), "pwsh", []string{"completion", "powershell"}, "", ""},
+		{sym("flag"), "bash", []string{"--bash"}, "", ""},
+		{sym("none"), "bash", nil, "", ""},
+		{sym("typer"), "zsh", []string{"--show-completion", "zsh"}, "_TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION", "1"},
+		{rstr("--completions="), "zsh", []string{"--completions=zsh"}, "", ""},
+	} {
+		env := map[string]string{}
+		got := shellParameter(tt.format, tt.shell, "/opt/x/bin/my-tool", env)
+		if !reflect.DeepEqual(got, tt.args) || (tt.envKey != "" && env[tt.envKey] != tt.ev) {
+			t.Errorf("%v %s: %q %v, want %q %s=%s", tt.format, tt.shell, got, env, tt.args, tt.envKey, tt.ev)
+		}
+	}
+}
+
+// The ENV methods are brew's SharedEnvExtension and Stdenv ones.
+func TestEnvMethodsAreBrews(t *testing.T) {
+	src := toolHead + `    ENV["A"] = "x"
+    ENV.append ["A", "B"], "y"
+    ENV.prepend "A", "w", ":"
+    ENV.append_path "P", "/a"
+    ENV.append_path "P", "/usr/bin"
+    ENV.prepend_path "P", "/bin"
+    ENV.prepend_path "P", "/a"
+    ENV.prepend_create_path "Q", buildpath/"q/lib"
+    ENV["CFLAGS"] = "-Os -w"
+    ENV.O0
+    ENV.deparallelize do
+      system "sh", "-c", "echo \"[$MAKEFLAGS]\" > inside"
+    end
+    ENV.delete "B"
+    ENV["JOBS"] = ENV.make_jobs.to_s
+    system "sh", "-c", "echo \"$A|${B-unset}|$P|$Q|$CFLAGS|$CXXFLAGS|$MAKEFLAGS|$JOBS\" > env.out"
+    prefix.install "env.out", "inside"
+  end
+end
+`
+	asBrewHost(t, "brewuser")
+	lookupEnv = func(k string) (string, bool) { return "3", k == "HOMEBREW_MAKE_JOBS" }
+	f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix, build := t.TempDir(), t.TempDir()
+	env := &InstallEnv{Host: &dirHost{t: t}, Prefix: prefix, Buildpath: build, Env: map[string]string{"MAKEFLAGS": "-j8", "P": "/usr/bin"}}
+	if err := f.Install(env); err != nil {
+		t.Fatal(err)
+	}
+	keg := filepath.Join(prefix, "Cellar/tool/1.0")
+	want := "w:x y|unset|/a:/usr/bin|" + build + "/q/lib| -w -O0|-O0|-j8|3\n"
+	if b, _ := os.ReadFile(filepath.Join(keg, "env.out")); string(b) != want {
+		t.Errorf("env = %q\nwant  %q", b, want)
+	}
+	if b, _ := os.ReadFile(filepath.Join(keg, "inside")); string(b) != "[]\n" {
+		t.Errorf("MAKEFLAGS inside deparallelize = %q", b)
+	}
+	if fi, err := os.Stat(filepath.Join(build, "q/lib")); err != nil || !fi.IsDir() {
+		t.Errorf("prepend_create_path made no directory: %v", err)
 	}
 }
 
@@ -409,6 +513,160 @@ end
 	}
 	if b, _ := os.ReadFile(filepath.Join(prefix, "etc/tool.conf")); string(b) != "mine" {
 		t.Errorf("tool.conf was overwritten: %q", b)
+	}
+}
+
+// The FileUtils, Pathname, File and Dir methods install bodies use, on real
+// files. Each case writes what it found to prefix/"out".
+func TestFileMethodsOnRealFiles(t *testing.T) {
+	files := map[string]string{"a.txt": "a\n", "dir/b.txt": "b\n", "dir/sub/c.txt": "c\n", "tool": "#!/bin/sh\necho t\n"}
+	for _, tt := range []struct{ name, body, out string }{
+		{"mkdir, touch, cp and mv", `mkdir_p "x/y"
+    touch "x/y/new"
+    touch "a.txt"
+    cp "a.txt", "x"
+    cp_r "dir", "copy"
+    mv "copy/b.txt", "moved.txt"
+    FileUtils.mkdir "z"
+    (prefix/"out").write [File.read("x/a.txt"), File.exist?("x/y/new"), File.read("a.txt"),
+      Dir.exist?("copy/sub"), File.file?("moved.txt"), File.exist?("copy/b.txt"), Dir.exist?("z")].join(",")`,
+			"a\n,true,a\n,true,true,false,true"},
+		{"links and removal", `ln_s "a.txt", "link"
+    ln_sf "dir", "link"
+    rm "a.txt"
+    rm_f "missing"
+    rm_rf "dir/sub"
+    rmdir "dir" rescue nil
+    (prefix/"out").write [File.symlink?("link"), File.exist?("a.txt"), Dir.exist?("dir/sub")].join(",")`,
+			"true,false,false"},
+		{"chmod", `chmod 0700, "tool"
+    File.chmod 0600, "a.txt"
+    (buildpath/"dir/b.txt").chmod 0640
+    prefix.install "tool", "a.txt", "dir/b.txt"
+    (prefix/"out").write "ok"`, "ok"},
+		{"rescue", `begin
+      system "false"
+      (prefix/"never").write "x"
+    rescue
+      (prefix/"rescued").write "y"
+    ensure
+      (prefix/"ensured").write "z"
+    end
+    got = (system("false") rescue "fallback")
+    (prefix/"out").write [got, File.exist?(prefix/"never"), File.read(prefix/"rescued"), File.read(prefix/"ensured")].join(",")`,
+			"fallback,false,y,z"},
+		{"pathnames", `p = buildpath/"dir"
+    (p/"new.txt").write "n"
+    (p/"new.txt").append_lines "m"
+    (p/"gone").atomic_write "g"
+    (p/"gone").unlink
+    (buildpath/"made/deep").mkpath
+    (buildpath/"made").rmtree
+    names = p.children.map { |c| File.basename(c) }.sort
+    (prefix/"out").write [(p/"new.txt").read, names.join(" "), p.directory?, (p/"b.txt").file?,
+      (p/"b.txt").basename, (p/"b.txt").extname, (p/"sub/c.txt").dirname.basename,
+      (p/"sub/c.txt").relative_path_from(p), p.glob("*.txt").map { |c| File.basename(c) }.sort.join(" "),
+      Dir.exist?("made")].join(",")`,
+			"nm\n,b.txt new.txt sub,true,true,b.txt,.txt,sub,sub/c.txt,b.txt new.txt,false"},
+		{"file and dir class methods", `(prefix/"out").write [File.join("a", "b", "c"), File.basename("x/y.tar.gz", ".gz"),
+      File.dirname("x/y/z"), Dir.glob("dir/**/*.txt").sort.join(" "), Dir.pwd == buildpath.to_s,
+      File.expand_path("q") == (buildpath/"q").to_s].join(",")`,
+			"a/b/c,y.tar,x/y,dir/b.txt dir/sub/c.txt,true,true"},
+		{"scripts", `(libexec/"bin").install "tool"
+    bin.write_exec_script libexec/"bin/tool"
+    (bin/"env").write_env_script libexec/"bin/tool", FOO: "1"
+    (bin/"rel").make_relative_symlink libexec/"bin/tool"
+    (prefix/"out").write [File.read(bin/"tool"), File.read(bin/"env")].join("|")`,
+			"#!/bin/bash\nexec \"$keg/libexec/bin/tool\" \"$@\"\n|#!/bin/bash\nFOO=\"1\" exec \"$keg/libexec/bin/tool\"  \"$@\"\n"},
+		{"popen and cd", `out = Utils.safe_popen_read("sh", "-c", "echo $X", ) rescue "x"
+    got = Utils.safe_popen_read({ "X" => "1" }, "sh", "-c", "echo $X").chomp
+    cd "dir" do
+      system "sh", "-c", "pwd > ../where"
+    end
+    (prefix/"out").write [got, File.basename(File.read("where").chomp)].join(",")`,
+			"1,dir"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, keg, _, err := installInto(t, toolHead+"    "+tt.body+"\n  end\nend\n", files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := os.ReadFile(filepath.Join(keg, "out"))
+			if want := strings.ReplaceAll(tt.out, "$keg", keg); err != nil || string(b) != want {
+				t.Errorf("out = %q, %v\nwant  %q", b, err, want)
+			}
+			switch tt.name {
+			case "chmod":
+				for name, want := range map[string]os.FileMode{"tool": 0o700, "a.txt": 0o600, "b.txt": 0o640} {
+					if fi, err := os.Stat(filepath.Join(keg, name)); err != nil || fi.Mode().Perm() != want {
+						t.Errorf("%s: %v, want %v", name, fi.Mode().Perm(), want)
+					}
+				}
+			case "scripts":
+				if l, _ := os.Readlink(filepath.Join(keg, "bin/rel")); l != "../libexec/bin/tool" {
+					t.Errorf("bin/rel -> %q", l)
+				}
+				if fi, _ := os.Stat(filepath.Join(keg, "bin/env")); fi.Mode().Perm() != 0o555 {
+					t.Errorf("bin/env mode = %v", fi.Mode().Perm())
+				}
+			}
+		})
+	}
+}
+
+// inreplace is brew's StringInreplaceExtension: each edit that matches
+// nothing is an error, and the make variable helpers rewrite whole lines.
+func TestInreplaceIsBrews(t *testing.T) {
+	makefile := "CC=gcc\nOPT += -O0 \\\n  -g\nDEBUG:=1\nKEEP=1\nPREFIX=/usr/local\nNAME=a a\n"
+	for _, tt := range []struct {
+		name, body, want, err string
+	}{
+		{"make vars", `inreplace "Makefile" do |s|
+      s.change_make_var! "OPT", "-Os"
+      s.remove_make_var! ["DEBUG", "KEEP"]
+      s.gsub! "/usr/local", prefix
+      s.sub! /=a/, "=b"
+      s.gsub! "NAME", "NAME"
+      (prefix/"cc").write s.get_make_var("CC")
+    end`, "CC=gcc\nOPT=-Os\nPREFIX=$keg\nNAME=b a\n", ""},
+		{"one edit fails", `inreplace "Makefile" do |s|
+      s.gsub! "CC=gcc", "CC=clang"
+      s.gsub! "nowhere", "x"
+    end`, "", `expected replacement of "nowhere" with "x"`},
+		{"not audited", `inreplace "Makefile" do |s|
+      s.gsub! "nowhere", "x", audit_result: false
+      s.gsub! "CC=gcc", "CC=clang"
+    end`, "CC=clang\nOPT += -O0 \\\n  -g\nDEBUG:=1\nKEEP=1\nPREFIX=/usr/local\nNAME=a a\n", ""},
+		{"unknown make var", `inreplace "Makefile" do |s|
+      s.change_make_var! "NOPE", "1"
+    end`, "", `expected to change "NOPE" to "1"`},
+		{"same text", `inreplace "Makefile", "KEEP=1", "KEEP=1"`, makefile, ""},
+		{"first only", `inreplace "Makefile", "a", "b", global: false`, "CC=gcc\nOPT += -O0 \\\n  -g\nDEBUG:=1\nKEEP=1\nPREFIX=/usr/locbl\nNAME=a a\n", ""},
+		{"no match", `inreplace "Makefile", "nowhere", "x"`, "", `expected replacement of "nowhere" with "x"`},
+		{"no match allowed", `inreplace "Makefile", "nowhere", "x", audit_result: false`, makefile, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, keg, _, err := installInto(t, toolHead+"    "+tt.body+"\n    prefix.install \"Makefile\"\n  end\nend\n",
+				map[string]string{"Makefile": makefile})
+			if tt.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.err) {
+					t.Fatalf("error = %v, want %q", err, tt.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := os.ReadFile(filepath.Join(keg, "Makefile"))
+			if want := strings.ReplaceAll(tt.want, "$keg", keg); string(b) != want {
+				t.Errorf("Makefile = %q\nwant       %q", b, want)
+			}
+			if tt.name == "make vars" {
+				if b, _ := os.ReadFile(filepath.Join(keg, "cc")); string(b) != "gcc" {
+					t.Errorf("get_make_var = %q", b)
+				}
+			}
+		})
 	}
 }
 

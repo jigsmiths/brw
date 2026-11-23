@@ -1,11 +1,16 @@
 package install
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // stdenvParams are what a build's environment depends on.
@@ -13,6 +18,8 @@ type stdenvParams struct {
 	Prefix, Buildpath, Cache, SDK, MacVersion, Temp string
 	Jobs                                            int
 	DepBins                                         []string // the dependencies' opt bin directories
+	Keg                                             string   // absolute
+	SourceModified                                  time.Time
 }
 
 // packageCaches are Homebrew::PackageManagerCache's variables and folders.
@@ -50,6 +57,11 @@ func stdenv(p stdenvParams) map[string]string {
 		"CMAKE_FRAMEWORK_PATH": fwPath + p.SDK + "/System/Library/Frameworks",
 	}
 	maps.Copy(env, sandboxEnv(home, p.Cache, p.Temp))
+	// what build.rb sets around the install method
+	env["HOMEBREW_FORMULA_PREFIX"] = p.Keg
+	env["HOMEBREW_FORMULA_BUILDPATH"] = p.Buildpath
+	env["SOURCE_DATE_EPOCH"] = strconv.FormatInt(p.SourceModified.Unix(), 10)
+	env["TZ"] = "UTC0"
 	var pc []string
 	for _, d := range []string{p.Prefix + "/lib/pkgconfig", p.Prefix + "/share/pkgconfig", "/usr/lib/pkgconfig"} {
 		if _, err := os.Stat(d); err == nil {
@@ -58,6 +70,41 @@ func stdenv(p stdenvParams) map[string]string {
 	}
 	env["PKG_CONFIG_LIBDIR"] = strings.Join(pc, ":")
 	return env
+}
+
+// tarCommit is Utils::Git.get_tar_commit_id: the commit git archive writes
+// into the first 1024 bytes of a tarball, as GitHub's archives have, or "".
+func tarCommit(file string) string {
+	name := filepath.Base(file)
+	f, err := os.Open(file)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	var r io.Reader
+	switch {
+	case strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".tgz"):
+		zr, err := gzip.NewReader(f)
+		if err != nil {
+			return ""
+		}
+		r = zr
+	case strings.HasSuffix(name, ".tar"):
+		r = f
+	default:
+		return ""
+	}
+	header := make([]byte, 1024)
+	if _, err := io.ReadFull(r, header); err != nil {
+		return ""
+	}
+	cmd := exec.Command("git", "get-tar-commit-id")
+	cmd.Stdin = bytes.NewReader(header)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // sandboxEnv is brew's common_sandbox_env, which keeps a build or

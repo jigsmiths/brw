@@ -178,6 +178,34 @@ func TestABuildWritesServiceFiles(t *testing.T) {
 	}
 }
 
+// As brew does, a build runs in HOMEBREW_TEMP, where it cannot see the
+// prefix's git repository, which /opt/homebrew is.
+func TestABuildRunsOutsideThePrefix(t *testing.T) {
+	e, prefix, origin, reg := tapBottleStore(t)
+	temp := os.Getenv("HOMEBREW_TEMP")
+	gitIn(t, prefix, "init", "-q")
+	writeTapFormula(t, origin, "tool", strings.Replace(goreleaserTool(t, reg, "1.0"), `bin.install "tool"`,
+		`bin.install "tool"`+"\n    system \"sh\", \"-c\", \"pwd > #{prefix}/where; git rev-parse --git-dir > #{prefix}/git 2>&1 || echo none > #{prefix}/git\"", 1))
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/tool"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	keg := filepath.Join(prefix, "Cellar/tool/1.0")
+	where, _ := os.ReadFile(filepath.Join(keg, "where"))
+	realTemp, _ := filepath.EvalSymlinks(temp)
+	if !strings.HasPrefix(string(where), realTemp+"/tool-1.0-") {
+		t.Errorf("built in %q, want under %s", where, realTemp)
+	}
+	if b, _ := os.ReadFile(filepath.Join(keg, "git")); string(b) != "none\n" {
+		t.Errorf("the build saw a git repository: %q", b)
+	}
+	if entries, _ := os.ReadDir(temp); len(entries) != 0 {
+		t.Errorf("left in HOMEBREW_TEMP: %v", entries)
+	}
+	if !exists(t, prefix, "Cellar/tool/1.0/README.md") {
+		t.Error("the metafiles were not moved into the keg")
+	}
+}
+
 func TestUpgradeATapFormulaFromItsDownload(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	writeTapFormula(t, origin, "tool", goreleaserTool(t, reg, "1.0"))

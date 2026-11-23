@@ -2,6 +2,7 @@ package rb
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -414,14 +415,21 @@ func (in *interp) eval(n node, s *scope) value {
 		in.set(x.target, v, s)
 		return v
 	case *rescueN:
-		// brw has no Ruby exceptions; what would raise is refused instead.
-		return in.eval(x.x, s)
+		// Loading has no Ruby exceptions; what would raise is refused instead.
+		// An install's failures are StandardErrors, which rescue catches.
+		if in.build == nil {
+			return in.eval(x.x, s)
+		}
+		return in.rescuing(func() value { return in.eval(x.x, s) }, func() value { return in.eval(x.fallback, s) })
 	case *beginN:
-		if x.rescues {
+		defer in.run(x.ensure, s)
+		if !x.rescues {
+			return in.run(x.body, s)
+		}
+		if in.build == nil {
 			fail("begin with rescue")
 		}
-		defer in.run(x.ensure, s)
-		return in.run(x.body, s)
+		return in.rescuing(func() value { return in.run(x.body, s) }, func() value { return in.run(x.rescue, s) })
 	case *defN:
 		for _, d := range slices.Backward(in.ctx) {
 			if df, ok := d.(definer); ok {
@@ -433,6 +441,20 @@ func (in *interp) eval(n node, s *scope) value {
 	}
 	fail("node %T", n)
 	return nil
+}
+
+// rescuing runs body, and fallback instead if body fails the build. Ruby
+// brw cannot run is still refused.
+func (in *interp) rescuing(body, fallback func() value) (v value) {
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(buildFailure); !ok {
+				panic(r)
+			}
+			v = fallback()
+		}
+	}()
+	return body()
 }
 
 // definer takes method definitions, as a formula class body does.
@@ -787,6 +809,10 @@ func (in *interp) method(recv value, name string, args []value, blk *proc) value
 		}
 	case rstr:
 		return strMethod(string(x), name, args)
+	case rint:
+		if name == "to_s" && len(args) == 0 {
+			return rstr(str(x))
+		}
 	case *arr:
 		return in.arrMethod(x, name, args, blk)
 	case *buffer:
@@ -798,7 +824,7 @@ func (in *interp) method(recv value, name string, args []value, blk *proc) value
 			return in.build.resourceMethod(in, x, name, args, blk)
 		}
 	case special:
-		return in.specialMethod(x, name, args)
+		return in.specialMethod(x, name, args, blk)
 	case formulaRef:
 		return x.method(name)
 	case passwd:
@@ -911,6 +937,18 @@ func strMethod(s string, name string, args []value) value {
 		return rbool(strings.TrimSpace(s) != "")
 	case "dirname": // Pathname#dirname
 		return rstr(path.Dir(s))
+	case "strip":
+		return rstr(strings.Trim(s, " \t\n\v\f\r\x00"))
+	case "chomp":
+		if len(args) > 0 {
+			return rstr(strings.TrimSuffix(s, str(args[0])))
+		}
+		for _, end := range []string{"\r\n", "\n", "\r"} {
+			if t, ok := strings.CutSuffix(s, end); ok {
+				return rstr(t)
+			}
+		}
+		return rstr(s)
 	}
 	if len(args) == 0 {
 		fail("String#%s without an argument", name)
@@ -1033,6 +1071,23 @@ func (in *interp) arrMethod(a *arr, name string, args []value, blk *proc) value 
 			return nil
 		}
 		return a.v[len(a.v)-1]
+	case "sort":
+		if blk != nil {
+			fail("Array#sort with a block")
+		}
+		out := &arr{v: slices.Clone(a.v)}
+		slices.SortStableFunc(out.v, func(x, y value) int {
+			xi, xok := x.(rint)
+			yi, yok := y.(rint)
+			if xok && yok {
+				return cmp.Compare(xi, yi)
+			}
+			if xok != yok {
+				fail("Array#sort of mixed values")
+			}
+			return strings.Compare(str(x), str(y))
+		})
+		return out
 	case "join":
 		sep := ""
 		if len(args) > 0 {
@@ -1117,9 +1172,9 @@ func compareMac(a, b string) int {
 	return 0
 }
 
-func (in *interp) specialMethod(x special, name string, args []value) value {
+func (in *interp) specialMethod(x special, name string, args []value, blk *proc) value {
 	if b := in.build; b != nil {
-		if v, ok := b.classMethod(x, name, args); ok {
+		if v, ok := b.classMethod(in, x, name, args, blk); ok {
 			return v
 		}
 	}

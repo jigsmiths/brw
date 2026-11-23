@@ -31,6 +31,7 @@ func tapBottleStore(t *testing.T) (e *env, prefix, origin string, reg *installte
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOMEBREW_NO_REQUIRE_TAP_TRUST", "")
 	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
+	t.Setenv("HOMEBREW_TEMP", t.TempDir())
 	s := newStore(t)
 	s.formula(installtest.Bottle{Name: "app", Version: "1.0", Files: []installtest.File{file("bin/app", "app", 0o755)}}, nil, nil)
 	e, prefix = s.env()

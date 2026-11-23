@@ -1,6 +1,7 @@
 package rb
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"io/fs"
@@ -45,6 +46,9 @@ type InstallEnv struct {
 	Unpack    func(archive, dir string) error
 	Scratch   string
 	Out       io.Writer // where ohai, opoo and puts write; nil drops them
+	// TarCommit is the commit in the download's tarball header, which
+	// std_go_args(ldflags: :goreleaser) names when the spec has no revision.
+	TarCommit string
 }
 
 // buildFailure is an install body failing as brew's would, such as a command
@@ -573,11 +577,11 @@ func (b *builder) call(in *interp, s *scope, c *callN, args []value, kw *hash) (
 	case c.name == "inreplace" && c.block != nil:
 		b.inreplaceBlock(in, s, args, c.block)
 	case c.name == "inreplace":
-		b.inreplace(args, kw, false)
+		b.inreplace(args, kw)
 	case strings.HasPrefix(c.name, "std_") && strings.HasSuffix(c.name, "_args"):
 		return b.stdArgs(c.name, kw), true
 	case c.name == "time":
-		return rstr(buildTime().Format(time.RFC3339)), true
+		return rstr(b.time().Format(time.RFC3339)), true
 	case c.name == "build" && len(args) == 0:
 		return buildOptions{b.f}, true
 	case c.name == "resource" && len(args) == 1:
@@ -606,39 +610,21 @@ func (b *builder) call(in *interp, s *scope, c *callN, args []value, kw *hash) (
 	return nil, true
 }
 
-// inreplace is Utils::Inreplace.inreplace for its two-argument form.
-func (b *builder) inreplace(args []value, kw *hash, block bool) {
-	if block || len(args) != 3 {
-		fail("inreplace with a block")
+// inreplace is Utils::Inreplace.inreplace with before and after.
+func (b *builder) inreplace(args []value, kw *hash) {
+	if len(args) != 3 {
+		fail("inreplace with %d arguments", len(args))
 	}
-	var paths []string
-	if a, ok := args[0].(*arr); ok {
-		for _, v := range a.v {
-			paths = append(paths, str(v))
-		}
-	} else {
-		paths = []string{str(args[0])}
+	edit := "gsub!"
+	if kwGet(kw, "global") == rbool(false) {
+		edit = "sub!"
 	}
-	for _, p := range paths {
-		data, err := b.env.Host.ReadFile(b.abs(p))
-		b.must(err)
-		var out string
-		if re, ok := args[1].(*regex); ok {
-			out = compile(re).ReplaceAllString(string(data), rubySub(str(args[2])))
-		} else {
-			out = strings.ReplaceAll(string(data), str(args[1]), str(args[2]))
-		}
-		if out == string(data) && kwGet(kw, "audit_result") != rbool(false) {
-			failBuild("inreplace failed: %s: %v did not match", p, args[1])
-		}
-		fi, err := b.env.Host.Lstat(b.abs(p))
-		b.must(err)
-		b.write(p, out, fi.Mode().Perm())
-	}
+	audit := kwGet(kw, "audit_result") != rbool(false)
+	b.eachInreplace(args[:1], func(buf *buffer) { buf.edit(edit, args[1], args[2], audit) })
 }
 
 // classMethod is File, Dir, FileUtils and Utils working on real files.
-func (b *builder) classMethod(x special, name string, args []value) (value, bool) {
+func (b *builder) classMethod(in *interp, x special, name string, args []value, blk *proc) (value, bool) {
 	arg := func(i int) string {
 		if i >= len(args) {
 			fail("%s.%s needs %d arguments", x, name, i+1)
@@ -696,7 +682,7 @@ func (b *builder) classMethod(x special, name string, args []value) (value, bool
 		return nil, false
 	}
 	if x == "ENV" {
-		return b.envMethod(name, args)
+		return b.envMethod(in, name, args, blk)
 	}
 	if x == "FileUtils" && fileUtils[name] {
 		b.fileUtil(name, args)
@@ -744,12 +730,11 @@ func (o buildOptions) method(name string, args []value) value {
 	return nil
 }
 
-// buildTime is Formula#time: SOURCE_DATE_EPOCH when set, else now.
-func buildTime() time.Time {
-	if s, ok := lookupEnv("SOURCE_DATE_EPOCH"); ok {
-		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
-			return time.Unix(n, 0).UTC()
-		}
+// time is Formula#time: the build's SOURCE_DATE_EPOCH, which brew sets to
+// the source's newest file, else now.
+func (b *builder) time() time.Time {
+	if n, err := strconv.ParseInt(b.env.Env["SOURCE_DATE_EPOCH"], 10, 64); err == nil {
+		return time.Unix(n, 0).UTC()
 	}
 	return time.Now().UTC()
 }
@@ -772,13 +757,6 @@ func joined(v value, sep string) string {
 		return strings.Join(parts, sep)
 	}
 	return str(v)
-}
-
-func makeJobs(env map[string]string) string {
-	if n, err := strconv.Atoi(strings.TrimPrefix(env["MAKEFLAGS"], "-j")); err == nil {
-		return strconv.Itoa(n)
-	}
-	return strconv.Itoa(runtime.NumCPU())
 }
 
 // stdArgs are Formula#std_configure_args and its kin, as brew defines them.
@@ -814,12 +792,12 @@ func (b *builder) stdArgs(name string, kw *hash) value {
 			if builtBy == "" {
 				builtBy = "Homebrew"
 			}
-			commit := builtBy
+			commit := cmp.Or(b.env.TarCommit, builtBy)
 			if r := kwGet(b.f.stable.specs, "revision"); r != nil {
 				commit = str(r)
 			}
 			ldflags = list("-X 'main.version="+b.f.version()+"'", "-X 'main.commit="+commit+"'",
-				"-X 'main.date="+buildTime().Format(time.RFC3339)+"'", "-X 'main.builtBy="+builtBy+"'")
+				"-X 'main.date="+b.time().Format(time.RFC3339)+"'", "-X 'main.builtBy="+builtBy+"'")
 		}
 		flags := "-s -w"
 		if ldflags != nil {
@@ -835,7 +813,7 @@ func (b *builder) stdArgs(name string, kw *hash) value {
 		}
 		return list(out...)
 	case "std_cargo_args":
-		args := []string{"--jobs", makeJobs(b.env.Env), "--locked", "--root=" + or("root", prefix), "--path=" + or("path", ".")}
+		args := []string{"--jobs", strconv.Itoa(makeJobCount()), "--locked", "--root=" + or("root", prefix), "--path=" + or("path", ".")}
 		if f := kwGet(kw, "features"); f != nil {
 			args = append(args, "--features="+joined(f, ","))
 		}
@@ -843,14 +821,16 @@ func (b *builder) stdArgs(name string, kw *hash) value {
 	case "std_meson_args":
 		return list("--prefix="+or("prefix", prefix), "--libdir="+or("libdir", "lib"), "--buildtype=release", "--wrap-mode=nofallback")
 	case "std_swift_args":
-		return list("--configuration", "release", "--jobs", makeJobs(b.env.Env))
+		return list("--configuration", "release", "--jobs", strconv.Itoa(makeJobCount()))
 	}
 	fail("%s", name)
 	return nil
 }
 
-// envMethod is one of ENV's methods brew adds for builds.
-func (b *builder) envMethod(name string, args []value) (value, bool) {
+var ccFlagVars = []string{"CFLAGS", "CXXFLAGS", "OBJCFLAGS", "OBJCXXFLAGS"}
+
+// envMethod is one of the ENV methods of brew's SharedEnvExtension and Stdenv.
+func (b *builder) envMethod(in *interp, name string, args []value, blk *proc) (value, bool) {
 	env := b.env.Env
 	arg := func(i int) string {
 		if i >= len(args) {
@@ -858,116 +838,237 @@ func (b *builder) envMethod(name string, args []value) (value, bool) {
 		}
 		return str(args[i])
 	}
-	join := func(key, val, sep string, front bool) {
-		switch {
-		case env[key] == "":
-			env[key] = val
-		case front:
-			env[key] = val + sep + env[key]
-		default:
-			env[key] = env[key] + sep + val
+	keys := func() []string { // Array(keys)
+		if a, ok := args[0].(*arr); ok {
+			var out []string
+			for _, v := range a.v {
+				out = append(out, str(v))
+			}
+			return out
+		}
+		return []string{arg(0)}
+	}
+	join := func(keys []string, val, sep string, front bool) {
+		for _, key := range keys {
+			switch {
+			case strings.TrimSpace(env[key]) == "":
+				env[key] = val
+			case front:
+				env[key] = val + sep + env[key]
+			default:
+				env[key] = env[key] + sep + val
+			}
 		}
 	}
+	path := func(key string, front bool, p string) { // PATH#append and #prepend
+		var parts []string
+		if front {
+			parts = append(strings.Split(p, ":"), strings.Split(env[key], ":")...)
+		} else {
+			parts = append(strings.Split(env[key], ":"), strings.Split(p, ":")...)
+		}
+		var out []string
+		for _, s := range parts {
+			if s != "" && !slices.Contains(out, s) {
+				out = append(out, s)
+			}
+		}
+		env[key] = strings.Join(out, ":")
+	}
+	remove := func(keys []string, re *regexp.Regexp) {
+		for _, k := range keys {
+			v, ok := env[k]
+			if !ok {
+				continue
+			}
+			if loc := re.FindStringIndex(v); loc != nil {
+				v = v[:loc[0]] + v[loc[1]:]
+			}
+			if v == "" {
+				delete(env, k)
+			} else {
+				env[k] = v
+			}
+		}
+	}
+	sep := func() string {
+		if len(args) > 2 {
+			return arg(2)
+		}
+		return " "
+	}
 	switch name {
-	case "append":
-		sep := " "
-		if len(args) > 2 {
-			sep = arg(2)
-		}
-		join(arg(0), arg(1), sep, false)
-	case "prepend":
-		sep := " "
-		if len(args) > 2 {
-			sep = arg(2)
-		}
-		join(arg(0), arg(1), sep, true)
+	case "append", "prepend":
+		join(keys(), arg(1), sep(), name == "prepend")
 	case "append_path":
-		join(arg(0), arg(1), ":", false)
-	case "prepend_path":
-		join(arg(0), arg(1), ":", true)
+		path(arg(0), false, arg(1))
+	case "prepend_path", "prepend_create_path":
+		if name == "prepend_create_path" {
+			b.must(b.env.Host.MkdirAll(b.abs(arg(1))))
+		}
+		if !slices.Contains([]string{"/usr/bin", "/bin", "/usr/sbin", "/sbin"}, arg(1)) {
+			path(arg(0), true, arg(1))
+		}
 	case "delete":
 		delete(env, arg(0))
 	case "deparallelize":
-		fields := strings.Fields(env["MAKEFLAGS"])
-		fields = slices.DeleteFunc(fields, func(f string) bool { return strings.HasPrefix(f, "-j") })
-		env["MAKEFLAGS"] = strings.Join(fields, " ")
+		old, had := env["MAKEFLAGS"]
+		remove([]string{"MAKEFLAGS"}, regexp.MustCompile(`-j\d+`))
+		if blk != nil {
+			defer func() {
+				if had {
+					env["MAKEFLAGS"] = old
+				} else {
+					delete(env, "MAKEFLAGS")
+				}
+			}()
+			return in.callBlock(blk), true
+		}
 	case "make_jobs":
-		n, _ := strconv.Atoi(makeJobs(env))
-		return rint(n), true
+		return rint(makeJobCount()), true
 	case "cxx11":
-		join("CXX", "-std=c++11", " ", false)
-		join("CXX", "-stdlib=libc++", " ", false)
+		join([]string{"CXX"}, "-std=c++11", " ", false)
+		join([]string{"CXX"}, "-stdlib=libc++", " ", false)
 	case "libcxx":
-		join("CXX", "-stdlib=libc++", " ", false)
+		join([]string{"CXX"}, "-stdlib=libc++", " ", false)
 	case "cc", "cxx":
 		return rstr(env[strings.ToUpper(name)]), true
 	case "O0", "O1":
-		for _, k := range []string{"CFLAGS", "CXXFLAGS", "OBJCFLAGS", "OBJCXXFLAGS"} {
-			fields := slices.DeleteFunc(strings.Fields(env[k]), func(f string) bool { return strings.HasPrefix(f, "-O") })
-			env[k] = strings.Join(append(fields, "-"+name), " ")
-		}
+		remove(ccFlagVars, regexp.MustCompile(`-O.`))
+		join(ccFlagVars, "-"+name, " ", false)
 	default:
 		return nil, false
 	}
 	return nil, true
 }
 
-// buffer is the string inreplace yields to its block, which gsub! and its
-// kin change in place.
-type buffer struct{ s string }
+// makeJobCount is Homebrew::EnvConfig.make_jobs: HOMEBREW_MAKE_JOBS, else
+// the number of CPUs.
+func makeJobCount() int {
+	if s, ok := lookupEnv("HOMEBREW_MAKE_JOBS"); ok {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			return n
+		}
+	}
+	return runtime.NumCPU()
+}
+
+// buffer is brew's StringInreplaceExtension: the file's text, which gsub!
+// and its kin change in place, and the edits that found nothing.
+type buffer struct {
+	s      string
+	errors []string
+}
 
 func (*buffer) rubyValue() {}
 
+func inspect(v value) string {
+	if re, ok := v.(*regex); ok {
+		return "/" + re.src + "/"
+	}
+	return strconv.Quote(str(v))
+}
+
+// replace is String#sub! or gsub!, reporting whether the pattern matched.
+func (x *buffer) replace(before, after value, all bool) bool {
+	if re, ok := before.(*regex); ok {
+		r := compile(re)
+		if all {
+			matched := r.MatchString(x.s)
+			x.s = r.ReplaceAllString(x.s, rubySub(str(after)))
+			return matched
+		}
+		loc := r.FindStringSubmatchIndex(x.s)
+		if loc == nil {
+			return false
+		}
+		out := r.ExpandString(nil, rubySub(str(after)), x.s, loc)
+		x.s = x.s[:loc[0]] + string(out) + x.s[loc[1]:]
+		return true
+	}
+	if !strings.Contains(x.s, str(before)) {
+		return false
+	}
+	n := -1
+	if !all {
+		n = 1
+	}
+	x.s = strings.Replace(x.s, str(before), str(after), n)
+	return true
+}
+
+func (x *buffer) edit(name string, before, after value, audit bool) value {
+	if !x.replace(before, after, name == "gsub!") {
+		if audit {
+			x.errors = append(x.errors, "expected replacement of "+inspect(before)+" with "+inspect(after))
+		}
+		return nil // Ruby's bang methods return nil when nothing matched
+	}
+	return x
+}
+
+// makeVar matches a make variable's assignment, as brew's helpers do.
+func makeVar(flag, tail string) *regex {
+	return &regex{src: `^` + regexp.QuoteMeta(flag) + `[ \t]*[\\?+:!]?=` + tail}
+}
+
+const makeValue = `[ \t]*((?:.*\\\n)*.*)$`
+
 // bufferMethod is a method on inreplace's string.
 func bufferMethod(x *buffer, name string, args []value) value {
-	sub := func(all bool) value {
+	audit := true
+	if n := len(args); n > 0 {
+		if h, ok := args[n-1].(*hash); ok {
+			audit = kwGet(h, "audit_result") != rbool(false)
+			args = args[:n-1]
+		}
+	}
+	switch name {
+	case "gsub!", "sub!":
 		if len(args) != 2 {
 			fail("%s with a block", name)
 		}
-		before := x.s
-		if re, ok := args[0].(*regex); ok {
-			if all {
-				x.s = compile(re).ReplaceAllString(x.s, rubySub(str(args[1])))
-			} else if loc := compile(re).FindStringSubmatchIndex(x.s); loc != nil {
-				var out []byte
-				out = compile(re).ExpandString(out, rubySub(str(args[1])), x.s, loc)
-				x.s = x.s[:loc[0]] + string(out) + x.s[loc[1]:]
-			}
-		} else if all {
-			x.s = strings.ReplaceAll(x.s, str(args[0]), str(args[1]))
-		} else {
-			x.s = strings.Replace(x.s, str(args[0]), str(args[1]), 1)
+		return x.edit(name, args[0], args[1], audit)
+	case "change_make_var!":
+		flag := str(args[0])
+		if !x.replace(makeVar(flag, makeValue), rstr(flag+"="+str(args[1])), true) {
+			x.errors = append(x.errors, "expected to change "+inspect(args[0])+" to "+inspect(args[1]))
 		}
-		if x.s == before {
-			return nil // Ruby's bang methods return nil when nothing changed
-		}
-		return x
-	}
-	switch name {
-	case "gsub!":
-		return sub(true)
-	case "sub!":
-		return sub(false)
-	case "change_make_var!", "remove_make_var!":
-		value := ""
-		if name == "change_make_var!" {
-			value = str(args[1])
-		}
-		re := regexp.MustCompile(`(?m)^(` + regexp.QuoteMeta(str(args[0])) + `)[ \t]*([\\+:?]?=)[ \t]*(?:\\\n|[^\n])*$`)
-		if !re.MatchString(x.s) {
-			failBuild("%s: no make variable %s", name, str(args[0]))
-		}
-		x.s = re.ReplaceAllString(x.s, "${1}${2}"+value)
 		return nil
+	case "remove_make_var!":
+		var flags []value
+		if a, ok := args[0].(*arr); ok {
+			flags = a.v
+		} else {
+			flags = args[:1]
+		}
+		for _, f := range flags {
+			if !x.replace(makeVar(str(f), `(?:.*\\\n)*.*$\n?`), rstr(""), true) {
+				x.errors = append(x.errors, "expected to remove "+inspect(f))
+			}
+		}
+		return nil
+	case "get_make_var":
+		m := compile(makeVar(str(args[0]), makeValue)).FindStringSubmatch(x.s)
+		if m == nil {
+			failBuild("expected to find make variable %s", inspect(args[0]))
+		}
+		return rstr(m[1])
 	case "to_s", "to_str":
 		return rstr(x.s)
 	}
 	return strMethod(x.s, name, args)
 }
 
-// inreplaceBlock is Utils::Inreplace.inreplace with a block: each file is
-// yielded as a string the block edits, then written back.
+// inreplaceBlock is Utils::Inreplace.inreplace with a block, which edits each
+// file's text.
 func (b *builder) inreplaceBlock(in *interp, s *scope, args []value, blk *blockN) {
+	b.eachInreplace(args, func(buf *buffer) { in.callBlock(&proc{b: blk, env: s}, buf) })
+}
+
+// eachInreplace edits each file, writes it back, and fails the build with
+// the edits that found nothing, as Utils::Inreplace does.
+func (b *builder) eachInreplace(args []value, edit func(*buffer)) {
 	var paths []string
 	for _, a := range args {
 		if x, ok := a.(*arr); ok {
@@ -978,17 +1079,21 @@ func (b *builder) inreplaceBlock(in *interp, s *scope, args []value, blk *blockN
 			paths = append(paths, str(a))
 		}
 	}
+	var errs []string
 	for _, p := range paths {
 		data, err := b.env.Host.ReadFile(b.abs(p))
 		b.must(err)
 		buf := &buffer{s: string(data)}
-		in.callBlock(&proc{b: blk, env: s}, buf)
-		if buf.s == string(data) {
-			failBuild("inreplace failed: %s was not changed", p)
+		edit(buf)
+		for _, e := range buf.errors {
+			errs = append(errs, p+": "+e)
 		}
 		fi, err := b.env.Host.Lstat(b.abs(p))
 		b.must(err)
 		b.write(p, buf.s, fi.Mode().Perm())
+	}
+	if len(errs) > 0 {
+		failBuild("inreplace failed\n%s", strings.Join(errs, "\n"))
 	}
 }
 

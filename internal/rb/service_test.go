@@ -4,6 +4,7 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -100,6 +101,36 @@ func TestTimedServiceFiles(t *testing.T) {
 	}
 	if want := []string{"com.example.tool.plist", "example-tool.service", "example-tool.timer"}; !reflect.DeepEqual(keys(got), want) {
 		t.Errorf("files = %v, want %v", keys(got), want)
+	}
+}
+
+func TestServiceSocketsAndIntervals(t *testing.T) {
+	got := serviceFiles(t, `  service do
+    run [opt_bin/"tool"]
+    run_type :interval
+    interval 300
+    sockets "tcp://127.0.0.1:8080"
+    process_type :background
+    keep_alive crashed: true
+  end
+`)
+	plist := got["sh.brew.tool.plist"]
+	for _, want := range []string{
+		"\t<key>Sockets</key>\n\t<dict>\n\t\t<key>listeners</key>\n\t\t<dict>\n\t\t\t<key>SockNodeName</key>\n\t\t\t<string>127.0.0.1</string>\n" +
+			"\t\t\t<key>SockProtocol</key>\n\t\t\t<string>TCP</string>\n\t\t\t<key>SockServiceName</key>\n\t\t\t<string>8080</string>\n\t\t</dict>\n\t</dict>\n",
+		"\t<key>StartInterval</key>\n\t<integer>300</integer>\n",
+		"\t<key>ProcessType</key>\n\t<string>Background</string>\n",
+		"\t<key>KeepAlive</key>\n\t<dict>\n\t\t<key>Crashed</key>\n\t\t<true/>\n\t</dict>\n",
+	} {
+		if !strings.Contains(plist, want) {
+			t.Errorf("plist lacks\n%s\nin\n%s", want, plist)
+		}
+	}
+	if !strings.Contains(got["sh.brew.tool.service"], "Restart=on-failure\n") {
+		t.Errorf("unit:\n%s", got["sh.brew.tool.service"])
+	}
+	if want := "[Timer]\nUnit=sh.brew.tool.service\nOnUnitActiveSec=300\n"; !strings.HasSuffix(got["sh.brew.tool.timer"], want) {
+		t.Errorf("timer:\n%s", got["sh.brew.tool.timer"])
 	}
 }
 

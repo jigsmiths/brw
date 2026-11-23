@@ -54,29 +54,63 @@ func runCommand(dir string, env map[string]string, argv []string) ([]byte, error
 }
 
 // kegHost is an install body's view of the machine: files only inside the
-// prefix, through fsx, and commands.
+// prefix and the build directory, through fsx, and commands.
 type kegHost struct {
-	root *fsx.Root
-	run  RunFunc
+	root  *fsx.Root
+	build *fsx.Root // the build directory, outside the prefix; nil for none
+	run   RunFunc
 }
 
-func (h *kegHost) Lstat(p string) (fs.FileInfo, error)     { return h.root.Lstat(p) }
-func (h *kegHost) ReadDir(p string) ([]fs.DirEntry, error) { return h.root.ReadDir(p) }
-func (h *kegHost) ReadFile(p string) ([]byte, error)       { return h.root.ReadFile(p) }
-func (h *kegHost) MkdirAll(p string) error                 { return h.root.MkdirAll(p, 0o755) }
-func (h *kegHost) Rename(o, n string) error                { return h.root.Rename(o, n) }
-func (h *kegHost) Symlink(target, link string) error       { return h.root.Symlink(target, link) }
-func (h *kegHost) Remove(p string) error                   { return h.root.Remove(p) }
-func (h *kegHost) RemoveAll(p string) error                { return h.root.RemoveAll(p) }
-func (h *kegHost) Chmod(p string, m fs.FileMode) error     { return h.root.Chmod(p, m) }
+// on is the root a path is in: the build directory's, else the prefix's.
+func (h *kegHost) on(p string) *fsx.Root {
+	if h.build != nil && filepath.IsAbs(p) {
+		if _, err := h.build.Abs(p); err == nil {
+			return h.build
+		}
+	}
+	return h.root
+}
+
+func (h *kegHost) other(r *fsx.Root) *fsx.Root {
+	if r == h.root {
+		return h.build
+	}
+	return h.root
+}
+
+func (h *kegHost) Lstat(p string) (fs.FileInfo, error)     { return h.on(p).Lstat(p) }
+func (h *kegHost) ReadDir(p string) ([]fs.DirEntry, error) { return h.on(p).ReadDir(p) }
+func (h *kegHost) ReadFile(p string) ([]byte, error)       { return h.on(p).ReadFile(p) }
+func (h *kegHost) MkdirAll(p string) error                 { return h.on(p).MkdirAll(p, 0o755) }
+func (h *kegHost) Remove(p string) error                   { return h.on(p).Remove(p) }
+func (h *kegHost) RemoveAll(p string) error                { return h.on(p).RemoveAll(p) }
+func (h *kegHost) Chmod(p string, m fs.FileMode) error     { return h.on(p).Chmod(p, m) }
+
+// Rename moves within a root, or from one into the other, as installing
+// from the build directory into the keg does.
+func (h *kegHost) Rename(o, n string) error {
+	from, to := h.on(o), h.on(n)
+	if from == to {
+		return from.Rename(o, n)
+	}
+	return from.MoveTo(to, o, n)
+}
+
+func (h *kegHost) Symlink(target, link string) error {
+	r := h.on(link)
+	if other := h.other(r); other != nil && filepath.IsAbs(target) && h.on(target) == other {
+		return r.SymlinkTo(other, target, link)
+	}
+	return r.Symlink(target, link)
+}
 
 func (h *kegHost) WriteFile(p string, data []byte, perm fs.FileMode) error {
-	return h.root.WriteFile(p, data, perm)
+	return h.on(p).WriteFile(p, data, perm)
 }
 
-// Glob matches only inside the prefix.
+// Glob matches only inside the prefix or the build directory.
 func (h *kegHost) Glob(pattern string) ([]string, error) {
-	if _, err := h.root.Abs(pattern); err != nil {
+	if _, err := h.on(pattern).Abs(pattern); err != nil {
 		return nil, err
 	}
 	return filepath.Glob(pattern)
