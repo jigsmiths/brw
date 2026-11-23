@@ -23,6 +23,16 @@ type Resolver struct {
 	linux    bool
 	macMajor int
 	reverse  map[string][]string
+	use      map[string]*api.Formula // by name and full name
+}
+
+// Use makes the resolver read f's dependencies in place of the listing's, as
+// for a formula installed with --HEAD.
+func (r *Resolver) Use(f *api.Formula) {
+	if r.use == nil {
+		r.use = map[string]*api.Formula{}
+	}
+	r.use[f.Name], r.use[f.FullName] = f, f
 }
 
 // NewResolver returns a Resolver for host; it fails if host has no bottle tag.
@@ -50,6 +60,9 @@ func NotFound(idx *api.Index, name string) error {
 }
 
 func (r *Resolver) formula(name string) (*api.Formula, error) {
+	if f, ok := r.use[name]; ok {
+		return f, nil
+	}
 	f, ok := r.idx.Lookup(name)
 	if !ok {
 		return nil, fmt.Errorf("%s: %w", name, NotFound(r.idx, name))

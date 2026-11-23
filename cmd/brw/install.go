@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -32,12 +33,13 @@ func installCommand(e *env, args []string) error {
 	kinds := kindFlags(fs)
 	appDir := fs.String("appdir", "", "move apps into this folder instead of /Applications")
 	adopt := fs.Bool("adopt", false, "take over apps already in the app folder")
+	head := fs.Bool("HEAD", false, "install a formula's HEAD version, built from its repository")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw install [--formula|--cask] [--appdir DIR] [--adopt] [--dry-run] NAME [NAME ...]")
+		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--appdir DIR] [--adopt] [--dry-run] NAME [NAME ...]")
 	}
 	formulaOnly, caskOnly, err := kinds()
 	if err != nil {
@@ -53,7 +55,7 @@ func installCommand(e *env, args []string) error {
 	}
 	failures := r.failures
 	if len(r.formulae) > 0 {
-		failures = append(failures, installFormulae(e, prefix, *journal, dryRun, r))
+		failures = append(failures, installFormulae(e, prefix, *journal, dryRun, *head, r))
 	}
 	if len(r.casks) > 0 {
 		failures = append(failures, installCasks(e, prefix, *journal, *appDir, dryRun, *adopt, r.casks))
@@ -277,13 +279,20 @@ func (e *env) newPlanner(prefix string, idx *api.Index, client *api.Client, kegs
 	}
 }
 
-func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) error {
+func installFormulae(e *env, prefix, journal string, dryRun, head bool, r resolved) error {
 	idx, client, names := r.idx, r.client, r.formulae
 	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
 	}
-	plan, planErrs := e.newPlanner(prefix, idx, client, kegs).PlanEach(names)
+	planner := e.newPlanner(prefix, idx, client, kegs)
+	if head {
+		planner.Head = map[string]bool{}
+		for _, n := range names {
+			planner.Head[n] = true
+		}
+	}
+	plan, planErrs := planner.PlanEach(names)
 	for _, err := range planErrs {
 		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 	}
@@ -293,6 +302,10 @@ func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) er
 	}
 	for _, name := range plan.AlreadyInstalled {
 		_, _ = fmt.Fprintf(e.err, "brw: warning: %s is already installed\n", name)
+	}
+	for _, nameVersion := range plan.HeadInstalled {
+		name := path.Base(strings.Fields(nameVersion)[0])
+		_, _ = fmt.Fprintf(e.err, "brw: warning: %s is already installed and up-to-date.\nTo reinstall HEAD, run:\n  brw reinstall %s\n", nameVersion, name)
 	}
 	for _, it := range plan.Items {
 		for _, w := range it.Warnings {

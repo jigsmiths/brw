@@ -560,8 +560,8 @@ func (b *builder) call(in *interp, s *scope, c *callN, args []value, kw *hash) (
 		return b.resource(str(args[0])), true
 	case c.name == "resources":
 		out := &arr{}
-		if b.f.stable != nil {
-			for _, r := range b.f.stable.resource {
+		if sp := b.f.active(); sp != nil {
+			for _, r := range sp.resource {
 				out.v = append(out.v, resourceRef{r})
 			}
 		}
@@ -687,10 +687,12 @@ func (o buildOptions) method(name string, args []value) value {
 		return rbool(with())
 	case "without?":
 		return rbool(!with())
-	case "head?", "bottle?", "include?", "any_args_or_options?":
+	case "bottle?", "include?", "any_args_or_options?":
 		return rbool(false)
+	case "head?":
+		return rbool(o.f.headVersion != "")
 	case "stable?":
-		return rbool(true)
+		return rbool(o.f.headVersion == "")
 	case "used_options", "unused_options", "args":
 		return &arr{}
 	}
@@ -756,7 +758,7 @@ func (b *builder) stdArgs(name string, kw *hash) value {
 				builtBy = "Homebrew"
 			}
 			commit := cmp.Or(b.env.TarCommit, builtBy)
-			if r := kwGet(b.f.stable.specs, "revision"); r != nil {
+			if r := kwGet(b.f.active().specs, "revision"); r != nil {
 				commit = str(r)
 			}
 			ldflags = list("-X 'main.version="+b.f.version()+"'", "-X 'main.commit="+commit+"'",

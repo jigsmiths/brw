@@ -18,6 +18,7 @@ import (
 	"github.com/jigsmiths/brw/internal/outdated"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/poststep"
+	"github.com/jigsmiths/brw/internal/version"
 )
 
 var (
@@ -28,6 +29,7 @@ var (
 	ErrUnsupportedHost = errors.New("cannot be installed on this host yet")
 	ErrConflict        = errors.New("conflicts with a linked formula")
 	ErrOtherTap        = errors.New("installed from another tap")
+	ErrHeadCore        = errors.New("--HEAD builds from the formula's file, which brw reads only for tap formulae")
 )
 
 type BottleSource interface {
@@ -54,6 +56,9 @@ type Item struct {
 	// Upgrade holds the kegs of the older versions this one replaces, unset for a fresh install.
 	Upgrade   []cellar.Keg
 	Reinstall bool
+	// Head builds the formula's head spec, as install --HEAD does. PkgVersion
+	// is "HEAD" until the installer fetches the commit it names the keg after.
+	Head bool
 }
 
 // Locks holds the items and their runtime dependencies.
@@ -61,6 +66,7 @@ type Plan struct {
 	Items            []Item
 	Locks            []string
 	AlreadyInstalled []string
+	HeadInstalled    []string // full name and version of each --HEAD formula with a HEAD keg already
 }
 
 type Planner struct {
@@ -72,6 +78,9 @@ type Planner struct {
 	Linked    func(name string) bool
 	Optlinked func(name string) bool
 	Now       time.Time // zero means now
+
+	// Head names the formulae, as given, to install from their head spec.
+	Head map[string]bool
 
 	upgrading map[string]bool // count as not installed
 }
@@ -92,6 +101,19 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 		f, ok := p.Index.Lookup(name)
 		if !ok {
 			return nil, fmt.Errorf("%s: %w", name, deps.NotFound(p.Index, name))
+		}
+		if p.Head[name] {
+			done, err := w.head(f)
+			if err != nil {
+				return nil, err
+			}
+			if done {
+				continue
+			}
+			hf := f.HeadSpec()
+			f = &hf
+			r.Use(f)
+			w.heads = append(w.heads, f.Name)
 		}
 		if err := w.visit(f, true); err != nil {
 			return nil, err
@@ -118,6 +140,39 @@ type planWalk struct {
 	problems []error
 	visited  map[string]bool // set before the dependencies are walked, so a cycle ends
 	skipped  map[string]bool
+	heads    []string // formulae to build from their head spec
+}
+
+// head checks a formula asked for with --HEAD as brew does. done says there
+// is nothing to install: a HEAD keg is there already.
+func (w *planWalk) head(f *api.Formula) (done bool, err error) {
+	p := w.p
+	if f.Versions.Head == "" {
+		return false, fmt.Errorf("No head is defined for %s", f.FullName) //nolint:staticcheck // brew's message
+	}
+	if !f.FromTap() {
+		return false, fmt.Errorf("%s: %w", f.FullName, ErrHeadCore)
+	}
+	if p.Host.OS != "darwin" {
+		return false, fmt.Errorf("%s: %w: brw builds on macOS only", f.Name, ErrUnsupportedHost)
+	}
+	var linked string
+	for _, k := range p.Kegs {
+		if k.Name != f.Name {
+			continue
+		}
+		if pv, err := version.ParsePkg(k.Version); err == nil && pv.Version.IsHead() {
+			w.plan.HeadInstalled = append(w.plan.HeadInstalled, f.FullName+" "+k.Version)
+			return true, nil
+		}
+		if p.Linked(f.Name) {
+			linked = k.Version
+		}
+	}
+	if linked != "" {
+		return false, fmt.Errorf("%s %s is already installed\nTo install HEAD, first run:\n  brw unlink %s", f.Name, linked, f.Name)
+	}
+	return false, nil
 }
 
 func (w *planWalk) visit(f *api.Formula, requested bool) error {
@@ -125,10 +180,11 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	if w.visited[f.Name] {
 		return nil
 	}
+	head := requested && slices.Contains(w.heads, f.Name)
 	if installed, err := p.installed(f); err != nil {
 		w.problems = append(w.problems, err)
 		return nil
-	} else if installed {
+	} else if installed && !head {
 		if requested && !w.skipped[f.Name] {
 			w.plan.AlreadyInstalled = append(w.plan.AlreadyInstalled, f.Name)
 		}
@@ -140,7 +196,7 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	if err != nil {
 		return err
 	}
-	if p.builds(f) {
+	if head || p.builds(f) {
 		direct = append(slices.Clone(direct), f.BuildDependencies...)
 	}
 	for _, d := range direct {
@@ -162,7 +218,10 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	}
 	it := Item{Formula: f, HostTag: w.hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)}
 	it.Link = !it.KegOnly
-	if p.builds(f) {
+	if head {
+		it.Head, it.PkgVersion = true, withRevision("HEAD", f.Revision)
+	}
+	if head || p.builds(f) {
 		it.BuildDeps = f.BuildDependencies
 	}
 	w.plan.Items = append(w.plan.Items, it)
@@ -269,6 +328,7 @@ func (p *Planner) PlanEach(names []string) (*Plan, []error) {
 		}
 		merged.Locks = append(merged.Locks, one.Locks...)
 		merged.AlreadyInstalled = append(merged.AlreadyInstalled, one.AlreadyInstalled...)
+		merged.HeadInstalled = append(merged.HeadInstalled, one.HeadInstalled...)
 	}
 	slices.Sort(merged.Locks)
 	merged.Locks = slices.Compact(merged.Locks)
@@ -428,11 +488,14 @@ func hostArch(h platform.Host) string {
 	return h.Arch
 }
 
-func pkgVersion(f *api.Formula) string {
-	if f.Revision > 0 {
-		return f.Versions.Stable + "_" + strconv.Itoa(f.Revision)
+func pkgVersion(f *api.Formula) string { return withRevision(f.Versions.Stable, f.Revision) }
+
+// withRevision is version with the revision, as brew's PkgVersion writes it.
+func withRevision(version string, revision int) string {
+	if revision > 0 {
+		return version + "_" + strconv.Itoa(revision)
 	}
-	return f.Versions.Stable
+	return version
 }
 
 // installed reports whether any version of f is in the Cellar. A formula of
@@ -478,13 +541,15 @@ func (p *Planner) check(it *Item, problems *[]error) {
 	}
 	tag, ok := platform.Select(p.Host, f.BottleTags())
 	switch {
-	case p.builds(f):
+	case it.Head || p.builds(f):
 		it.Build = true
 	case !ok:
 		hostTag, _ := platform.Tag(p.Host)
 		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.FullName, ErrNoBottle, hostTag))
 	}
-	it.Tag = tag
+	if !it.Head { // a HEAD build uses no bottle
+		it.Tag = tag
+	}
 	for _, name := range f.ConflictsWith {
 		other, ok := p.Index.Lookup(name)
 		if !ok || other.Name == f.Name || !p.Linked(other.Name) {

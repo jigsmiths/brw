@@ -64,6 +64,22 @@ func (f *Formula) SkipClean() []string { return f.b.skipClean }
 
 func (f *Formula) PreserveRpath() bool { return f.b.preserveRpath }
 
+type HeadSource struct {
+	URL, Using                      string // Using is the strategy's name, such as "git"; empty to detect it
+	Branch, Tag, Revision, OnlyPath string
+}
+
+func (f *Formula) Head() *HeadSource {
+	if !f.b.hasHead || f.b.head.url == "" {
+		return nil
+	}
+	get := func(k string) string { return str(kwGet(f.b.head.specs, k)) }
+	return &HeadSource{URL: f.b.head.url, Using: str(f.b.head.using), Branch: get("branch"), Tag: get("tag"),
+		Revision: get("revision"), OnlyPath: get("only_path")}
+}
+
+func (f *Formula) UseHead(version string) { f.b.headVersion = version }
+
 func symListKeep(args []value) []string {
 	var out []string
 	for _, a := range args {
@@ -135,6 +151,7 @@ type formulaB struct {
 	license       value
 	stable, head  *spec
 	hasHead       bool
+	headVersion   string
 	cur           *spec
 	revision      int64
 	scheme        int64
@@ -241,7 +258,18 @@ func (b *formulaB) inSpec(in *interp, s *scope, sp *spec, blk *blockN) {
 	in.run(blk.body, &scope{vars: map[string]value{}, parent: s})
 }
 
+// active is the spec being installed: stable, or head after UseHead.
+func (b *formulaB) active() *spec {
+	if b.headVersion != "" {
+		return b.head
+	}
+	return b.stable
+}
+
 func (b *formulaB) version() string {
+	if b.headVersion != "" {
+		return b.headVersion
+	}
 	if b.stable == nil {
 		return ""
 	}
@@ -351,9 +379,13 @@ func (b *formulaB) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 			fail("resource without a block")
 		}
 		b.inSpec(in, s, r, c.block)
-		sp.resource = append(sp.resource, r)
+		b.forSpecs(func(sp *spec) {
+			if !slices.ContainsFunc(sp.resource, func(o *spec) bool { return o.name == r.name }) {
+				sp.resource = append(sp.resource, r)
+			}
+		})
 	case "patch":
-		b.patch(in, s, sp, c, args)
+		b.patch(in, s, c, args)
 	case "bottle":
 		if c.block == nil {
 			fail("bottle %v", arg(0))
@@ -469,7 +501,7 @@ func (b *formulaB) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 	return nil, true
 }
 
-func (b *formulaB) patch(in *interp, s *scope, sp *spec, c *callN, args []value) {
+func (b *formulaB) patch(in *interp, s *scope, c *callN, args []value) {
 	strip := "p1"
 	data := false
 	for _, a := range args {
@@ -489,7 +521,7 @@ func (b *formulaB) patch(in *interp, s *scope, sp *spec, c *callN, args []value)
 	p.put("strip", rstr(strip))
 	if data {
 		p.put("data", rbool(true))
-		sp.patches = append(sp.patches, p)
+		b.forSpecs(func(sp *spec) { sp.patches = append(sp.patches, p) })
 		return
 	}
 	if c.block == nil {
@@ -502,7 +534,7 @@ func (b *formulaB) patch(in *interp, s *scope, sp *spec, c *callN, args []value)
 	in.plat = plat
 	p.put("url", rstr(r.url))
 	p.put("sha256", rstr(r.checksum))
-	sp.patches = append(sp.patches, p)
+	b.forSpecs(func(sp *spec) { sp.patches = append(sp.patches, p) })
 }
 
 func (b *formulaB) lifecycle(name string, kw *hash) {

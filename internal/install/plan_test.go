@@ -807,3 +807,52 @@ func TestPlanEachKeepsANamedDependencyOnRequest(t *testing.T) {
 		}
 	}
 }
+
+// install --HEAD builds the named formula from its head spec, with that
+// spec's dependencies; its own dependencies stay stable.
+func TestPlanHeadUsesTheHeadSpecsDependencies(t *testing.T) {
+	tool := with(with(with(f("tool", "stabledep"), "tap", "u/t"), "full_name", "u/t/tool"),
+		"versions", map[string]any{"stable": "1.0", "head": "HEAD"})
+	tool["revision"] = 2
+	tool["head_dependencies"] = map[string]any{"dependencies": []string{"headdep"}, "build_dependencies": []string{"go"}}
+	idx := index(t, tool, f("stabledep"), f("headdep", "base"), f("base"), f("go"))
+	p := planner(t, mac, idx)
+	p.Head = map[string]bool{"tool": true}
+	plan, err := p.Plan([]string{"tool"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := names(plan), []string{"base", "headdep", "go", "tool"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("plan = %v, want %v", got, want)
+	}
+	it := plan.Items[len(plan.Items)-1]
+	if !it.Head || !it.Build || it.PkgVersion != "HEAD_2" || !reflect.DeepEqual(it.BuildDeps, []string{"go"}) {
+		t.Errorf("item = %+v", it)
+	}
+	var runtime []string
+	for _, d := range it.RuntimeDeps {
+		runtime = append(runtime, d.FullName)
+	}
+	if want := []string{"base", "headdep"}; !reflect.DeepEqual(runtime, want) {
+		t.Errorf("runtime dependencies = %v, want %v", runtime, want)
+	}
+
+	p.Kegs = []cellar.Keg{keg("tool", "HEAD-abc1234")}
+	if plan, err = p.Plan([]string{"tool"}); err != nil || len(plan.Items) != 0 || !reflect.DeepEqual(plan.HeadInstalled, []string{"u/t/tool HEAD-abc1234"}) {
+		t.Errorf("with a HEAD keg: %+v, %v", plan, err)
+	}
+	if _, err := planner(t, mac, idx).Plan([]string{"stabledep"}); err != nil {
+		t.Fatal(err)
+	}
+	p = planner(t, mac, idx)
+	p.Head = map[string]bool{"stabledep": true}
+	if _, err := p.Plan([]string{"stabledep"}); err == nil || err.Error() != "No head is defined for stabledep" {
+		t.Errorf("no head: %v", err)
+	}
+	core := with(f("core"), "versions", map[string]any{"stable": "1.0", "head": "HEAD"})
+	p = planner(t, mac, index(t, core))
+	p.Head = map[string]bool{"core": true}
+	if _, err := p.Plan([]string{"core"}); !errors.Is(err, ErrHeadCore) {
+		t.Errorf("a core formula: %v, want ErrHeadCore", err)
+	}
+}

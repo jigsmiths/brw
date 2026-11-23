@@ -49,3 +49,23 @@ func TestBuildReceiptOfAFormulaWithAHead(t *testing.T) {
 		t.Errorf("receipt differs from brew's\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestBuildReceiptOfAHeadBuild(t *testing.T) {
+	r, err := NewBuildReceipt(Build{
+		HomebrewVersion: "7.0.15-111-ge40c695", OnRequest: true, Time: time.Unix(1795441004, 0),
+		SourceModified: time.Unix(1795440985, 0), Tap: "u/test",
+		TapGitHead: "dc4d4c25060478139e0c3ad06e288de3061ae970", Path: "/prefix/Library/Taps/u/homebrew-test/Formula/headtool.rb",
+		Stable: "1.0", Head: "HEAD-cf6a8f9", HeadBuild: true, SCMRevision: "cf6a8f90dfb2d66d7199bde25e5f521751a7f98b",
+		Arch: "arm64", BuiltOn: brewMachine,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := read(t, "build-headtool-head.receipt.json"); string(got) != string(want) {
+		t.Errorf("receipt differs from brew's\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}

@@ -177,7 +177,7 @@ func newestFile(dir string) time.Time {
 // bottleBlock is what brew strips from the formula file it keeps in the keg.
 var bottleBlock = regexp.MustCompile(`(?s)  bottle do.+?end\n\n?`)
 
-func (in *Installer) build(ctx context.Context, it Item, download string) (result Result, err error) {
+func (in *Installer) build(ctx context.Context, it Item, download string, head *headSource) (result Result, err error) {
 	f := it.Formula
 	if in.LoadSource == nil {
 		return Result{}, ErrNoSource
@@ -185,6 +185,12 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	src, err := in.LoadSource(f)
 	if err != nil {
 		return Result{}, err
+	}
+	srcURL, srcSHA, headVersion := f.URLs.Stable.URL, f.URLs.Stable.Checksum, f.Versions.Head
+	if head != nil {
+		src.Formula.UseHead(head.version())
+		srcURL, srcSHA, headVersion = head.url, "", head.version()
+		download = head.archive
 	}
 	var old *oldKegs
 	if len(it.Upgrade) > 0 {
@@ -222,14 +228,22 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 		}
 	}
 	stage, scratch := filepath.Join(top, "src"), filepath.Join(top, "resources")
-	if err := in.unpack(broot, download, path.Base(f.URLs.Stable.URL), stage); err != nil {
+	if head != nil && head.dir != "" {
+		err = copyCheckout(head.dir, stage)
+	} else {
+		err = in.unpack(broot, download, path.Base(srcURL), stage)
+	}
+	if err != nil {
 		return Result{}, err
 	}
 	bp, err := buildpath(stage)
 	if err != nil {
 		return Result{}, err
 	}
-	modified := newestFile(bp)
+	modified, commit := newestFile(bp), tarCommit(download)
+	if head != nil && head.dir != "" {
+		modified, commit = head.time, head.revision
+	}
 	resources, files := map[string]string{}, map[string]string{}
 	for _, r := range src.Formula.Resources() {
 		if resources[r.Name], err = in.Fetcher.FetchSource(ctx, f.Name+"--"+r.Name, it.PkgVersion, r.URL, r.SHA256); err != nil {
@@ -274,7 +288,7 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	}
 	host := &kegHost{root: in.Root, build: broot, run: in.Run}
 	env := &rb.InstallEnv{Host: host, Prefix: in.Prefix, Buildpath: bp, Env: envVars, Tap: f.Tap,
-		Resources: resources, Scratch: scratch, TarCommit: tarCommit(download),
+		Resources: resources, Scratch: scratch, TarCommit: commit,
 		Unpack: func(archive, dir string) error { return in.unpack(broot, archive, files[archive], dir) }}
 	if err := src.Formula.Install(env); err != nil {
 		return Result{}, err
@@ -283,8 +297,11 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	b := cellar.Build{
 		HomebrewVersion: in.Version, OnRequest: it.OnRequest, Time: in.now(), SourceModified: modified,
 		Aliases: f.Aliases, Deps: it.RuntimeDeps, Tap: f.Tap, TapGitHead: f.TapGitHead, Path: src.Path,
-		Stable: f.Versions.Stable, Head: f.Versions.Head, Scheme: f.VersionScheme, Compatibility: f.CompatibilityVersion,
+		Stable: f.Versions.Stable, Head: headVersion, Scheme: f.VersionScheme, Compatibility: f.CompatibilityVersion,
 		Arch: it.Arch, BuiltOn: in.BuiltOn,
+	}
+	if head != nil {
+		b.HeadBuild, b.SCMRevision = true, head.revision
 	}
 	receipt, err := cellar.NewBuildReceipt(b)
 	if err != nil {
@@ -340,16 +357,20 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	if err := in.Root.WriteFile(path.Join(keg, ".brew", f.Name+".rb"), kept, 0o644); err != nil {
 		return Result{}, err
 	}
-	if err := in.writeBuiltSBOM(keg, f, modified, it.RuntimeDeps); err != nil {
+	version := f.Versions.Stable
+	if head != nil {
+		version = head.version()
+	}
+	if err := in.writeBuiltSBOM(keg, f, version, srcURL, srcSHA, modified, it.RuntimeDeps); err != nil {
 		return Result{}, err
 	}
 	return in.finish(it, keg, f.Aliases, old), nil
 }
 
-func (in *Installer) writeBuiltSBOM(keg string, f *api.Formula, modified time.Time, deps []cellar.Dependency) error {
+func (in *Installer) writeBuiltSBOM(keg string, f *api.Formula, version, url, sha string, modified time.Time, deps []cellar.Dependency) error {
 	p := sbom.BuildParams{
-		Name: f.Name, FullName: f.FullName, Version: f.Versions.Stable, URL: f.URLs.Stable.URL,
-		SHA256: f.URLs.Stable.Checksum, License: f.License, Compiler: "clang", Xcode: in.BuiltOn.Xcode,
+		Name: f.Name, FullName: f.FullName, Version: version, URL: url,
+		SHA256: sha, License: f.License, Compiler: "clang", Xcode: in.BuiltOn.Xcode,
 		SourceModified: modified, Creator: in.SBOMCreator,
 	}
 	if p.Creator == "" {

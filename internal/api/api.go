@@ -95,6 +95,46 @@ type Formula struct {
 	PostInstallSteps              []json.RawMessage             `json:"post_install_steps"`
 	PostInstallDefined            bool                          `json:"post_install_defined"`
 	Variations                    map[string]json.RawMessage    `json:"variations"`
+	// HeadDependencies are the head spec's, when they differ from stable's.
+	HeadDependencies HeadDeps `json:"head_dependencies"`
+}
+
+// HeadDeps are a head spec's dependencies; Set says the listing had them.
+type HeadDeps struct {
+	Set                     bool                     `json:"-"`
+	Dependencies            []string                 `json:"dependencies"`
+	BuildDependencies       []string                 `json:"build_dependencies"`
+	RecommendedDependencies []string                 `json:"recommended_dependencies"`
+	OptionalDependencies    []string                 `json:"optional_dependencies"`
+	UsesFromMacOS           []UsesFromMacOS          `json:"uses_from_macos"`
+	UsesBounds              []struct{ Since string } `json:"uses_from_macos_bounds"`
+}
+
+func (h *HeadDeps) UnmarshalJSON(b []byte) error {
+	type plain HeadDeps
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*h = HeadDeps(p)
+	h.Set = true
+	return nil
+}
+
+// HeadSpec is f as install --HEAD sees it: with the head spec's dependencies.
+func (f Formula) HeadSpec() Formula {
+	if h := f.HeadDependencies; h.Set {
+		f.Dependencies, f.BuildDependencies = h.Dependencies, h.BuildDependencies
+		f.RecommendedDependencies, f.OptionalDependencies = h.RecommendedDependencies, h.OptionalDependencies
+		f.UsesFromMacOS, f.UsesBounds = slices.Clone(h.UsesFromMacOS), h.UsesBounds
+		for j := range f.UsesFromMacOS {
+			if j < len(f.UsesBounds) {
+				f.UsesFromMacOS[j].Since = f.UsesBounds[j].Since
+			}
+		}
+		f.Variations = nil // a tap formula is evaluated for this host, so they repeat stable's
+	}
+	return f
 }
 
 // Reason is a symbol such as ":versioned_formula" or free text.

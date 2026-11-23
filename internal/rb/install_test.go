@@ -719,6 +719,76 @@ end
 	}
 }
 
+// A HEAD build installs the head spec: its version, resources and patches,
+// with the class-level ones it shares with stable.
+func TestInstallingTheHeadSpec(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	src := `class Tool < Formula
+  url "https://example.com/tool-1.0.tar.gz", revision: "stablecommit"
+  sha256 "aa"
+  revision 1
+
+  head do
+    url "https://example.com/tool.git", branch: "main"
+    resource "headonly" do
+      url "https://example.com/headonly-1.0.tar.gz"
+      sha256 "bb"
+    end
+    patch :DATA
+  end
+
+  resource "shared" do
+    url "https://example.com/shared-1.0.tar.gz"
+    sha256 "cc"
+  end
+
+  def install
+    got = [version, pkg_version, build.head?, build.stable?, resources.map(&:name).join("+")]
+    (prefix/"got").write got.join(",")
+    system "echo", *std_go_args(ldflags: :goreleaser)
+  end
+end
+__END__
+--- a
++++ b
+`
+	f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := f.Head(), (&HeadSource{URL: "https://example.com/tool.git", Branch: "main"}); got == nil || *got != *want {
+		t.Errorf("head = %+v, want %+v", got, want)
+	}
+	f.UseHead("HEAD-abc1234")
+	if got := f.Resources(); len(got) != 2 || got[0].Name != "headonly" || got[1].Name != "shared" {
+		t.Errorf("resources = %+v", got)
+	}
+	if got := f.Patches(); len(got) != 1 || got[0].Data != "--- a\n+++ b\n" {
+		t.Errorf("patches = %+v", got)
+	}
+	prefix, build := t.TempDir(), t.TempDir()
+	h := &dirHost{t: t}
+	env := &InstallEnv{Host: h, Prefix: prefix, Buildpath: build, TarCommit: "abc1234def"}
+	if err := f.Install(env); err != nil {
+		t.Fatal(err)
+	}
+	keg := filepath.Join(prefix, "Cellar/tool/HEAD-abc1234_1")
+	if b, err := os.ReadFile(filepath.Join(keg, "got")); err != nil || string(b) != "HEAD-abc1234,HEAD-abc1234_1,true,false,headonly+shared" {
+		t.Errorf("got %q, %v", b, err)
+	}
+	if args := strings.Join(h.ran[len(h.ran)-1], " "); !strings.Contains(args, "-X 'main.version=HEAD-abc1234' -X 'main.commit=abc1234def'") {
+		t.Errorf("std_go_args: %s", args)
+	}
+
+	stable, _ := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if got := stable.Resources(); len(got) != 1 || got[0].Name != "shared" {
+		t.Errorf("stable resources = %+v", got)
+	}
+	if noHead, _ := LoadFormula([]byte(toolHead+"  end\nend\n"), "tool", "arm64_golden_gate"); noHead.Head() != nil {
+		t.Errorf("a formula without a head has one: %+v", noHead.Head())
+	}
+}
+
 func TestInstallFailures(t *testing.T) {
 	for name, body := range map[string]string{
 		"a missing file":   `    bin.install "nope"`,

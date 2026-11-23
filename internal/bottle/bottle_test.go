@@ -431,6 +431,31 @@ func TestFetchSourceReadsAFileURL(t *testing.T) {
 	}
 }
 
+// A head archive has no checksum; brew's curl strategy keeps the first one it
+// downloaded.
+func TestFetchUnverifiedKeepsWhatItHas(t *testing.T) {
+	var body atomic.Value
+	body.Store("one")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body.Load().(string)))
+	}))
+	t.Cleanup(srv.Close)
+	f := fetcher(t)
+	for range 2 {
+		path, err := f.FetchUnverified(context.Background(), "tool", "HEAD", srv.URL+"/tool.tar.gz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b, _ := os.ReadFile(path); string(b) != "one" || filepath.Base(path) != "tool--HEAD--tool.tar.gz" {
+			t.Errorf("%s = %q", path, b)
+		}
+		body.Store("two")
+	}
+	if _, err := f.FetchSource(context.Background(), "tool", "1.0", srv.URL+"/tool.tar.gz", ""); err == nil {
+		t.Error("a source without a checksum was fetched")
+	}
+}
+
 // A tap's bottle outside GitHub Packages has no manifest: brew reads the tab
 // from the bottle's own receipt, and sends no registry token.
 func TestFetchAPlainBottleReadsItsOwnReceipt(t *testing.T) {

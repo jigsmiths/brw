@@ -57,7 +57,7 @@ Commands take `--prefix` and default to Homebrew's prefix for this machine.
 
 brw reads a tap's cask and formula files with its own Ruby evaluator, so it needs no Ruby. Simple `preflight` and `postflight` blocks become cask install steps. brw refuses a file with Ruby it can't translate.
 
-A tap formula installs from its bottle when it has one for this machine. On macOS, one without a bottle is built from its download as brew does: in `HOMEBREW_TEMP`, with brew's build environment, resources, patches and build dependencies. Its `post_install` runs, and its service files are written into the keg. `--HEAD` installs aren't supported yet.
+A tap formula installs from its bottle when it has one for this machine. On macOS, one without a bottle is built from its download as brew does: in `HOMEBREW_TEMP`, with brew's build environment, resources, patches and build dependencies. Its `post_install` runs, and its service files are written into the keg. `install --HEAD` builds a tap formula from its head repository into a `HEAD-<commit>` keg.
 
 Like brew, brw only loads casks and formulae from taps you trust, and shares brew's trust store (`$XDG_CONFIG_HOME/homebrew/trust.json`, else `~/.homebrew/trust.json`). `brw trust jigsmiths/tap` trusts a tap, `brw trust jigsmiths/tap/brw` one cask or formula (`--cask` or `--formula` when the tap has both), `brw untrust` removes any of them, and `brw trust` lists what's trusted. Installing by full name trusts that cask or formula. `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` turns the check off.
 

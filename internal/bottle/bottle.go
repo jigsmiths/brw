@@ -95,6 +95,9 @@ func (r Request) stem() string {
 
 // Manifest annotations are cached beside the bottle, so a cached bottle needs no request.
 func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
+	if req.File.SHA256 == "" {
+		return Result{}, fmt.Errorf("%s: the bottle has no checksum to verify", req.Name)
+	}
 	stem := filepath.Join(f.Dir, req.stem())
 	path, tabPath, suppPath := stem+".tar.gz", stem+".tab.json", stem+".sbom.json"
 	haveBottle := verified(path, req.File.SHA256)
@@ -131,11 +134,10 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 }
 
 func (f *Fetcher) FetchSource(ctx context.Context, name, version, url, sha256 string) (string, error) {
-	base := url[strings.LastIndex(url, "/")+1:]
-	if i := strings.IndexAny(base, "?#"); i >= 0 {
-		base = base[:i]
+	if sha256 == "" {
+		return "", fmt.Errorf("%s has no checksum to verify", url)
 	}
-	path := filepath.Join(f.Dir, name+"--"+version+"--"+base)
+	path := f.sourcePath(name, version, url)
 	if verified(path, sha256) {
 		return path, nil
 	}
@@ -143,6 +145,25 @@ func (f *Fetcher) FetchSource(ctx context.Context, name, version, url, sha256 st
 		return "", err
 	}
 	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url, SHA256: sha256}, path)
+}
+
+func (f *Fetcher) FetchUnverified(ctx context.Context, name, version, url string) (string, error) {
+	path := f.sourcePath(name, version, url)
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
+		return "", err
+	}
+	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url}, path)
+}
+
+func (f *Fetcher) sourcePath(name, version, url string) string {
+	base := url[strings.LastIndex(url, "/")+1:]
+	if i := strings.IndexAny(base, "?#"); i >= 0 {
+		base = base[:i]
+	}
+	return filepath.Join(f.Dir, name+"--"+version+"--"+base)
 }
 
 // A tap's root_url may serve bottles outside a registry: no manifest, so the
@@ -267,7 +288,7 @@ func (f *Fetcher) download(ctx context.Context, name string, file api.BottleFile
 	if err != nil {
 		return err
 	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != file.SHA256 {
+	if got := hex.EncodeToString(h.Sum(nil)); got != file.SHA256 && file.SHA256 != "" { // empty only from FetchUnverified
 		return fmt.Errorf("%s: sha256 is %s, want %s", file.URL, got, file.SHA256)
 	}
 	// keep the server's time, as curl --remote-time does for brew

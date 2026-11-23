@@ -23,6 +23,8 @@ type Build struct {
 	Path            string
 	Stable          string
 	Head            string // the head spec's version, "HEAD" before a fetch; empty when it has none
+	HeadBuild       bool   // built from the head spec, by install --HEAD
+	SCMRevision     string // the commit a head build checked out
 	Scheme          int
 	Compatibility   int // 0 when the formula sets none
 	Arch            string
@@ -58,13 +60,19 @@ func NewBuildReceipt(b Build) (*Receipt, error) {
 		VersionScheme        int     `json:"version_scheme"`
 		CompatibilityVersion *int    `json:"compatibility_version"`
 	}
+	spec := "stable"
+	if b.HeadBuild {
+		spec = "head"
+	}
 	src, err := encode(struct {
-		Tap        string   `json:"tap"`
-		TapGitHead *string  `json:"tap_git_head"`
-		Spec       string   `json:"spec"`
-		Path       string   `json:"path"`
-		Versions   versions `json:"versions"`
-	}{b.Tap, orNull(b.TapGitHead), "stable", b.Path, versions{Stable: b.Stable, Head: orNull(b.Head), VersionScheme: b.Scheme, CompatibilityVersion: compat}})
+		Tap         string   `json:"tap"`
+		TapGitHead  *string  `json:"tap_git_head"`
+		Spec        string   `json:"spec"`
+		Path        string   `json:"path"`
+		SCMRevision string   `json:"scm_revision,omitempty"`
+		Versions    versions `json:"versions"`
+	}{b.Tap, orNull(b.TapGitHead), spec, b.Path, b.SCMRevision,
+		versions{Stable: b.Stable, Head: orNull(b.Head), VersionScheme: b.Scheme, CompatibilityVersion: compat}})
 	if err != nil {
 		return nil, err
 	}
