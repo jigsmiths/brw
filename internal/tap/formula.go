@@ -54,8 +54,6 @@ func (t Tap) FormulaFiles() (map[string]string, error) {
 	return out, err
 }
 
-// aliases maps each formula to the names in the tap's Aliases folder that
-// point at it, sorted.
 func (t Tap) aliases() map[string][]string {
 	out := map[string][]string{}
 	entries, _ := os.ReadDir(filepath.Join(t.Dir, "Aliases"))
@@ -89,7 +87,6 @@ func (t Tap) HasFormula(name string) bool {
 	return ok
 }
 
-// HasCask says whether the tap has a cask file for token.
 func (t Tap) HasCask(token string) bool {
 	files, _ := t.caskFiles()
 	return slices.ContainsFunc(files, func(f string) bool {
@@ -126,9 +123,8 @@ func readJSONMap(path string) (map[string]string, error) {
 	return m, nil
 }
 
-// ReverseMigrations maps each tap/name that a tap's tap_migrations.json moved
-// something to, to the names it had before, as brew's
-// Tap.reverse_tap_migrations_renames does across every tap.
+// ReverseMigrations is brew's Tap.reverse_tap_migrations_renames: tap/name to
+// the names it had before a tap_migrations.json moved it.
 func ReverseMigrations(taps []Tap) (map[string][]string, error) {
 	out := map[string][]string{}
 	for _, t := range taps {
@@ -148,10 +144,6 @@ func ReverseMigrations(taps []Tap) (map[string][]string, error) {
 	return out, nil
 }
 
-// Formula evaluates the tap's formula called name as brew loads it on the
-// platform tag, and adds what the tap decides: its full name, aliases, old
-// names and where the file came from. migrations is ReverseMigrations of
-// every tap. raw is the formula's hash, as Homebrew's API would have it.
 // setKeys sets top-level keys of a JSON object where they are, so the object
 // keeps the order brew writes it in. A key it lacks goes after the key named
 // third, else at the end.
@@ -207,6 +199,10 @@ func setKeys(obj []byte, set [][3]any) (json.RawMessage, error) {
 	return out.Bytes(), nil
 }
 
+// Formula evaluates the tap's formula called name as brew loads it on the
+// platform tag, and adds what the tap decides: its full name, aliases, old
+// names and where the file came from. migrations is ReverseMigrations of
+// every tap. raw is the formula's hash, as Homebrew's API would have it.
 func (t Tap) Formula(name, tag string, migrations map[string][]string) (f api.Formula, raw json.RawMessage, err error) {
 	files, err := t.FormulaFiles()
 	if err != nil {

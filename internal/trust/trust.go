@@ -16,7 +16,6 @@ import (
 	"syscall"
 )
 
-// Kind is what an entry trusts.
 type Kind string
 
 // The kinds brw reads and writes, by brew's keys.
@@ -106,8 +105,6 @@ func defaultRemote(name string) string {
 	return "https://github.com/" + user + "/homebrew-" + repo
 }
 
-// custom says whether a tap was cloned from somewhere other than its
-// default GitHub remote.
 func custom(name, remote string) bool {
 	return remote != "" && normalizeRemote(remote) != normalizeRemote(defaultRemote(name))
 }
@@ -121,7 +118,6 @@ func Reference(name, remote string) string {
 	return strings.ToLower(remote)
 }
 
-// remoteReference says whether an entry names a remote rather than a tap.
 func remoteReference(entry string) bool {
 	return strings.HasPrefix(entry, "/") || strings.HasPrefix(entry, ".") || strings.HasPrefix(entry, "~") ||
 		schemeLike.MatchString(entry)
@@ -146,12 +142,10 @@ func (s *Store) TapTrusted(name, remote string) bool {
 	return false
 }
 
-// CaskTrusted says whether a tap's cask is trusted, by its tap or by itself.
 func (s *Store) CaskTrusted(name, remote, token string) bool {
 	return s.itemTrusted(KindCask, name, remote, token)
 }
 
-// FormulaTrusted says whether a tap's formula is trusted, by its tap or by itself.
 func (s *Store) FormulaTrusted(name, remote, formula string) bool {
 	return s.itemTrusted(KindFormula, name, remote, formula)
 }
@@ -188,7 +182,6 @@ func (s *Store) hasFrom(kind Kind, name, remote string) bool {
 	})
 }
 
-// Entries are the store's entries of a kind.
 func (s *Store) Entries(k Kind) []string { return slices.Clone(s.entries[string(k)]) }
 
 // Trust adds an entry and writes the store. added is false when it was there.
@@ -284,7 +277,6 @@ func (s *Store) write() error {
 	return os.Rename(tmp.Name(), s.path) //fsx:allow brew's trust store, outside the prefix
 }
 
-// secure refuses a path that is not the user's or that others can write.
 func secure(path, what string) error {
 	fi, err := os.Stat(path)
 	if err != nil {

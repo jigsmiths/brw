@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// Pour is what brew adds to a bottle's receipt data when it pours the bottle.
 type Pour struct {
 	OnRequest bool
 	Time      time.Time
@@ -20,9 +19,7 @@ type Pour struct {
 	Arch       string // the CPU of this host, "arm64" or "x86_64"; empty keeps the bottle's
 }
 
-// NewPourReceipt builds a poured bottle's receipt like brew: the manifest tab
-// gives the build details and brew overwrites ten fields. Tab keys we do not
-// model are dropped, as brew drops them.
+// Tab keys we do not model are dropped, as brew drops them.
 func NewPourReceipt(tab []byte, p Pour) (*Receipt, error) {
 	r, err := ParseReceipt(tab)
 	if err != nil {
@@ -59,7 +56,6 @@ func NewPourReceipt(tab []byte, p Pour) (*Receipt, error) {
 	return r, nil
 }
 
-// pourSource is brew's source block for an API formula, in brew's key order.
 func pourSource(p Pour, scm string) (Source, error) {
 	type versions struct {
 		Stable               string  `json:"stable"`

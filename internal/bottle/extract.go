@@ -16,10 +16,7 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// Extract unpacks a bottle into dest (relative to the prefix, must not exist)
-// and leaves the keg at dest/name/version. dest is removed on any failure.
-//
-// The archive is untrusted and must hold exactly that keg. Extract refuses
+// dest must not exist and is removed on any failure. The archive is untrusted and must hold exactly that keg. Extract refuses
 // paths that climb out, devices, setuid bits, symlinks that would leave the
 // prefix once the keg is in the Cellar, hard links to anything but an earlier
 // file of the keg, and entries whose parent it did not create itself, so
@@ -79,7 +76,7 @@ type dirMode struct {
 type extractor struct {
 	root  *fsx.Root
 	dest  string
-	keg   string          // name/version
+	keg   string
 	dirs  map[string]bool // directories this extraction created
 	files map[string]bool // regular files it created, valid hard link targets
 	modes []dirMode       // applied last, deepest first
@@ -112,8 +109,6 @@ func (x *extractor) entry(h *tar.Header, r io.Reader) error {
 	return fmt.Errorf("unsupported entry type %q", h.Typeflag)
 }
 
-// cleanName accepts only a plain relative path: no dot or empty components,
-// nothing absolute, no null bytes. A trailing slash on a directory is allowed.
 func cleanName(name string) (string, error) {
 	trimmed := strings.TrimSuffix(name, "/")
 	if trimmed == "" || strings.ContainsRune(trimmed, 0) || path.IsAbs(trimmed) || path.Clean(trimmed) != trimmed ||
@@ -123,7 +118,6 @@ func cleanName(name string) (string, error) {
 	return trimmed, nil
 }
 
-// ensureParents creates the directories above rel that the archive did not list.
 func (x *extractor) ensureParents(rel string) error {
 	var missing []string
 	for dir := path.Dir(rel); dir != "."; dir = path.Dir(dir) {
@@ -200,7 +194,6 @@ func (x *extractor) hardlink(rel, target string) error {
 	return nil
 }
 
-// finish applies directory modes and times once their contents are in place.
 func (x *extractor) finish() error {
 	for _, d := range slices.Backward(x.modes) {
 		if err := x.root.Chmod(x.abs(d.rel), d.mode); err != nil {

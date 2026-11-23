@@ -12,8 +12,6 @@ import (
 	"strings"
 )
 
-// initDataDir creates a database's data directory the way brew's
-// run_init_data_dir does, unless it is already initialised.
 func (r *runner) initDataDir(s step) error {
 	var marker, program string
 	switch s.Using {

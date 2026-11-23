@@ -165,7 +165,6 @@ func TestMachOSkipsLikeText(t *testing.T) {
 	}
 }
 
-// fakeCodesign records the calls Codesign makes.
 type fakeCodesign struct {
 	mu      sync.Mutex
 	calls   [][]string

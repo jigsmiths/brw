@@ -75,7 +75,6 @@ func TestParseCasks(t *testing.T) {
 	if m := caskByToken(t, "1password@nightly").DependsOn.MacOS; m == nil || m.Comparator != ">=" || !slices.Equal(m.Versions, []string{"12"}) {
 		t.Errorf("1password@nightly macos = %+v", m)
 	}
-	// Any macOS at all, as against no requirement.
 	if m := caskByToken(t, "slack").DependsOn.MacOS; m == nil || m.Comparator != ">=" || len(m.Versions) != 0 {
 		t.Errorf("slack macos = %+v", m)
 	}

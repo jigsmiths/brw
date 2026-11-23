@@ -13,8 +13,6 @@ import (
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// updateCommand refreshes the formula and cask listings now, rather than when
-// the cached ones are ten minutes old, and pulls the prefix's taps.
 func updateCommand(e *env, args []string) error {
 	fs := newFlagSet("update")
 	prefix := prefixFlag(e, fs)
@@ -45,9 +43,6 @@ func updateCommand(e *env, args []string) error {
 	return err
 }
 
-// pullTaps pulls every tap but homebrew/core, as brew update does, and names
-// those that moved.
-// A tap that cannot be pulled is left with a warning.
 func (e *env) pullTaps(ctx context.Context, prefix string) ([]string, error) {
 	taps, err := tap.List(prefix)
 	if err != nil {
@@ -85,7 +80,6 @@ func (e *env) pullTaps(ctx context.Context, prefix string) ([]string, error) {
 	return updated, nil
 }
 
-// maxPulls caps how many taps update pulls at once.
 const maxPulls = 8
 
 func (e *env) pullTap(ctx context.Context, t tap.Tap) (bool, error) {
@@ -110,7 +104,6 @@ func updateSummary(formulae, casks api.Update, taps []string) string {
 	return s
 }
 
-// listingSummary is a line for a listing that changed, or "".
 func listingSummary(kind, plural string, up api.Update) string {
 	if !up.Changed {
 		return ""

@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// glob expands a spec's path the way Ruby's Pathname.glob does for the patterns
-// formulae use: * ? [..] {a,b} and **/. Names that start with a dot only match
-// a pattern that does too. A path without wildcards is returned as it is.
+// glob follows Ruby's Pathname.glob for * ? [..] {a,b} and **/: a dot name only
+// matches a pattern that has the dot too. A path without wildcards is returned as is.
 func (r *runner) glob(s pathSpec) ([]string, error) {
 	abs, err := r.resolve(s)
 	if err != nil {
@@ -44,7 +43,6 @@ func (r *runner) glob(s pathSpec) ([]string, error) {
 	return out, nil
 }
 
-// splitGlob returns the directory before the first wildcard and the rest.
 func splitGlob(abs string) (root, pattern string) {
 	parts := strings.Split(abs, string(filepath.Separator))
 	for i, part := range parts {
@@ -59,8 +57,6 @@ func splitGlob(abs string) (root, pattern string) {
 	return abs, ""
 }
 
-// hiddenOnlyByWildcard reports whether some component of rel starts with a dot
-// where the pattern has a wildcard that does not.
 func hiddenOnlyByWildcard(rel, pattern string) bool {
 	pats := strings.Split(pattern, "/")
 	for i, comp := range strings.Split(rel, "/") {

@@ -10,38 +10,33 @@ import (
 	"sync"
 )
 
-// DefaultCaskURL is the cask listing as Homebrew signs it, which brw checks before use.
 const DefaultCaskURL = "https://formulae.brew.sh/api/cask.jws.json"
 
-// Cask is an entry of the cask listing. Artifacts stay as the API has them,
-// since each kind of artifact has its own shape.
+// Artifacts stay raw: each kind has its own shape.
 type Cask struct {
-	Token      string   `json:"token"`
-	FullToken  string   `json:"full_token"`
-	OldTokens  []string `json:"old_tokens"`
-	Tap        string   `json:"tap"`
-	TapGitHead string   `json:"tap_git_head"`
-	Names      []string `json:"name"`
-	Desc       string   `json:"desc"`
-	Homepage   string   `json:"homepage"`
-	Version    string   `json:"version"` // "latest" for a cask without versions
-	URL        string   `json:"url"`
-	SHA256     string   `json:"sha256"` // "no_check" when the download is not checked
-	// URLSpecs are options for fetching the URL, such as user_agent.
-	URLSpecs map[string]json.RawMessage `json:"url_specs"`
-	// Container says how to open the download, such as {"type":"naked"}; null by default.
-	Container      json.RawMessage `json:"container"`
-	AutoUpdates    bool            `json:"auto_updates"`
-	Caveats        string          `json:"caveats"`
-	CaveatsRosetta bool            `json:"caveats_rosetta"` // built for Intel, so Apple silicon needs Rosetta 2
-	Languages      []string        `json:"languages"`
-	RubySourcePath string          `json:"ruby_source_path"`
+	Token          string                     `json:"token"`
+	FullToken      string                     `json:"full_token"`
+	OldTokens      []string                   `json:"old_tokens"`
+	Tap            string                     `json:"tap"`
+	TapGitHead     string                     `json:"tap_git_head"`
+	Names          []string                   `json:"name"`
+	Desc           string                     `json:"desc"`
+	Homepage       string                     `json:"homepage"`
+	Version        string                     `json:"version"` // "latest" for a cask without versions
+	URL            string                     `json:"url"`
+	SHA256         string                     `json:"sha256"` // "no_check" when the download is not checked
+	URLSpecs       map[string]json.RawMessage `json:"url_specs"`
+	Container      json.RawMessage            `json:"container"` // such as {"type":"naked"}; null by default
+	AutoUpdates    bool                       `json:"auto_updates"`
+	Caveats        string                     `json:"caveats"`
+	CaveatsRosetta bool                       `json:"caveats_rosetta"`
+	Languages      []string                   `json:"languages"`
+	RubySourcePath string                     `json:"ruby_source_path"`
 	// RubySourceChecksum is of the cask file the entry was generated from.
 	RubySourceChecksum struct {
 		SHA256 string `json:"sha256"`
 	} `json:"ruby_source_checksum"`
-	// SourceFile is the tap's cask file, for a cask listed by a tap rather than the API.
-	SourceFile string `json:"-"`
+	SourceFile string `json:"-"` // tap casks only
 
 	Deprecated                    bool   `json:"deprecated"`
 	Disabled                      bool   `json:"disabled"`
@@ -57,11 +52,10 @@ type Cask struct {
 	DependsOn     CaskDependsOn              `json:"depends_on"`
 	ConflictsWith struct{ Cask []string }    `json:"conflicts_with"`
 	Artifacts     []json.RawMessage          `json:"artifacts"`
-	Rename        []json.RawMessage          `json:"rename"` // files to rename after unpacking
+	Rename        []json.RawMessage          `json:"rename"`
 	Variations    map[string]json.RawMessage `json:"variations"`
 }
 
-// CaskDependsOn is what a cask needs before it can be installed.
 type CaskDependsOn struct {
 	Formula []string          `json:"formula"`
 	Cask    []string          `json:"cask"`
@@ -70,18 +64,15 @@ type CaskDependsOn struct {
 		Type string `json:"type"` // arm or intel
 		Bits int    `json:"bits"`
 	} `json:"arch"`
-	Linux json.RawMessage `json:"linux"` // set for depends_on :linux; brew writes an object's inspect string
+	Linux json.RawMessage `json:"linux"` // set for depends_on :linux
 }
 
-// MacOSRequirement is a cask's depends_on macos, such as ">= 12". Brew's
-// comparison is ">=" when the cask names no version.
 type MacOSRequirement struct {
 	Comparator string
 	Versions   []string
 }
 
-// UnmarshalJSON reads the API's form, a map of one comparison to versions: {}
-// for any macOS, {">=": ["12"]} or {"==": ["11", "12"]}.
+// UnmarshalJSON reads {} for any macOS, {">=": ["12"]} or {"==": ["11", "12"]}.
 func (m *MacOSRequirement) UnmarshalJSON(b []byte) error {
 	var raw map[string][]string
 	if err := json.Unmarshal(b, &raw); err != nil {
@@ -102,8 +93,7 @@ func ParseCasks(b []byte) ([]Cask, error) {
 	return casks, nil
 }
 
-// ForTag returns a copy with the variation for the exact tag applied. A null in
-// the variation keeps the cask's own value.
+// ForTag: a null in the variation keeps the cask's own value.
 func (c Cask) ForTag(tag string) (Cask, error) {
 	raw, ok := c.Variations[tag]
 	if !ok {
@@ -139,20 +129,18 @@ func set[T any](dst *T, v *T) {
 	}
 }
 
-// CaskIndex finds casks by token or old token. Current tokens win over old ones.
+// Current tokens win over old ones.
 type CaskIndex struct {
 	byToken map[string]int // into all
 	all     []*Cask
 
-	// Set by Client.CaskIndex to complete casks loaded without artifacts and
-	// variations; nil when every cask is whole.
+	// Set by Client.CaskIndex; nil when every cask is whole.
 	mu      sync.Mutex
 	listing string
 	spans   []span
 	whole   []bool
 }
 
-// NewCaskIndex indexes casks, which it keeps pointers into.
 func NewCaskIndex(casks []Cask) *CaskIndex {
 	idx := &CaskIndex{byToken: make(map[string]int, len(casks))}
 	for i := range casks {
@@ -173,7 +161,6 @@ func NewCaskIndex(casks []Cask) *CaskIndex {
 // can lack their artifacts and variations: Lookup returns a cask whole.
 func (i *CaskIndex) Casks() []*Cask { return i.all }
 
-// coreTap is the tap of the API's casks.
 const coreTap = "homebrew/cask"
 
 // AddTap adds casks a tap lists, found by tap/token and old tokens. A bare
@@ -204,7 +191,6 @@ func (i *CaskIndex) Lookup(name string) (*Cask, bool) {
 	return i.all[n], true
 }
 
-// LookupFrom finds a cask in the given tap, the API's when tap is "".
 func (i *CaskIndex) LookupFrom(tap, token string) (*Cask, bool) {
 	key := tap + "/" + token
 	if tap == "" || tap == coreTap {
@@ -268,7 +254,6 @@ func (c *Client) caskListing() listing[Cask] {
 	return listing[Cask]{stem: "cask", url: c.CaskURL, parse: ParseCasks, fingerprint: caskIndexFingerprint, slim: slimCask}
 }
 
-// slimCask leaves out what CaskIndex.Lookup reads back from the listing.
 func slimCask(c Cask) Cask {
 	c.Artifacts, c.Variations = nil, nil
 	return c

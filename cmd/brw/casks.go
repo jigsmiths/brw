@@ -23,7 +23,6 @@ import (
 	"github.com/jigsmiths/brw/internal/uninstall"
 )
 
-// installCasks skips an installed cask with a warning, as upgrading is upgrade's job.
 func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool, casks []api.Cask) error {
 	tag, err := platform.Tag(e.host)
 	if err != nil {
@@ -122,8 +121,6 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 	})
 }
 
-// upgradeCasks upgrades the named casks, or every outdated one, as brew's
-// upgrade does. found says whether any was out of date.
 func upgradeCasks(e *env, prefix, journal string, dryRun bool, tokens []string, o outdated.CaskOptions) (found bool, err error) {
 	ctx := context.Background()
 	installed, err := caskroom.Installed(prefix)
@@ -210,8 +207,7 @@ func upgradeCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 	return true, errors.Join(append(failures, err)...)
 }
 
-// runCaskUpgrades downloads every cask first, then upgrades each, carrying on
-// past failures as brew does. brew's cleanup step is skipped: it cleans brew's own cache.
+// brew's cleanup step is skipped: it cleans brew's own download cache.
 func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, tag string, upgrade []outdated.Result, installed map[string]caskroom.Cask) error {
 	ctx := context.Background()
 	client, err := e.apiClient()
@@ -271,8 +267,6 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, 
 	return nil
 }
 
-// prepareCaskUpgrade checks and downloads one cask's upgrade, with its apps
-// going where the installed version's went.
 func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, home, version string, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
 	listed, ok := idx.LookupFrom(old.Tap, old.Token)
 	if !ok {
@@ -307,7 +301,6 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, hom
 	return u, func() { _ = apps.Close() }, nil
 }
 
-// printCaskHints prints brew's hints about the casks upgrade leaves out.
 func printCaskHints(e *env, idx *api.CaskIndex, upgrade []outdated.Result, o outdated.CaskOptions) {
 	if os.Getenv("HOMEBREW_NO_ENV_HINTS") != "" || o.Greedy || len(o.GreedyTokens) > 0 {
 		return
@@ -336,8 +329,6 @@ func printCaskHints(e *env, idx *api.CaskIndex, upgrade []outdated.Result, o out
 	_, _ = fmt.Fprint(e.out, b.String())
 }
 
-// versionChanges are brew's lines for upgrades: names and old versions lined
-// up, as brew prints them when the terminal is wide enough.
 func versionChanges(rs []outdated.Result) []string {
 	sep := "  "
 	if len(rs) == 1 {
@@ -356,7 +347,6 @@ func versionChanges(rs []outdated.Result) []string {
 	return out
 }
 
-// sentence joins words as brew's to_sentence: "a, b and c".
 func sentence(words []string) string {
 	if len(words) < 2 {
 		return strings.Join(words, "")
@@ -364,8 +354,6 @@ func sentence(words []string) string {
 	return strings.Join(words[:len(words)-1], ", ") + " and " + words[len(words)-1]
 }
 
-// uninstallCasks removes installed casks as brew does. It refuses brw's own
-// cask unless forced, and a cask another installed cask needs.
 func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks, installed []caskroom.Cask, dryRun, force, ignoreDeps bool) error {
 	if !force && slices.ContainsFunc(casks, func(c caskroom.Cask) bool { return c.Token == "brw" }) {
 		return errors.New("refusing to uninstall the brw cask, which is brw itself; use --force to remove it")
@@ -430,8 +418,6 @@ func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask,
 	return in.Uninstall(context.Background(), c.Token, c.Version, force)
 }
 
-// checkDependentCasks refuses to remove a cask that another installed cask
-// depends on. Without the cask listing, there is nothing to check against.
 func (e *env) checkDependentCasks(named []string, casks, installed []caskroom.Cask) error {
 	removing := map[string]bool{}
 	for _, c := range casks {
@@ -473,7 +459,6 @@ func (e *env) checkDependentCasks(named []string, casks, installed []caskroom.Ca
 	return &uninstall.DependentsError{Kegs: required, Dependents: dependents, Named: named}
 }
 
-// explicit is the app folder to record as given on the command line, or "".
 func explicit(arg, abs string) string {
 	if arg == "" {
 		return ""
@@ -483,7 +468,6 @@ func explicit(arg, abs string) string {
 
 var languageWord = regexp.MustCompile(`[^ \n"(),]+`)
 
-// macLanguages are the user's preferred languages, read as brew reads them.
 func macLanguages() []string {
 	out, err := exec.Command("defaults", "read", "-g", "AppleLanguages").Output()
 	if err != nil {

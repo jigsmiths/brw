@@ -36,15 +36,12 @@ type Request struct {
 	File       api.BottleFile
 }
 
-// Result is a fetched bottle and what its manifest says about it.
 type Result struct {
-	Path string          // the tarball
-	Tab  json.RawMessage // the sh.brew.tab annotation of the bottle's manifest
-	// SBOMSupplement is the manifest's sh.brew.sbom.supplement annotation, if any.
+	Path           string
+	Tab            json.RawMessage // the sh.brew.tab annotation of the bottle's manifest
 	SBOMSupplement json.RawMessage
 }
 
-// Fetcher downloads bottles into Dir, keeping them for the next install.
 type Fetcher struct {
 	HTTP    *http.Client
 	Dir     string
@@ -96,8 +93,7 @@ func (r Request) stem() string {
 	return s
 }
 
-// Fetch reuses a cached bottle that still matches its checksum. Manifest
-// annotations are cached beside it, so a cached bottle needs no request.
+// Manifest annotations are cached beside the bottle, so a cached bottle needs no request.
 func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 	stem := filepath.Join(f.Dir, req.stem())
 	path, tabPath, suppPath := stem+".tar.gz", stem+".tab.json", stem+".sbom.json"
@@ -134,8 +130,6 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 	return Result{Path: path, Tab: ann.tab, SBOMSupplement: ann.supplement}, nil
 }
 
-// FetchSource downloads a formula's source, such as a release archive, into
-// the cache under name and version, reusing one that still matches sha256.
 func (f *Fetcher) FetchSource(ctx context.Context, name, version, url, sha256 string) (string, error) {
 	base := url[strings.LastIndex(url, "/")+1:]
 	if i := strings.IndexAny(base, "?#"); i >= 0 {
@@ -151,9 +145,8 @@ func (f *Fetcher) FetchSource(ctx context.Context, name, version, url, sha256 st
 	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url, SHA256: sha256}, path)
 }
 
-// fetchPlain fetches a bottle served outside a registry, as a tap's root_url
-// may be. It has no manifest, so its tab is its own INSTALL_RECEIPT.json, as
-// brew reads it, and no registry token is sent.
+// A tap's root_url may serve bottles outside a registry: no manifest, so the
+// tab is the bottle's own INSTALL_RECEIPT.json, and no token is sent.
 func (f *Fetcher) fetchPlain(ctx context.Context, req Request, path, tabPath, suppPath string, haveBottle bool) (Result, error) {
 	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
 		return Result{}, err
@@ -176,7 +169,6 @@ func (f *Fetcher) fetchPlain(ctx context.Context, req Request, path, tabPath, su
 	return Result{Path: path, Tab: tab}, nil
 }
 
-// tabInBottle reads one file from a bottle.
 func tabInBottle(path, name string) ([]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -215,13 +207,11 @@ func verified(path, want string) bool {
 	return hex.EncodeToString(h.Sum(nil)) == want
 }
 
-// annotations are the parts of a bottle's manifest we keep.
 type annotations struct {
 	tab        json.RawMessage // sh.brew.tab
 	supplement json.RawMessage // sh.brew.sbom.supplement, possibly empty
 }
 
-// annotations finds the manifest of this bottle in the image index.
 func (f *Fetcher) annotations(ctx context.Context, req Request) (annotations, error) {
 	base, _, ok := strings.Cut(req.File.URL, "/blobs/")
 	if !ok {
@@ -293,7 +283,7 @@ func (f *Fetcher) get(ctx context.Context, url, accept string) (*http.Response, 
 		return nil, err
 	}
 	if strings.Contains(url, "/blobs/") || strings.Contains(url, "/manifests/") {
-		req.Header.Set("Authorization", auth) // a registry's; a plain download gets none
+		req.Header.Set("Authorization", auth)
 	}
 	if accept != "" {
 		req.Header.Set("Accept", accept)

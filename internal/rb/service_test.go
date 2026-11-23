@@ -34,8 +34,6 @@ func serviceFiles(t *testing.T, service string) map[string]string {
 	return files
 }
 
-// As brew's install_service writes them after linking, so paths in the keg
-// are opt paths.
 func TestServiceFilesAreBrews(t *testing.T) {
 	got := serviceFiles(t, `  service do
     run [bin/"tool", "server", "-dev"]

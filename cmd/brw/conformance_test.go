@@ -16,8 +16,7 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-// These tests compare brw with the real brew on this machine's prefix.
-// Run them with BRW_CONFORMANCE=1.
+// Run with BRW_CONFORMANCE=1.
 
 func conformanceEnv(t *testing.T) *env {
 	t.Helper()
@@ -27,7 +26,6 @@ func conformanceEnv(t *testing.T) *env {
 	return &env{err: &bytes.Buffer{}, host: platform.Current(macVersion())}
 }
 
-// brew returns brew's stdout, or false if it failed.
 func brew(t *testing.T, args ...string) (string, bool) {
 	t.Helper()
 	cmd := osexec.Command("brew", args...)
@@ -132,8 +130,7 @@ func TestConformanceOutdated(t *testing.T) {
 	same(t, "outdated", got, want)
 }
 
-// brw reads only the casks of the API, so casks from other taps are left out
-// of brew's answer.
+// brw reads only API casks, so other taps' casks are dropped from brew's answer.
 func TestConformanceOutdatedCasks(t *testing.T) {
 	e := conformanceEnv(t)
 	installed, err := caskroom.Installed(defaultPrefix(e.host))
@@ -170,7 +167,7 @@ func TestConformanceOutdatedCasks(t *testing.T) {
 	t.Logf("left out casks from other taps: %v", slices.Sorted(maps.Keys(tapped)))
 }
 
-// Brew adds spelling suggestions to text searches, so brw's answer may be a subset.
+// brew adds spelling suggestions to text searches, so brw's answer may be a subset.
 func TestConformanceSearch(t *testing.T) {
 	e := conformanceEnv(t)
 	for _, q := range []string{"jq", "json", "sqlite", "python 3", "c++", "node", "/^lib/", "/json$/", "/^JSON/"} {
@@ -191,8 +188,7 @@ func TestConformanceSearch(t *testing.T) {
 	}
 }
 
-// Brew also searches the casks of other taps, so its answer is cut down to
-// the casks of the API before comparing.
+// brew also searches other taps' casks, so its answer is cut to API casks.
 func TestConformanceSearchCasks(t *testing.T) {
 	e := conformanceEnv(t)
 	idx, err := e.caskIndex(t.Context(), "")
@@ -219,7 +215,6 @@ func TestConformanceSearchCasks(t *testing.T) {
 			same(t, "search --cask "+q, got, lines(want))
 			continue
 		}
-		// brew adds spelling suggestions to text searches.
 		for token := range strings.FieldsSeq(got) {
 			if !slices.Contains(want, token) {
 				t.Errorf("search --cask %q: brw found %s, brew did not", q, token)
@@ -243,8 +238,6 @@ func TestConformanceSearchCasks(t *testing.T) {
 	}
 }
 
-// infoBlocks splits brew info output into one block per formula, each a map
-// from section name ("" for the lines before the first section) to its lines.
 func infoBlocks(out string) map[string]map[string][]string {
 	sections := map[string]bool{"Installed Versions": true, "Dependencies": true, "Requirements": true,
 		"Options": true, "Caveats": true, "Analytics": true}
@@ -259,7 +252,6 @@ func infoBlocks(out string) map[string]map[string][]string {
 			}
 			if formula, _, ok := strings.Cut(name, ": "); ok {
 				cur, section = map[string][]string{}, ""
-				// a tap formula is headed by its full name; a rack has one name
 				blocks[path.Base(formula)] = cur
 			}
 		}
@@ -288,8 +280,6 @@ func isSubsequence(sub, lines []string) bool {
 	return i == len(sub)
 }
 
-// infoNames picks the installed formulae brw can describe, plus a spread of
-// uninstalled ones.
 func infoNames(t *testing.T, e *env) []string {
 	t.Helper()
 	idx, err := e.index(t.Context(), "")
@@ -313,8 +303,7 @@ func infoNames(t *testing.T, e *env) []string {
 	return names
 }
 
-// brw prints what brew prints when piped, except for Analytics and the parts of
-// Caveats that brew works out by running Ruby. brw's caveats must be a subset.
+// brew's Analytics section and Ruby-computed Caveats parts are skipped; brw's caveats must be a subset.
 func TestConformanceInfo(t *testing.T) {
 	e := conformanceEnv(t)
 	names := infoNames(t, e)
@@ -355,8 +344,6 @@ func TestConformanceInfo(t *testing.T) {
 	t.Logf("compared %d formulae", len(names))
 }
 
-// caskSections splits brew info output for one cask by its "==> " headings,
-// "" for the title block, leaving out the analytics.
 func caskSections(out string) map[string][]string {
 	sections := map[string][]string{}
 	heading := ""
@@ -377,8 +364,7 @@ func caskSections(out string) map[string][]string {
 	return sections
 }
 
-// Compares the installed casks brw can read and a spread of others. Brew sorts
-// artifacts of one kind with an unstable sort, so their order is not compared.
+// brew sorts artifacts of one kind with an unstable sort, so their order is not compared.
 func TestConformanceInfoCasks(t *testing.T) {
 	e := conformanceEnv(t)
 	idx, err := e.caskIndex(t.Context(), "")
@@ -430,8 +416,7 @@ func TestConformanceInfoCasks(t *testing.T) {
 	t.Logf("compared %d casks", len(tokens))
 }
 
-// Brew reads its own copy of the API, which differs from the public listing in
-// these keys, so they are not compared.
+// brew's own API copy differs from the public listing in these keys.
 var apiSourceKeys = []string{"tap_git_head", "compatibility_version", "patches", "requirements", "skip_livecheck"}
 
 func TestConformanceInfoJSON(t *testing.T) {

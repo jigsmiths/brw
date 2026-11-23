@@ -15,7 +15,6 @@ import (
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// listingsUpdated is what a first update of the test listings prints.
 const listingsUpdated = "Updated the formula listing: 19 formulae\nUpdated the cask listing: 8 casks\n"
 
 func TestUpdate(t *testing.T) {
@@ -54,11 +53,9 @@ func TestUpdateFailsWhenTheCaskListingFails(t *testing.T) {
 	}
 }
 
-// brw reads homebrew/core from the API, so pulling its tap is wasted time.
 func TestUpdateLeavesHomebrewCoreAlone(t *testing.T) {
 	e := &env{host: linux, client: apiServer(t), err: &bytes.Buffer{}}
 	prefix := t.TempDir()
-	// Not a clone, so a pull would fail and warn.
 	if err := os.MkdirAll(filepath.Join(prefix, "Library/Taps/homebrew/homebrew-core"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +89,7 @@ func TestUpdatePullsTapsTogetherAndReportsThemInOrder(t *testing.T) {
 		}
 		switch tp.Name {
 		case "u/a":
-			time.Sleep(50 * time.Millisecond) // finishes last
+			time.Sleep(50 * time.Millisecond)
 			return false, errors.New("a offline")
 		case "u/b":
 			return false, errors.New("b offline")

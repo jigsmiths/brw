@@ -43,7 +43,6 @@ func newFixture(t *testing.T) *fixture {
 		known: map[string]string{}, formula: map[string]bool{}}
 }
 
-// keg installs a keg with a bin file and a receipt, and links it if asked.
 func (f *fixture) keg(name, version string, linked bool, deps ...string) {
 	f.t.Helper()
 	k := filepath.Join(f.dir, "Cellar", name, version)

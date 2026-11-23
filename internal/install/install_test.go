@@ -295,7 +295,7 @@ func TestInstallLinkConflictLeavesAPouredUnlinkedKeg(t *testing.T) {
 func TestInstallFailureBeforeTheRenameLeavesNothing(t *testing.T) {
 	e := newEnv(t)
 	good := e.item(jq, true, false, nil)
-	e.reg.Tamper(good.Bottle) // the registry serves other bytes than the checksum says
+	e.reg.Tamper(good.Bottle)
 	if _, err := e.install(good); err == nil {
 		t.Fatal("expected a checksum error")
 	}
@@ -381,7 +381,6 @@ func TestInstallLocksTheFormulae(t *testing.T) {
 	if _, err := e.install(item); err != nil {
 		t.Fatalf("after the lock was released: %v", err)
 	}
-	// The install let go of its own lock.
 	again, err := lock.Acquire(e.root, "jq")
 	if err != nil {
 		t.Fatalf("the lock was not released: %v", err)
@@ -665,7 +664,7 @@ func TestUpgradeOfAnUnlinkedKegLeavesTheNewOneUnlinked(t *testing.T) {
 func TestUpgradeThatFailsBeforeAnythingChangesLeavesTheOldKegLinked(t *testing.T) {
 	e := newEnv(t)
 	it := e.installOld(true, true)
-	e.reg.Tamper(it.Bottle) // the download fails its checksum
+	e.reg.Tamper(it.Bottle)
 	if _, err := e.install(it); err == nil {
 		t.Fatal("a tampered bottle should fail")
 	}
@@ -677,7 +676,7 @@ func TestUpgradeThatFailsBeforeAnythingChangesLeavesTheOldKegLinked(t *testing.T
 func TestUpgradeThatFailsAfterUnlinkingRelinksTheOldKeg(t *testing.T) {
 	e := newEnv(t)
 	it := e.installOld(true, true)
-	if err := os.MkdirAll(filepath.Join(e.prefix, "Cellar/jq/1.0"), 0o755); err != nil { // the new keg's place is taken
+	if err := os.MkdirAll(filepath.Join(e.prefix, "Cellar/jq/1.0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.install(it); err == nil {
@@ -768,7 +767,7 @@ func TestInstallCallsAfterForEachInstalledFormula(t *testing.T) {
 	}
 	e.in.After = func(Item, Result) { t.Error("After ran for a failure") }
 	e.in.KeepGoing = true
-	if _, err := e.install(e.item(jq, true, false, nil)); err != nil { // exists already: fails the rename
+	if _, err := e.install(e.item(jq, true, false, nil)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -776,10 +775,10 @@ func TestInstallCallsAfterForEachInstalledFormula(t *testing.T) {
 func TestUpgradeNamesTheKegInUseAndLeavesEveryOldKegUnlinked(t *testing.T) {
 	e := newEnv(t)
 	older := installtest.Bottle{Name: "jq", Version: "0.8", Files: []installtest.File{file("bin/jq", "older", 0o755)}}
-	if _, err := e.install(e.item(older, true, true, nil)); err != nil { // keg-only, so not linked
+	if _, err := e.install(e.item(older, true, true, nil)); err != nil {
 		t.Fatal(err)
 	}
-	it := e.installOld(true, true) // 0.9 takes over the opt record and the links
+	it := e.installOld(true, true)
 	it.Upgrade = nil
 	kegs, _ := cellar.Prefix(e.prefix).Kegs()
 	it.Upgrade = kegs
@@ -834,7 +833,6 @@ func TestInstallUpdatesTheSBOMOfTheBottle(t *testing.T) {
 	if strings.Contains(got, "2026-10-01") || strings.HasSuffix(got, "\n") {
 		t.Errorf("the old time stayed, or a newline was added:\n%s", got)
 	}
-	// The time is the one in the receipt.
 	if r := e.read("Cellar/jq/1.0/INSTALL_RECEIPT.json"); !strings.Contains(r, fmt.Sprintf(`"time": %d`, fixedTime.Unix())) {
 		t.Errorf("receipt: %s", r)
 	}
@@ -976,7 +974,7 @@ func TestReinstallPutsTheOldKegAsideAndPoursAgain(t *testing.T) {
 
 func TestReinstallOfAnOutdatedKegReplacesIt(t *testing.T) {
 	e := newEnv(t)
-	it := e.installOld(true, true) // 0.9, linked, to be replaced by 1.0
+	it := e.installOld(true, true)
 	it.Reinstall = true
 	if _, err := e.install(it); err != nil {
 		t.Fatal(err)
@@ -1065,7 +1063,7 @@ func TestReinstallReplacesALeftoverBackup(t *testing.T) {
 func TestReinstallLeavesOtherKegsAlone(t *testing.T) {
 	e := newEnv(t)
 	older := installtest.Bottle{Name: "jq", Version: "0.8", Files: []installtest.File{file("bin/jq", "older", 0o755)}}
-	if _, err := e.install(e.item(older, true, true, nil)); err != nil { // an old keg-only one
+	if _, err := e.install(e.item(older, true, true, nil)); err != nil {
 		t.Fatal(err)
 	}
 	it := e.installOld(true, true)

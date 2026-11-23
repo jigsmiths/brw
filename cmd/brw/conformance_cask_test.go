@@ -11,13 +11,9 @@ import (
 	"testing"
 )
 
-// This test installs, forgets, adopts and uninstalls the same casks with brew
-// and brw in two copies of a brew checkout, comparing after each step. It needs
-// $BRW_ORACLE (default ~/.brw-oracle/hb) and BRW_CONFORMANCE_CASK_INSTALL=1.
+// Needs $BRW_ORACLE (default ~/.brw-oracle/hb) and BRW_CONFORMANCE_CASK_INSTALL=1.
 
-// Small casks that nobody has running, since brew's uninstall quits them: an
-// app from a zip, one from a disk image, binaries named by their path in the
-// prefix, from a zip, and a binary it generates completions from.
+// Casks nobody has running, since brew's uninstall quits them.
 var caskInstallSet = []string{"itsycal", "monitorcontrol", "android-platform-tools", "1password-cli"}
 
 func TestConformanceCaskInstall(t *testing.T) {
@@ -41,12 +37,10 @@ func TestConformanceCaskInstall(t *testing.T) {
 	brewIn := func(prefix string, args ...string) string {
 		return sh(t, "", env, filepath.Join(prefix, "bin", "brew"), args...)
 	}
-	// brew installs from its cached listing; refresh it so both use today's
-	// casks. Both prefixes get the links brew update makes.
+	// brew installs from its cached listing; refresh it so both use today's casks.
 	brewIn(theirs, "update", "--quiet")
 	brewIn(mine, "update", "--quiet")
-	// brew's sandbox can't create a completion folder, and a prefix in use has
-	// them, so both start with them.
+	// brew's sandbox can't create a completion folder, so both prefixes start with them.
 	for _, p := range []string{theirs, mine} {
 		for _, d := range completionDirs {
 			if err := os.MkdirAll(filepath.Join(p, d), 0o755); err != nil {
@@ -88,7 +82,6 @@ func TestConformanceCaskInstall(t *testing.T) {
 		}
 	}
 
-	// brew accepts what brw installed.
 	if got, want := brewIn(mine, "list", "--cask"), sh(t, "", brwEnv, bin, "list", "--cask", "-prefix", mine); got != want {
 		t.Errorf("brew list --cask on brw's prefix:\n%s\nbrw:\n%s", got, want)
 	}
@@ -96,7 +89,6 @@ func TestConformanceCaskInstall(t *testing.T) {
 		brewIn(mine, "info", "--cask", token)
 	}
 
-	// Each forgets its casks, then adopts the apps and links left behind.
 	for _, p := range []string{theirs, mine} {
 		for _, token := range caskInstallSet {
 			if err := os.RemoveAll(filepath.Join(p, "Caskroom", token)); err != nil {
@@ -113,7 +105,6 @@ func TestConformanceCaskInstall(t *testing.T) {
 	}
 	compareTrees("adopt")
 
-	// brw uninstalls as brew does.
 	uninstall := append([]string{"uninstall", "--cask"}, caskInstallSet...)
 	ua := normal(brewIn(theirs, uninstall...), theirs, theirApps)
 	ub := normal(sh(t, "", brwEnv, bin, append([]string{"uninstall", "--cask", "-prefix", mine}, caskInstallSet...)...), mine, myApps)
@@ -123,8 +114,6 @@ func TestConformanceCaskInstall(t *testing.T) {
 	compareTrees("uninstall")
 }
 
-// caskMetadata reads a cask's receipt and config, leaving out what differs
-// from one install to the next and what brw cannot know.
 // homes are replaced in order, so a home inside another comes first.
 func caskMetadata(t *testing.T, dir, prefix, apps string, homes ...string) map[string]any {
 	t.Helper()

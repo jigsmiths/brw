@@ -38,7 +38,7 @@ func TestReinstallPoursTheFormulaAgain(t *testing.T) {
 func TestReinstallOfAnOutdatedFormulaInstallsTheCurrentVersion(t *testing.T) {
 	e, prefix := linkStore(t)
 	makeOutdated(t, e, prefix, "app")
-	addVersion(t, prefix, "app", "0.9", "0.5") // an older keg still, for cleanup
+	addVersion(t, prefix, "app", "0.9", "0.5")
 	out, err := runCmd(t, e, "reinstall", "-prefix", prefix, "app")
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)

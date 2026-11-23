@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// linkAll links the keg and returns what the prefix looks like afterwards.
 func linkAll(t *testing.T, l *Linker, dir string, k Keg) []string {
 	t.Helper()
 	if err := l.Link(k); err != nil {
@@ -429,7 +428,6 @@ func TestForgetKeepsWhatBelongsToOtherVersions(t *testing.T) {
 	}
 }
 
-// symlinkCount is the number of symlinks in the prefix outside the Cellar.
 func symlinkCount(t *testing.T, dir string) int {
 	t.Helper()
 	n := 0

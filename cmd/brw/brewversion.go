@@ -11,21 +11,15 @@ import (
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// git runs git on brew's repository, whatever repository the caller is in.
 func git(repo string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
 	cmd.Env = tap.GitEnv()
 	return cmd
 }
 
-// noRepositoryVersion is what brew calls itself without a git repository.
 const noRepositoryVersion = ">=4.3.0 (shallow or no git repository)"
 
-// homebrewVersion is the Homebrew version a receipt of a keg brw builds
-// records, as brew's HOMEBREW_VERSION: git describe of the prefix's brew
-// repository. Without one, it is the newest version among the installed
-// kegs' receipts. brew reads a receipt's runtime_dependencies only when this
-// is at least 1.1.6, so brw's own version won't do.
+// brew reads a receipt's runtime_dependencies only from Homebrew 1.1.6, so brw's own version won't do.
 func homebrewVersion(prefix string) string {
 	repo := relocate.ForPrefix(prefix).Repository
 	if v := cachedVersion(repo); v != "" {
@@ -52,9 +46,7 @@ func homebrewVersion(prefix string) string {
 	return noRepositoryVersion
 }
 
-// cachedVersion is what brew's set-homebrew-version-from-git takes from its
-// describe cache: the clean version recorded for HEAD, which a developer's
-// dirty tree does not get.
+// cachedVersion reads the describe cache of brew's set-homebrew-version-from-git; a dirty tree misses it.
 func cachedVersion(repo string) string {
 	out, err := git(repo, "rev-parse", "HEAD").Output()
 	if err != nil {

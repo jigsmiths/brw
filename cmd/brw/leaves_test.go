@@ -28,8 +28,7 @@ func TestLeaves(t *testing.T) {
 	}
 }
 
-// Like brew, a cask keeps only the formulae it names off the list. What else
-// its receipt recorded at install may no longer be needed by anything.
+// A cask keeps only the formulae it names off the leaves list; the rest of its receipt may be unneeded.
 func TestLeavesCountsOnlyWhatACaskNames(t *testing.T) {
 	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq", "age@1.0": "age", "bash@5.3": "bash"})
 	writeFile(t, filepath.Join(prefix, "Caskroom/tool/.metadata/INSTALL_RECEIPT.json"), `{"runtime_dependencies": {"formula": [

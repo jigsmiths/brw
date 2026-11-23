@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-// sameApp is brew's check before adopting: the bundle versions in both
-// Info.plists, or, without them, diff of the two apps.
 func (in *Installer) sameApp(ctx context.Context, source, target string) bool {
 	sShort, sVersion, sok := in.bundleVersion(ctx, filepath.Join(source, "Contents/Info.plist"))
 	tShort, tVersion, tok := in.bundleVersion(ctx, filepath.Join(target, "Contents/Info.plist"))
@@ -28,9 +26,6 @@ func (in *Installer) sameApp(ctx context.Context, source, target string) bool {
 	return true
 }
 
-// bundleVersion is brew's BundleVersion.from_info_plist: the short version,
-// less a trailing " (version)", and the version. ok is false when the plist
-// is empty or has neither.
 func (in *Installer) bundleVersion(ctx context.Context, plist string) (short, version string, ok bool) {
 	if fi, err := os.Stat(plist); err != nil || fi.Size() == 0 {
 		return "", "", false
@@ -49,7 +44,6 @@ func (in *Installer) bundleVersion(ctx context.Context, plist string) (short, ve
 	return short, version, short != "" || version != ""
 }
 
-// errorf writes one of brew's non-fatal errors, which go to stderr.
 func (in *Installer) errorf(format string, args ...any) {
 	if in.Warn != nil {
 		_, _ = fmt.Fprintf(in.Warn, "Error: "+format+"\n", args...)

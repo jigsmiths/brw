@@ -9,8 +9,6 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 )
 
-// unneeded finds the kegs of formulae that were only installed as dependencies
-// and that nothing needs any more, the way brew's Utils::Autoremove does.
 // Formulae come out in the order they become unneeded.
 func (r *Remover) unneeded() ([]cellar.Keg, error) {
 	var rest []cellar.Keg
@@ -68,7 +66,6 @@ func (r *Remover) namesToKeep(kegs []cellar.Keg) map[string]bool {
 	return keep
 }
 
-// Autoremove uninstalls the formulae nothing needs any more.
 func (r *Remover) Autoremove() error {
 	kegs, err := r.unneeded()
 	if err != nil || len(kegs) == 0 {

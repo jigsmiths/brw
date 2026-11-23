@@ -19,20 +19,19 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// Context says where and for what formula the steps run.
 type Context struct {
 	Root    *fsx.Root
-	Prefix  string // absolute path of Root
+	Prefix  string // absolute
 	Name    string
-	Version string // the formula's version, without its revision
-	Keg     string // the keg, relative to the prefix
-	OS      string // darwin or linux, for the on guards
+	Version string // without its revision
+	Keg     string // relative to the prefix
+	OS      string // darwin or linux
 	User    string
 	Log     io.Writer
 
-	// For a cask's steps, which have its own bases in place of a formula's.
+	// Cask steps have their own bases in place of a formula's.
 	Token  string
-	Staged string // the cask's version folder in the Caskroom, absolute
+	Staged string // absolute
 	Arch   string // arm or intel
 }
 
@@ -84,7 +83,7 @@ type step struct {
 	AllowFailure   bool  `json:"allow_failure"`
 	SuppressStderr bool  `json:"suppress_stderr"`
 	Overwrite      *bool `json:"overwrite"`
-	Uninstall      bool  `json:"uninstall"` // a cask's symlink to remove on uninstall
+	Uninstall      bool  `json:"uninstall"`
 }
 
 var supported = []string{
@@ -92,7 +91,7 @@ var supported = []string{
 	"write", "warn", "set_permissions", "run", "init_data_dir",
 }
 
-// Unsupported lists, without repeats, the steps that Run would refuse.
+// Unsupported has no repeats.
 func Unsupported(steps []json.RawMessage) []string {
 	var out []string
 	for _, raw := range steps {
@@ -119,7 +118,7 @@ func Unsupported(steps []json.RawMessage) []string {
 	return out
 }
 
-// Run carries out the steps in order. Nothing runs if one of them is not supported.
+// Run runs nothing if any step is unsupported.
 func Run(c Context, raw []json.RawMessage) error {
 	if u := Unsupported(raw); len(u) > 0 {
 		return fmt.Errorf("unsupported post_install steps: %s", strings.Join(u, ", "))
@@ -140,9 +139,8 @@ func Run(c Context, raw []json.RawMessage) error {
 	return nil
 }
 
-// Uninstall undoes a cask's steps as brew does: it removes each symlink a step
-// marked uninstall made, if it still leads where the step pointed it. Nothing
-// else is undone.
+// Uninstall removes only the symlinks of steps marked uninstall, and only if they
+// still lead where the step pointed them.
 func Uninstall(c Context, raw []json.RawMessage) error {
 	r := &runner{c: c, guards: map[string]bool{}}
 	for i, b := range raw {
@@ -175,7 +173,7 @@ func Uninstall(c Context, raw []json.RawMessage) error {
 
 type runner struct {
 	c      Context
-	guards map[string]bool // answers by guard, kept for the whole run as brew does
+	guards map[string]bool // answers by guard, kept for the whole run
 }
 
 func (r *runner) guardsMatch(s step) bool {
@@ -213,7 +211,7 @@ func (r *runner) guardMatches(g guard) bool {
 
 var template = regexp.MustCompile(`\{\{([A-Za-z_][\w.]*)\}\}`)
 
-// expand fills in {{tokens}}; unknown ones stay as written.
+// expand leaves unknown {{tokens}} as written.
 func (r *runner) expand(s string) string {
 	return template.ReplaceAllStringFunc(s, func(m string) string {
 		if v, ok := r.token(m[2 : len(m)-2]); ok {
@@ -266,7 +264,6 @@ func (r *runner) token(name string) (string, bool) {
 	return "", false
 }
 
-// base is the directory a base name stands for.
 func (r *runner) base(name, formula string) (string, error) {
 	c := r.c
 	if c.cask() {
@@ -334,7 +331,6 @@ func (r *runner) resolve(s pathSpec) (string, error) {
 	return filepath.Join(root, p), nil
 }
 
-// inside turns an absolute path into one relative to the prefix, refusing the rest.
 func (r *runner) inside(abs string) (string, error) {
 	rel, err := filepath.Rel(r.c.Prefix, abs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -343,7 +339,6 @@ func (r *runner) inside(abs string) (string, error) {
 	return rel, nil
 }
 
-// target resolves a spec that a step changes, which has to be inside the prefix.
 func (r *runner) target(s *pathSpec) (abs, rel string, err error) {
 	if s == nil {
 		return "", "", errors.New("the step has no path")
@@ -419,8 +414,7 @@ func (r *runner) touch(s step) error {
 	return r.c.Root.WriteFile(rel, nil, 0o644)
 }
 
-// removeFile removes a file or link and ignores one that is not there. A
-// directory is left alone.
+// removeFile ignores a missing file and leaves a directory alone.
 func (r *runner) removeFile(rel string) error {
 	fi, err := r.c.Root.Lstat(rel)
 	if err != nil || fi.IsDir() {
@@ -523,7 +517,6 @@ func (r *runner) remove(s step) error {
 	return nil
 }
 
-// destination is where source ends up when moved or copied to target.
 func destination(source, target string) string {
 	if fi, err := os.Stat(target); err == nil && fi.IsDir() {
 		return filepath.Join(target, filepath.Base(source))
@@ -717,7 +710,6 @@ func (r *runner) linkChildren(s step) error {
 	return nil
 }
 
-// relativeLink makes rel a link to the absolute path source, written relative to rel's directory.
 func (r *runner) relativeLink(source, rel string) error {
 	dir := filepath.Join(r.c.Prefix, path.Dir(rel))
 	text, err := filepath.Rel(dir, source)

@@ -28,32 +28,29 @@ type File struct {
 	Mode       int64
 }
 
-// Bottle describes a bottle and the tab in its manifest.
 type Bottle struct {
 	Name, Version string
 	Files         []File
-	Changed       []string // the tab's changed_files
-	Linkage       []string // and linkage_files
-	Deps          []string // and the formulae in runtime_dependencies
-	// SBOMSupplement is the sh.brew.sbom.supplement annotation of the manifest.
+	Changed       []string // tab changed_files
+	Linkage       []string // tab linkage_files
+	Deps          []string // tab runtime_dependencies
+	// SBOMSupplement is the sh.brew.sbom.supplement manifest annotation.
 	SBOMSupplement string
 }
 
-// Registry serves manifests and blobs. A blob is redirected to a second server,
-// as ghcr.io does.
+// Registry redirects a blob to a second server, as ghcr.io does.
 type Registry struct {
 	t         testing.TB
 	URL       string
 	blobs     map[string][]byte // by digest
 	tabs      map[string]string // by manifest path
-	supps     map[string]string // the SBOM supplements, by manifest path
+	supps     map[string]string // by manifest path
 	digests   map[string]string
 	tampered  map[string]bool
 	plain     map[string]string // digests by file name under /plain/
 	manifests atomic.Int32
 }
 
-// NewRegistry starts an empty registry whose servers close when t ends.
 func NewRegistry(t testing.TB) *Registry {
 	t.Helper()
 	r := &Registry{t: t, blobs: map[string][]byte{}, tabs: map[string]string{}, supps: map[string]string{}, digests: map[string]string{}, tampered: map[string]bool{}, plain: map[string]string{}}
@@ -95,13 +92,11 @@ func NewRegistry(t testing.TB) *Registry {
 	return r
 }
 
-// Tamper makes the registry serve other bytes than the bottle's checksum says.
+// Tamper serves other bytes than the checksum says.
 func (r *Registry) Tamper(file api.BottleFile) { r.tampered[file.SHA256] = true }
 
-// ManifestRequests counts the manifests served so far.
 func (r *Registry) ManifestRequests() int { return int(r.manifests.Load()) }
 
-// Add stores a bottle and returns its file as the API would describe it.
 func (r *Registry) Add(b Bottle, cellar string) api.BottleFile {
 	r.t.Helper()
 	tab := r.tab(b)
@@ -111,9 +106,8 @@ func (r *Registry) Add(b Bottle, cellar string) api.BottleFile {
 	return api.BottleFile{Cellar: cellar, SHA256: digest, URL: r.URL + "/v2/homebrew/core/" + b.Name + "/blobs/sha256:" + digest}
 }
 
-// AddPlain serves a bottle from a plain URL, as a tap's root_url outside
-// GitHub Packages does: there is no manifest, and the tab is the bottle's own
-// INSTALL_RECEIPT.json. The URL ends in brew's file name for tag.
+// AddPlain serves a bottle with no manifest, as a tap's root_url outside GitHub
+// Packages does; the tab is the bottle's own INSTALL_RECEIPT.json.
 func (r *Registry) AddPlain(b Bottle, tag, cellar string) api.BottleFile {
 	r.t.Helper()
 	digest := r.store(r.tarball(b, string(r.tab(b))))
@@ -122,16 +116,13 @@ func (r *Registry) AddPlain(b Bottle, tag, cellar string) api.BottleFile {
 	return api.BottleFile{Cellar: cellar, SHA256: digest, URL: r.URL + "/plain/" + file}
 }
 
-// AddSource serves a formula's download, such as a release tarball, and
-// returns its URL and checksum.
 func (r *Registry) AddSource(file string, body []byte) (url, sha256 string) {
 	digest := r.store(body)
 	r.plain[file] = digest
 	return r.URL + "/plain/" + file, digest
 }
 
-// Tarball is a tar.gz of files, by path, as a release archive holds them.
-// A body starting with #! is executable.
+// Tarball makes a body starting with #! executable.
 func Tarball(t testing.TB, files map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -163,7 +154,6 @@ func Tarball(t testing.TB, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
-// PlainRoot is the root_url of bottles AddPlain serves.
 func (r *Registry) PlainRoot() string { return r.URL + "/plain" }
 
 func (r *Registry) store(body []byte) string {
@@ -189,7 +179,6 @@ func (r *Registry) tab(b Bottle) []byte {
 	return tab
 }
 
-// tarball is a bottle's tar.gz, with receipt as its INSTALL_RECEIPT.json when not empty.
 func (r *Registry) tarball(b Bottle, receipt string) []byte {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)

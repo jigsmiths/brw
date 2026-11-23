@@ -46,7 +46,6 @@ func parseObject(b []byte) (*object, error) {
 	return o, nil
 }
 
-// set replaces a value in place, or appends a new key.
 func (o *object) set(key string, v json.RawMessage) {
 	if _, ok := o.vals[key]; !ok {
 		o.keys = append(o.keys, key)
@@ -87,9 +86,8 @@ func (o *object) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// expandPlaceholders fills in the prefix the way brew's JSON shows it: paths in
-// the service definition are real, while caveats keep $HOMEBREW_PREFIX and
-// spell the Cellar as $HOMEBREW_PREFIX/Cellar.
+// expandPlaceholders: brew's JSON has real paths in service but $HOMEBREW_PREFIX
+// and $HOMEBREW_PREFIX/Cellar in caveats.
 func (o *object) expandPlaceholders(prefix cellar.Prefix) {
 	if v, ok := o.vals["service"]; ok {
 		escaped, _ := marshal(string(prefix))
@@ -102,7 +100,7 @@ func (o *object) expandPlaceholders(prefix cellar.Prefix) {
 	}
 }
 
-// marshal encodes v without escaping HTML characters and without a trailing newline.
+// marshal does not escape HTML, to match brew.
 func marshal(v any) (json.RawMessage, error) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
@@ -113,8 +111,7 @@ func marshal(v any) (json.RawMessage, error) {
 	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }
 
-// JSON returns the entry brew info --json=v2 prints for f, built from the
-// formula's raw API entry for this host and the state of the prefix.
+// JSON is the entry brew info --json=v2 prints for f.
 func JSON(raw json.RawMessage, f *api.Formula, env Env) (json.RawMessage, error) {
 	o, err := parseObject(raw)
 	if err != nil {
@@ -190,7 +187,6 @@ func JSON(raw json.RawMessage, f *api.Formula, env Env) (json.RawMessage, error)
 	return o.MarshalJSON()
 }
 
-// hostBottle keeps only the bottle file this host would use, or is {} if there is none.
 func hostBottle(f *api.Formula, host platform.Host, raw json.RawMessage) (json.RawMessage, error) {
 	tag, ok := platform.Select(host, f.BottleTags())
 	if !ok || raw == nil {
@@ -224,7 +220,6 @@ func hostBottle(f *api.Formula, host platform.Host, raw json.RawMessage) (json.R
 	return bottle.MarshalJSON()
 }
 
-// installedJSON is one entry of "installed": what brew keeps from a receipt.
 type installedJSON struct {
 	SBOM                *string             `json:"sbom"`
 	Version             string              `json:"version"`

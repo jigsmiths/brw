@@ -13,7 +13,6 @@ import (
 	"github.com/jigsmiths/brw/internal/version"
 )
 
-// Match is a formula whose description matched.
 type Match struct {
 	Name string
 	Desc string
@@ -120,7 +119,6 @@ func CaskTokens(idx *api.CaskIndex, query string) ([]string, error) {
 	return out, nil
 }
 
-// CaskMatch is a cask whose names or description matched.
 type CaskMatch struct {
 	Token string
 	Names string // the cask's names, joined by ", "
@@ -145,7 +143,6 @@ func CaskDescriptions(idx *api.CaskIndex, query string) ([]CaskMatch, error) {
 	return out, nil
 }
 
-// Descriptions returns the formulae whose description matches query, by name.
 func Descriptions(idx *api.Index, query string) ([]Match, error) {
 	match, err := newMatcher(query)
 	if err != nil {

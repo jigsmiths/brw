@@ -9,12 +9,8 @@ import (
 	"testing"
 )
 
-// This test installs formulae with brew into two copies of a brew checkout,
-// then upgrades, reinstalls, cleans up, links, unlinks and removes them with
-// brew in one and brw in the other, comparing after each step. It needs the
-// checkout described in conformance_install_test.go and BRW_CONFORMANCE_UNINSTALL=1.
+// Needs the oracle checkout of conformance_install_test.go and BRW_CONFORMANCE_UNINSTALL=1.
 
-// oniguruma comes in as the dependency of jq.
 var uninstallSet = []string{"jq", "minio", "cayley", "sbtenv", "rustup"}
 
 func TestConformanceUninstall(t *testing.T) {
@@ -40,8 +36,6 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 
 	failed := false
-	// step runs the same command with both tools and compares the prefixes. It
-	// returns what each printed, with the prefix made the same.
 	step := func(name string, wantFail bool, extraEnv []string, cmd string, args ...string) (outBrew, outBrw string) {
 		t.Helper()
 		outBrew, errBrew := try(append(slices.Clone(env), extraEnv...), filepath.Join(theirs, "bin", "brew"), append([]string{cmd}, args...)...)
@@ -53,7 +47,6 @@ func TestConformanceUninstall(t *testing.T) {
 		compare(t, name, theirs, mine)
 		return strings.ReplaceAll(outBrew, theirs, "<prefix>"), strings.ReplaceAll(outBrw, mine, "<prefix>")
 	}
-	// sameLine checks that both tools printed the line that starts with prefix.
 	sameLine := func(name, outBrew, outBrw, start string) {
 		t.Helper()
 		find := func(out string) string {
@@ -70,8 +63,6 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 	noAutoremove := []string{"HOMEBREW_NO_AUTOREMOVE=1"}
 
-	// Upgrading: sbtenv is made out of date the same way in both prefixes, with
-	// brew's own commands, and then upgraded by brew in one and brw in the other.
 	for _, p := range []string{theirs, mine} {
 		rack := filepath.Join(p, "Cellar", "sbtenv")
 		versions, _ := os.ReadDir(rack)
@@ -118,7 +109,6 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 	step("upgrade when current", false, nil, "upgrade", "sbtenv")
 
-	// Reinstalling: a current formula, and an outdated one, which ends up current.
 	for _, p := range []string{theirs, mine} {
 		rack := filepath.Join(p, "Cellar", "jq")
 		versions, _ := os.ReadDir(rack)
@@ -165,8 +155,6 @@ func TestConformanceUninstall(t *testing.T) {
 	step("reinstall an outdated formula", false, nil, "reinstall", "jq")
 	reinstalled("jq")
 
-	// Cleaning up: an old keg, a broken link, empty directories and .DS_Store
-	// files, made the same way in both prefixes.
 	for _, p := range []string{theirs, mine} {
 		cayley := filepath.Join(p, "Cellar", "cayley")
 		versions, _ := os.ReadDir(cayley)
@@ -221,7 +209,6 @@ func TestConformanceUninstall(t *testing.T) {
 		t.Errorf("lock files differ after cleanup\nbrew: %v\nbrw:  %v", a, b)
 	}
 
-	// Linking and unlinking, and what they print.
 	a, b := step("unlink", false, nil, "unlink", "jq")
 	sameLine("unlink", a, b, "Unlinking ")
 	a, b = step("link again", false, nil, "link", "jq")
@@ -232,8 +219,7 @@ func TestConformanceUninstall(t *testing.T) {
 	sameLine("link --force", a, b, "Linking ")
 	a, b = step("unlink a keg-only formula", false, nil, "unlink", "rustup")
 	sameLine("unlink keg-only", a, b, "Unlinking ")
-	// brew's own dry run of link creates empty directories, so only brw's is
-	// run: it has to change nothing.
+	// brew's own link --dry-run creates empty directories, so only brw's runs.
 	beforeDry := snapshot(t, mine)
 	for _, args := range [][]string{{"link", "-n", "--force", "rustup"}, {"unlink", "-n", "jq"}} {
 		out, err := try(brwEnv, bin, append([]string{args[0], "-prefix", mine}, args[1:]...)...)
@@ -277,7 +263,6 @@ func TestConformanceUninstall(t *testing.T) {
 
 	step("refusing to remove a dependency", true, nil, "uninstall", "oniguruma")
 
-	// A second version of jq, and a pin on minio, made the same way in both.
 	for _, p := range []string{theirs, mine} {
 		jq := filepath.Join(p, "Cellar", "jq")
 		versions, _ := os.ReadDir(jq)
@@ -288,8 +273,6 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 	compare(t, "after adding a version", theirs, mine)
 
-	// Pinning: the newest of two versions, a repeat, a name that is not installed
-	// or unknown, what list shows, and unpinning.
 	step("pin of a formula with two versions", false, nil, "pin", "jq")
 	a, b = step("list --pinned --versions", false, nil, "list", "--pinned", "--versions")
 	if a != b || !strings.HasPrefix(a, "jq ") {
@@ -332,8 +315,7 @@ func TestConformanceUninstall(t *testing.T) {
 	step("unpin", false, nil, "unpin", "minio")
 	step("the rest, and the dependency that goes with it", false, nil, "uninstall", "minio", "rustup")
 
-	// With everything removed, no link, opt record or linked record may be left
-	// that brew does not leave as well (post_install can make some).
+	// brew leaves some links and records after uninstall (post_install can make them); brw must not leave more.
 	if !failed {
 		brewLeft := snapshot(t, theirs)
 		for line := range strings.SplitSeq(snapshot(t, mine), "\n") {
@@ -347,7 +329,6 @@ func TestConformanceUninstall(t *testing.T) {
 	}
 }
 
-// try runs a command and returns its output and error without failing the test.
 func try(env []string, name string, args ...string) (string, error) {
 	cmd := osexec.Command(name, args...)
 	cmd.Env = append(os.Environ(), env...)
@@ -355,8 +336,6 @@ func try(env []string, name string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// compare reports every difference between the two prefixes, including which
-// kegs are left in the Cellar.
 func compare(t *testing.T, step, theirs, mine string) {
 	t.Helper()
 	a, b := snapshot(t, theirs), snapshot(t, mine)
@@ -369,7 +348,6 @@ func compare(t *testing.T, step, theirs, mine string) {
 	}
 }
 
-// cellarList is every rack and keg in the Cellar, links included.
 func cellarList(t *testing.T, prefix string) []string {
 	t.Helper()
 	var out []string

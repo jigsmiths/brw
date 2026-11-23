@@ -110,12 +110,10 @@ func TestSandboxProfile(t *testing.T) {
 	}
 }
 
-// completionArtifacts is a cask with a binary whose completions it generates.
 const completionArtifacts = `[
 	{"binary":["tool"]},
 	{"generate_completions_from_executable":["$HOMEBREW_PREFIX/bin/tool","completion",{"base_name":null,"shell_parameter_format":null,"shells":["bash","zsh"]}]}]`
 
-// generating answers for the generator as if each shell's script were "<shell> script".
 func generating(f *fakeExec, failShell string) {
 	run := func(args []string) ([]byte, error) {
 		for _, a := range args {
@@ -159,7 +157,6 @@ func TestInstallGeneratesCompletions(t *testing.T) {
 		!strings.HasSuffix(runs[1], " SHELL=zsh "+tool+" completion zsh") {
 		t.Errorf("generator runs = %q", runs)
 	}
-	// As brew: a home of its own, and no secrets from the environment.
 	if !strings.Contains(runs[0], "/usr/bin/env ") || !strings.Contains(runs[0], " -u MY_API_TOKEN ") ||
 		!strings.Contains(runs[0], " HOME=") || !strings.Contains(runs[0], " -C ") {
 		t.Errorf("generator run = %q", runs[0])
@@ -238,7 +235,6 @@ func TestSandboxedGeneratorCannotReadCredentials(t *testing.T) {
 	ti.in.Where.Home = home
 	writeFile(t, filepath.Join(home, ".ssh/id"), []byte("secret"), 0o600)
 	script := filepath.Join(t.TempDir(), "gen")
-	// Like 1Password's op, it keeps a config under its home.
 	writeFile(t, script, []byte("#!/bin/sh\nif cat \"$HOME_SSH/id\" 2>/dev/null; then exit 0; fi\n"+
 		"mkdir -p \"$HOME/.config/gen\" || exit 1\necho \"$SHELL ok\"\n"), 0o755)
 	t.Setenv("HOME_SSH", filepath.Join(home, ".ssh"))

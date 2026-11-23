@@ -11,9 +11,7 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// TestMain clears the variables brw reads from the environment, so what a CI
-// image or a developer's shell sets cannot change what the tests expect. A test
-// that needs one sets it itself.
+// Clears the variables brw reads so CI or a developer's shell cannot change expectations.
 func TestMain(m *testing.M) {
 	for _, k := range []string{"HOMEBREW_NO_INSTALL_CLEANUP", "HOMEBREW_NO_AUTOREMOVE", "HOMEBREW_NO_CLEANUP_FORMULAE", "HOMEBREW_CACHE"} {
 		_ = os.Unsetenv(k)

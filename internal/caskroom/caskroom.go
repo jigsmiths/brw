@@ -13,19 +13,16 @@ import (
 )
 
 type Cask struct {
-	Token    string
-	Version  string // of the latest install
-	Caskfile string // the definition stored by that install, .json or .rb
-	Tap      string // from the install receipt; empty when it names none or cannot be read
-	// OnRequest is from the install receipt; false when it cannot be read.
+	Token     string
+	Version   string
+	Caskfile  string
+	Tap       string
 	OnRequest bool
 }
 
 func dir(prefix string) string { return filepath.Join(prefix, "Caskroom") }
 
-// Installed lists the installed casks, sorted by token, as brew finds them: a
-// directory of the Caskroom, not a symlink, whose latest install under
-// .metadata/<version>/<timestamp> stored the cask's definition.
+// Installed lists installed casks sorted by token: Caskroom directories, not symlinks, whose latest install stored the cask's definition.
 func Installed(prefix string) ([]Cask, error) {
 	entries, err := os.ReadDir(dir(prefix))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -36,7 +33,7 @@ func Installed(prefix string) ([]Cask, error) {
 	}
 	var out []Cask
 	for _, e := range entries {
-		if !e.IsDir() { // a symlink is not a directory here
+		if !e.IsDir() {
 			continue
 		}
 		c, ok, err := installed(prefix, e.Name())
@@ -56,8 +53,6 @@ func installed(prefix, token string) (Cask, bool, error) {
 	if err != nil {
 		return Cask{}, false, err
 	}
-	// Brew takes the latest timestamp across all versions and does not fall back
-	// to an earlier install when that one stored no definition.
 	var version, stamp string
 	for _, v := range versions {
 		stamps, err := visible(filepath.Join(meta, v))
@@ -84,8 +79,6 @@ func installed(prefix, token string) (Cask, bool, error) {
 	return Cask{}, false, nil
 }
 
-// readReceipt is best effort, as brew's is: a cask with no readable receipt
-// counts as installed from the API.
 func readReceipt(meta string) (tap string, onRequest bool) {
 	b, err := os.ReadFile(filepath.Join(meta, "INSTALL_RECEIPT.json"))
 	if err != nil {
@@ -103,9 +96,7 @@ func readReceipt(meta string) (tap string, onRequest bool) {
 	return r.Source.Tap, r.InstalledOnRequest
 }
 
-// DiskUsage is what brew info reports for an installed version: the size of
-// each entry of its Caskroom directory, following a symlink such as the one
-// to the app in /Applications. ok is false when the directory is missing.
+// DiskUsage sizes each entry of a version's Caskroom directory, following symlinks such as the one to the app.
 func DiskUsage(prefix, token, version string) (size int64, ok bool) {
 	root := filepath.Join(dir(prefix), token, version)
 	entries, err := os.ReadDir(root)
@@ -118,8 +109,6 @@ func DiskUsage(prefix, token, version string) (size int64, ok bool) {
 	return size, true
 }
 
-// entryUsage follows brew's Pathname#disk_usage: a symlink counts as what it
-// leads to, a dangling one as nothing, and a hard link once per entry.
 func entryUsage(path string) int64 {
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
 		resolved, err := filepath.EvalSymlinks(path)
@@ -139,7 +128,7 @@ func entryUsage(path string) int64 {
 	seen := map[[2]uint64]bool{}
 	_ = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // brew skips what vanished or cannot be read
+			return nil
 		}
 		fi, err := os.Lstat(p)
 		if err != nil {
@@ -156,7 +145,7 @@ func entryUsage(path string) int64 {
 			}
 		}
 		if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-			id := [2]uint64{uint64(st.Dev), st.Ino} //nolint:gosec,unconvert // Dev is int32 on darwin
+			id := [2]uint64{uint64(st.Dev), st.Ino} //nolint:unconvert // Dev is int32 on darwin
 			if seen[id] {
 				return nil
 			}
@@ -168,7 +157,6 @@ func entryUsage(path string) int64 {
 	return size
 }
 
-// Pinned returns the version a cask is pinned at, if it is.
 func Pinned(prefix, token string) (string, bool) {
 	resolved, err := filepath.EvalSymlinks(filepath.Join(prefix, "var/homebrew/pinned_casks", token))
 	if err != nil {
@@ -177,9 +165,7 @@ func Pinned(prefix, token string) (string, bool) {
 	return filepath.Base(resolved), true
 }
 
-// AppDir is where the cask's apps went, from the configuration stored at
-// install: an explicit --appdir, else the default. Like brew, it ignores the
-// environment recorded then. brw does not read HOMEBREW_CASK_OPTS.
+// AppDir is the --appdir stored at install, else the default; like brew, it ignores the environment recorded then.
 func AppDir(prefix, token string) string {
 	const fallback = "/Applications"
 	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
@@ -202,7 +188,6 @@ func AppDir(prefix, token string) string {
 	return fallback
 }
 
-// ExplicitAppDir is the --appdir the cask was installed with, or "".
 func ExplicitAppDir(prefix, token string) string {
 	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
 	if err != nil {
@@ -219,8 +204,6 @@ func ExplicitAppDir(prefix, token string) string {
 	return c.Explicit.AppDir
 }
 
-// visible lists the names in a directory that a shell glob would match. A
-// missing directory, or a file in its place, has none.
 func visible(path string) ([]string, error) {
 	entries, err := os.ReadDir(path)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
@@ -238,8 +221,7 @@ func visible(path string) ([]string, error) {
 	return names, nil
 }
 
-// Names lists the entries of the Caskroom the way ls does, which is what brew
-// list prints, and which of them are symlinks that lead nowhere.
+// Names lists Caskroom entries as ls does, and which of them are dangling symlinks.
 func Names(prefix string) (names, broken []string, err error) {
 	entries, err := os.ReadDir(dir(prefix))
 	if errors.Is(err, fs.ErrNotExist) {

@@ -15,18 +15,11 @@ import (
 	"time"
 )
 
-// smoke checks one installed formula without knowing what it is. Problems mean
-// the keg is broken. Notes are things worth a look that do not prove a fault,
-// like a binary with no --version.
 type smoke struct {
 	Problems []string
 	Notes    []string
 }
 
-// smokeFormula checks every keg of a formula in prefix: the receipt is there,
-// links in bin lead somewhere, no file keeps a placeholder the bottle should have
-// lost, each executable file finds its libraries, and the first program in bin
-// runs with --version.
 func smokeFormula(prefix, name string) smoke {
 	var s smoke
 	kegs, _ := filepath.Glob(filepath.Join(prefix, "Cellar", name, "*"))
@@ -82,7 +75,6 @@ func (s *smoke) walk(prefix, keg string) {
 	})
 }
 
-// version runs the first program in the keg's bin directory with --version.
 func (s *smoke) version(prefix, keg string) {
 	entries, _ := os.ReadDir(filepath.Join(keg, "bin"))
 	for _, e := range entries {
@@ -110,9 +102,6 @@ func firstLine(b []byte) string {
 	return line
 }
 
-// missingLibraries lists the libraries an executable file needs that are not
-// there. Files that are not Mach-O or ELF, or that the system tools cannot read,
-// have none.
 func missingLibraries(path string, data []byte) []string {
 	switch {
 	case runtime.GOOS == "darwin" && isMachO(data):
@@ -169,8 +158,7 @@ func missingMachO(path string) []string {
 	return missing
 }
 
-// missingELF asks ldd, which runs the dynamic loader, so a library that is only
-// found through an rpath is found too.
+// ldd runs the dynamic loader, so rpath-only libraries are found too.
 func missingELF(path string) []string {
 	f, err := elf.Open(path)
 	if err != nil {

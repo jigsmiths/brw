@@ -12,14 +12,7 @@ import (
 	"time"
 )
 
-// This test installs every formula brew has installed here into a scratch
-// prefix and checks the result. It needs BRW_CONFORMANCE_FULL=1.
-//
-// On macOS brew installs the same formulae into a second copy of the oracle
-// checkout and the two are compared. On Linux (just conformance-linux) the
-// prefix is $BRW_FULL_PREFIX, names come from $BRW_FULL_NAMES and $BRW_BIN is a
-// built brw. Formulae brw cannot install are skipped with the reason, in a
-// report at $BRW_FULL_REPORT or full-report.txt next to the checkout.
+// Needs BRW_CONFORMANCE_FULL=1; on Linux (just conformance-linux) also $BRW_FULL_PREFIX, $BRW_FULL_NAMES, $BRW_BIN and optionally $BRW_FULL_REPORT.
 
 func TestConformanceFull(t *testing.T) {
 	if os.Getenv("BRW_CONFORMANCE_FULL") == "" {
@@ -42,8 +35,7 @@ func TestConformanceFull(t *testing.T) {
 		for _, p := range []string{theirs, mine} {
 			sh(t, "", nil, "git", "clone", "-q", oracle, p)
 		}
-		// The shared cache may hold a listing older than the one brw fetches, which
-		// would make the two install different versions. A throwaway copy refreshes it.
+		// A stale shared listing would make the two install different versions.
 		refresh := filepath.Join(work, "refresh")
 		sh(t, "", nil, "git", "clone", "-q", oracle, refresh)
 		sh(t, "", []string{"HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_ANALYTICS=1", "HOMEBREW_CACHE=" + filepath.Join(filepath.Dir(oracle), "cache")},
@@ -60,8 +52,6 @@ func TestConformanceFull(t *testing.T) {
 	}
 	baseline := snapshot(t, mine)
 
-	// Work out which formulae brw can install, one at a time, so a formula it
-	// cannot install does not stop the rest.
 	var eligible []string
 	var left []string
 	for _, name := range fullRunNames(t) {
@@ -108,13 +98,11 @@ func TestConformanceFull(t *testing.T) {
 	}
 
 	if theirs != "" {
-		// brew accepts what brw installed.
 		want := sh(t, "", brwEnv, bin, "list", "-prefix", mine)
 		if got := brewIn(mine, "list", "--formula"); got != want {
 			t.Errorf("brew list differs from brw list on brw's prefix\nbrew:\n%s\nbrw:\n%s", got, want)
 		}
 		brewIn(mine, append([]string{"info", "--json=v1"}, eligible...)...)
-		// brew's doctor says the same about both prefixes, apart from the paths.
 		doctor := func(prefix string) string {
 			out, _ := try(env, filepath.Join(prefix, "bin", "brew"), "doctor")
 			return strings.ReplaceAll(out, prefix, "<prefix>")
@@ -124,8 +112,7 @@ func TestConformanceFull(t *testing.T) {
 		}
 	}
 
-	// Everything goes again. Brew leaves some files behind, such as the etc files
-	// of formulae, so brw must leave the same ones.
+	// brew leaves some files behind on uninstall, such as formulae's etc files; brw must leave the same.
 	sh(t, "", brwEnv, bin, append([]string{"uninstall", "-prefix", mine, "--force", "--ignore-dependencies"}, eligible...)...)
 	if theirs != "" {
 		brewIn(theirs, append([]string{"uninstall", "--force", "--ignore-dependencies"}, eligible...)...)
@@ -144,8 +131,7 @@ func TestConformanceFull(t *testing.T) {
 	t.Logf("report written to %s", report)
 }
 
-// fullRunNames lists what to install: the names in $BRW_FULL_NAMES, or else what
-// brew has installed here. Only stdout counts; brew warns about other taps on stderr.
+// Only stdout counts; brew warns about other taps on stderr.
 func fullRunNames(t *testing.T) []string {
 	t.Helper()
 	var out []byte

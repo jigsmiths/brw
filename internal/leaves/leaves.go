@@ -8,10 +8,8 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 )
 
-// Filter narrows the leaves by how they were installed.
 type Filter int
 
-// Filters for every leaf, those installed on request, and those installed as a dependency.
 const (
 	All Filter = iota
 	OnRequest
@@ -55,7 +53,6 @@ func List(p cellar.Prefix, kegs []cellar.Keg, casks map[string][]string, filter 
 	return out
 }
 
-// fullName is the name with its tap, except for homebrew/core.
 func fullName(k cellar.Keg) string {
 	if k.Receipt == nil || k.Receipt.Source.Tap == "" || k.Receipt.Source.Tap == "homebrew/core" {
 		return k.Name

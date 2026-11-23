@@ -21,7 +21,6 @@ const (
 	JavaPlaceholder       = "@@HOMEBREW_JAVA@@"
 )
 
-// Locations are the paths that replace the placeholders.
 type Locations struct {
 	Prefix, Cellar, Repository, Library string
 	// OpenJDK names the openjdk formula the keg depends on, if any. Without
@@ -46,7 +45,6 @@ func isDir(p string) bool {
 
 var openJDK = regexp.MustCompile(`^openjdk(@\d+(\.\d+)*)?$`)
 
-// OpenJDK returns the first of the formula names that is openjdk or a versioned openjdk.
 func OpenJDK(deps []string) string {
 	for _, d := range deps {
 		if openJDK.MatchString(d) {
@@ -70,9 +68,8 @@ func (l Locations) replacer() *strings.Replacer {
 	return strings.NewReplacer(pairs...)
 }
 
-// Text replaces the placeholders in the listed files (relative to the keg) and
-// returns the ones that changed. As in brew, only regular files reached without
-// a symlink are touched, and hard links are rewritten once and reported together.
+// As in brew, only regular files reached without a symlink are touched, and
+// hard links are rewritten once and reported together.
 func Text(root *fsx.Root, keg string, files []string, loc Locations) ([]string, error) {
 	type group struct{ names []string }
 	var order [][2]any
@@ -119,8 +116,6 @@ func Text(root *fsx.Root, keg string, files []string, loc Locations) ([]string, 
 	return changed, nil
 }
 
-// regularInside reports whether keg/rel is a regular file reached without a
-// symlink. Lstat does not follow links, so symlinks fail the type checks.
 func regularInside(root *fsx.Root, keg, rel string) bool {
 	if rel == "" || path.IsAbs(rel) || path.Clean(rel) != rel || rel == ".." || strings.HasPrefix(rel, "../") {
 		return false

@@ -24,20 +24,15 @@ import (
 	"github.com/jigsmiths/brw/internal/sbom"
 )
 
-// Source is a tap formula's file, which a build runs.
 type Source struct {
 	Formula *rb.Formula
-	Path    string // the formula file, as the receipt records it
+	Path    string // as the receipt records it
 	Code    []byte
 }
 
-// ErrNoSource is returned for a formula that has no bottle for this host and
-// whose file brw cannot load to build it.
 var ErrNoSource = errors.New("cannot be built: no formula file")
 
-// unpack extracts a download into dir as brew's unpack strategies do: tar
-// and zip archives are extracted, anything else is copied in under its name.
-// Extraction is left to tar and unzip, which write outside fsx as git does.
+// unpack: tar and zip are extracted by tar and unzip, which write outside fsx.
 func (in *Installer) unpack(root *fsx.Root, archive, name, dir string) error {
 	lower := strings.ToLower(name)
 	var cmd *exec.Cmd
@@ -48,7 +43,7 @@ func (in *Installer) unpack(root *fsx.Root, archive, name, dir string) error {
 		strings.HasSuffix(lower, ".txz") || strings.HasSuffix(lower, ".tbz2"):
 		cmd = exec.Command("/usr/bin/tar", "-xf", archive, "-C", dir)
 	default:
-		// copied as brew's Uncompressed strategy does, keeping the download's time
+		// brew's Uncompressed strategy keeps the download's mtime
 		fi, err := os.Stat(archive)
 		if err != nil {
 			return err
@@ -91,8 +86,7 @@ func buildpath(dir string) (string, error) {
 	return dir, nil
 }
 
-// tapPostInstall runs a tap formula's post_install method as brew's
-// run_post_install does: with the user's PATH and a temporary home.
+// tapPostInstall is run_post_install: the user's PATH and a temporary home.
 func (in *Installer) tapPostInstall(f *api.Formula) error {
 	if in.LoadSource == nil {
 		return ErrNoSource
@@ -114,8 +108,7 @@ func (in *Installer) tapPostInstall(f *api.Formula) error {
 	})
 }
 
-// applyPatches applies a formula's patches to its staged source in order, as
-// brew's Patch.apply does. An external patch must be a single patch file.
+// applyPatches is Patch.apply; an external patch must be a single patch file.
 func (in *Installer) applyPatches(ctx context.Context, name string, patches []rb.Patch, dir string) error {
 	for _, p := range patches {
 		text := p.Data
@@ -145,8 +138,7 @@ func (in *Installer) applyPatches(ctx context.Context, name string, patches []rb
 	return nil
 }
 
-// removeBuildDir removes a build directory, making read-only directories in
-// it writable first, as brew's rm_rf does.
+// removeBuildDir makes read-only directories writable first, as brew's rm_rf.
 func removeBuildDir(dir string) error {
 	if os.RemoveAll(dir) == nil { //fsx:allow the build directory, outside the prefix
 		return nil
@@ -160,7 +152,6 @@ func removeBuildDir(dir string) error {
 	return os.RemoveAll(dir) //fsx:allow the build directory, outside the prefix
 }
 
-// makeJobs is HOMEBREW_MAKE_JOBS, else the number of CPUs, as brew picks it.
 func makeJobs() int {
 	if n, err := strconv.Atoi(os.Getenv("HOMEBREW_MAKE_JOBS")); err == nil && n > 0 {
 		return n
@@ -186,9 +177,6 @@ func newestFile(dir string) time.Time {
 // bottleBlock is what brew strips from the formula file it keeps in the keg.
 var bottleBlock = regexp.MustCompile(`(?s)  bottle do.+?end\n\n?`)
 
-// build installs a tap formula from its download, as brew builds a formula
-// that has no bottle: stage it, run its install method into the keg, then
-// write the receipt, metafiles and SBOM and clean the keg.
 func (in *Installer) build(ctx context.Context, it Item, download string) (result Result, err error) {
 	f := it.Formula
 	if in.LoadSource == nil {
@@ -213,8 +201,7 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	}
 	in.logf("==> Installing %s from %s", f.Name, f.Tap)
 
-	// As brew's, the build directory is in HOMEBREW_TEMP: inside the prefix,
-	// which may be brew's git repository, git and Go would see that repository.
+	// HOMEBREW_TEMP, outside the prefix, which may be a git repository.
 	temp := cmp.Or(os.Getenv("HOMEBREW_TEMP"), "/private/tmp")
 	top, err := os.MkdirTemp(temp, f.Name+"-"+it.PkgVersion+"-") //fsx:allow the build directory, outside the prefix
 	if err != nil {
@@ -359,7 +346,6 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	return in.finish(it, keg, f.Aliases, old), nil
 }
 
-// writeBuiltSBOM writes the SBOM brew makes for a formula it builds.
 func (in *Installer) writeBuiltSBOM(keg string, f *api.Formula, modified time.Time, deps []cellar.Dependency) error {
 	p := sbom.BuildParams{
 		Name: f.Name, FullName: f.FullName, Version: f.Versions.Stable, URL: f.URLs.Stable.URL,
@@ -379,8 +365,7 @@ func (in *Installer) writeBuiltSBOM(keg string, f *api.Formula, modified time.Ti
 	return in.Root.WriteFile(path.Join(keg, sbom.File), data, 0o644)
 }
 
-// sbomDep describes a runtime dependency as brew's SBOM.runtime_deps_hash
-// does, from the formula it has now.
+// sbomDep is SBOM.runtime_deps_hash.
 func (in *Installer) sbomDep(d cellar.Dependency) sbom.Dep {
 	out := sbom.Dep{Name: path.Base(d.FullName), FullName: d.FullName, PkgVersion: d.PkgVersion}
 	if in.DepInfo != nil {
@@ -408,8 +393,7 @@ func isMetafile(name string) bool {
 	return metafileBases[file]
 }
 
-// installMetafiles is Pathname#install_metafiles: the licence, readme and the
-// like at the top of the build directory go into the keg, made 0644.
+// installMetafiles is Pathname#install_metafiles.
 func (in *Installer) installMetafiles(build *fsx.Root, buildpath, keg string) error {
 	entries, err := os.ReadDir(buildpath)
 	if err != nil {

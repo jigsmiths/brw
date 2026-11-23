@@ -20,7 +20,6 @@ import (
 	"github.com/jigsmiths/brw/internal/version"
 )
 
-// defaultPruneDays is how long a cached download is kept, as in brew.
 const defaultPruneDays = 120
 
 func cleanupCommand(e *env, args []string) (err error) {
@@ -83,7 +82,7 @@ func cleanupCommand(e *env, args []string) (err error) {
 		}
 		var failed []error
 		failed = append(failed, c.OldKegs(names))
-		if fresh, err := cellar.Prefix(prefix).Kegs(); err == nil { // old kegs are gone now
+		if fresh, err := cellar.Prefix(prefix).Kegs(); err == nil {
 			c.Kegs, kegs = fresh, fresh
 		}
 		if len(names) == 0 {
@@ -111,7 +110,6 @@ func cleanupCommand(e *env, args []string) (err error) {
 	})
 }
 
-// skipCleanup is the set of formulae HOMEBREW_NO_CLEANUP_FORMULAE says to leave alone.
 func skipCleanup() func(string) bool {
 	list := strings.FieldsFunc(os.Getenv("HOMEBREW_NO_CLEANUP_FORMULAE"), func(r rune) bool { return r == ',' || r == ' ' })
 	return func(name string) bool { return slices.Contains(list, name) }

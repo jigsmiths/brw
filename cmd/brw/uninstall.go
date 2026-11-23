@@ -49,7 +49,7 @@ func uninstallCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	// As brew does: an installed formula first, then an installed cask.
+	// An installed formula first, then an installed cask.
 	var formulae []string
 	var casks []caskroom.Cask
 	var notInstalled []error
@@ -114,9 +114,7 @@ func autoremoveCommand(e *env, args []string) error {
 	})
 }
 
-// newRemover wires the formula listing in. The listing only helps with aliases,
-// config file hints and build dependencies, so it is loaded when needed and
-// removing things works without it.
+// The formula listing only helps with aliases, config file hints and build dependencies, so removal works without it.
 func newRemover(e *env, root *fsx.Root, prefix string, kegs []cellar.Keg, dryRun bool) *uninstall.Remover {
 	index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background(), prefix) })
 	return &uninstall.Remover{
@@ -124,7 +122,7 @@ func newRemover(e *env, root *fsx.Root, prefix string, kegs []cellar.Keg, dryRun
 		Resolve: func(name string) (string, bool) {
 			idx, err := index()
 			if err != nil {
-				return name, true // no listing: report the missing keg
+				return name, true
 			}
 			f, ok := idx.Lookup(name)
 			if !ok {

@@ -21,10 +21,9 @@ func (e *UnavailableError) Error() string {
 	return fmt.Sprintf("no available formula with the name %q", e.Name)
 }
 
-// Finder finds installed kegs by formula name, alias or old name.
 type Finder struct {
 	Prefix string
-	Kegs   []cellar.Keg // every installed keg
+	Kegs   []cellar.Keg
 
 	// Resolve turns an alias into a formula name and says whether the formula
 	// exists. It may be nil when no listing is at hand.
@@ -41,7 +40,6 @@ func (f Finder) Installed(name string) []cellar.Keg {
 	return out
 }
 
-// Find returns the name of the installed formula that name stands for.
 func (f Finder) Find(name string) (string, error) {
 	name = strings.TrimPrefix(strings.ToLower(name), "homebrew/core/")
 	if len(f.Installed(name)) > 0 {

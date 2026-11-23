@@ -24,8 +24,6 @@ func gitIn(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// publishTapCask commits a version of an app cask to a tap repository, as the
-// cask file a tap would have for it.
 func publishTapCask(t *testing.T, repo string, c map[string]any, version string) {
 	t.Helper()
 	writeTapCask(t, repo, c["token"].(string), fmt.Sprintf(`cask %q do
@@ -54,7 +52,6 @@ func writeTapCask(t *testing.T, repo, token, rb string) {
 	gitIn(t, repo, "add", "-A")
 }
 
-// tapStore serves an app cask from a tap repository rather than the API.
 func tapStore(t *testing.T) (e *env, prefix, origin string, app map[string]any) {
 	t.Helper()
 	// brew's trust store goes here, never the user's.
@@ -91,7 +88,7 @@ func TestInstallUpdateAndUpgradeACaskFromATap(t *testing.T) {
 	if w := e.err.(*bytes.Buffer).String(); !strings.HasPrefix(w, "==> Tapping jigsmiths/tap\n==> Trusted cask jigsmiths/tap/app\n") {
 		t.Errorf("stderr = %q", w)
 	}
-	// Tapped from elsewhere than GitHub, the tap is named by its remote, as brew does.
+	// Tapped from elsewhere than GitHub, the tap is named by its remote.
 	if got := trustFile(t); !strings.Contains(got, `"`+strings.ToLower(origin)+`/app"`) {
 		t.Errorf("trust.json:\n%s", got)
 	}
@@ -182,7 +179,7 @@ func TestTrustCommands(t *testing.T) {
 			t.Errorf("%s = %q, %v; want %q", tc.args, out, err, tc.want)
 		}
 	}
-	// Untrusting a tap also drops its casks, as brew's untrust does.
+	// Untrusting a tap also drops its casks.
 	if out, _ := runCmd(t, e, "trust"); out != "All official taps and commands are trusted.\nTrusted casks:\n  other/tap/app\n" {
 		t.Errorf("trust listing = %q", out)
 	}

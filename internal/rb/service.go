@@ -10,10 +10,7 @@ import (
 	"strings"
 )
 
-// ServiceFiles are the launchd plist and systemd unit (and timer, for a timed
-// service) that brew's install_service writes into a keg, by file name. The
-// service block runs again as it would once the keg is linked, so paths in
-// the keg are opt paths. A service without a run command has none.
+// ServiceFiles are the launchd plist and systemd unit files brew's install_service writes, by file name.
 func (f *Formula) ServiceFiles(root string) (files map[string]string, err error) {
 	if f.b.serviceBlk == nil {
 		return nil, nil
@@ -35,7 +32,6 @@ func (f *Formula) ServiceFiles(root string) (files map[string]string, err error)
 	return files, nil
 }
 
-// catch turns the interpreter's panics into an error for the formula name.
 func catch(name string, err *error) {
 	r := recover()
 	switch x := r.(type) {
@@ -54,7 +50,7 @@ func catch(name string, err *error) {
 type renderedService struct {
 	sv   *serviceB
 	root string
-	os   string // macos or linux
+	os   string
 }
 
 func (s renderedService) get(k string) value {
@@ -65,8 +61,6 @@ func (s renderedService) get(k string) value {
 	return v
 }
 
-// str is a value as the service writes it: the prefix in place of its
-// placeholder, and ~ expanded as File.expand_path does.
 func (s renderedService) str(v value) string {
 	out := strings.ReplaceAll(str(v), PrefixPlaceholder, s.root)
 	if home, ok := lookupEnv("HOME"); ok && (out == "~" || strings.HasPrefix(out, "~/")) {
@@ -150,7 +144,6 @@ func (s renderedService) env() [][2]string {
 	return out
 }
 
-// cron is Service#parse_cron: the fields, with numbers where not "*".
 func (s renderedService) cron() [][2]string {
 	if s.sv.cron == "" {
 		return nil
@@ -271,11 +264,10 @@ func (s renderedService) sockets() pdict {
 	return out
 }
 
-// pdict is a plist dictionary, which the plist gem writes with sorted keys.
+// pdict is a plist dictionary, written with sorted keys.
 type pdict map[string]any
 
-// emitPlist writes v as the plist gem does: tab indents, and an empty
-// string or dictionary as an empty element.
+// emitPlist writes v as the plist gem does: tab indents, empty elements self-closed.
 func emitPlist(b *strings.Builder, v any, level int) {
 	ind := strings.Repeat("\t", level)
 	tag := func(name, contents string) {
@@ -320,10 +312,8 @@ func emitPlist(b *strings.Builder, v any, level int) {
 	}
 }
 
-// escapeHTML is Ruby's CGI.escapeHTML.
 var escapeHTML = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&#39;")
 
-// quoteSystemd is Utils::Service.systemd_quote.
 func quoteSystemd(s string) string {
 	r := strings.NewReplacer("\a", `\a`, "\b", `\b`, "\f", `\f`, "\n", `\n`, "\r", `\r`, "\t", `\t`, "\v", `\v`,
 		`\`, `\\`, `"`, `\"`)

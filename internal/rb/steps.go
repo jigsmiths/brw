@@ -5,8 +5,6 @@ import (
 	"strings"
 )
 
-// stepsDSL mirrors Homebrew::InstallSteps::DSL. In a cask every base defaults
-// to staged_path; a formula names each base.
 type stepsDSL struct {
 	steps   []value
 	guards  []value
@@ -324,7 +322,7 @@ func (d *stepsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		before := a(1)
 		if r, ok := before.(*regex); ok {
 			f.put("before", rstr(r.src))
-			f.put("regexp", yes) // regexp_options is left out when 0, as brew's is
+			f.put("regexp", yes)
 		} else {
 			f.put("before", before)
 		}

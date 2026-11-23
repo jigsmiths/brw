@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// GitHubAPI is where Unchanged asks about taps on GitHub.
 const GitHubAPI = "https://api.github.com"
 
 // Unchanged says whether the tap's branch on GitHub is still at the tap's
@@ -59,7 +58,6 @@ func Unchanged(ctx context.Context, client *http.Client, api string, t Tap) bool
 	return false
 }
 
-// githubRepo is the owner/repo of a GitHub remote.
 func githubRepo(remote string) (string, bool) {
 	for _, p := range []string{"https://github.com/", "git@github.com:", "ssh://git@github.com/"} {
 		if rest, ok := strings.CutPrefix(remote, p); ok {

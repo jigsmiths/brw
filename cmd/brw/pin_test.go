@@ -10,7 +10,6 @@ import (
 	"github.com/jigsmiths/brw/internal/install/installtest"
 )
 
-// pinStore has app installed and other known but not installed.
 func pinStore(t *testing.T) (*env, string) {
 	t.Helper()
 	s := newStore(t)

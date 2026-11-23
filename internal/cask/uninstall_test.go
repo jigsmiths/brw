@@ -12,17 +12,12 @@ import (
 	"testing"
 )
 
-// fakeExec records commands. osascript reports apps as running while
-// running says so; file commands run for real; anything else succeeds.
-// sudo runs its command with the folder it writes to unlocked for the
-// moment, and its chown makes a path fixable, as owning it would.
 type fakeExec struct {
 	calls   []string
-	running map[string]int // bundle ID: how many more checks find it running
+	running map[string]int
 	fail    map[string]bool
-	noFix   bool // chflags and chmod without sudo change nothing
-	// handle answers for a command in place of the default.
-	handle map[string]func(args []string) ([]byte, error)
+	noFix   bool
+	handle  map[string]func(args []string) ([]byte, error)
 }
 
 func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -35,7 +30,7 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 	}
 	switch name {
 	case "/usr/bin/sudo":
-		cmd := args[2:] // after -E --
+		cmd := args[2:]
 		target := cmd[len(cmd)-1]
 		if cmd[0] == "chown" {
 			_ = exec.CommandContext(ctx, "chflags", "-R", "0", target).Run()
@@ -56,7 +51,7 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 		return exec.CommandContext(ctx, name, args...).Output()
 	case "osascript":
 		id := args[len(args)-1]
-		if !strings.Contains(args[3], "app.quit()") { // the running check
+		if !strings.Contains(args[3], "app.quit()") {
 			if f.running[id] > 0 {
 				f.running[id]--
 				return nil, nil
@@ -127,7 +122,6 @@ func TestUninstallAppAndBinaries(t *testing.T) {
 	if !exists(filepath.Join(ti.prefix, "Caskroom")) || !exists(filepath.Join(ti.prefix, "bin")) {
 		t.Error("the Caskroom and bin should stay")
 	}
-	// The app was not running, so it was only checked.
 	if got := f.ran("osascript"); len(got) != 1 {
 		t.Errorf("osascript calls = %q", got)
 	}
@@ -300,7 +294,6 @@ func TestUninstallLeavesAFormulasBinary(t *testing.T) {
 	}
 }
 
-// lock makes a folder read only for the rest of the test.
 func lock(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.Chmod(dir, 0o555); err != nil {
@@ -330,7 +323,6 @@ func TestUninstallFromALockedAppFolder(t *testing.T) {
 	}
 }
 
-// lockedFile is a file whose user immutable flag stops its removal.
 func lockedFile(t *testing.T, path string) {
 	t.Helper()
 	if runtime.GOOS != "darwin" {
@@ -368,7 +360,7 @@ func TestPurgeTakesOwnershipWithSudo(t *testing.T) {
 	ti, f := installed(t, `[{"app":["App.app"]}]`)
 	version := filepath.Join(ti.prefix, "Caskroom/app/1.0")
 	lockedFile(t, filepath.Join(version, "locked"))
-	f.noFix = true // as if someone else owned it
+	f.noFix = true
 	ownedByOther = func(string, bool) bool { return true }
 	t.Cleanup(func() { ownedByOther = ownedByAnother })
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {

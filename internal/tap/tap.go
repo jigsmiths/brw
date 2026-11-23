@@ -25,13 +25,11 @@ type Tap struct {
 	Dir  string
 }
 
-// Dir is where brew keeps the tap called name.
 func Dir(prefix, name string) string {
 	user, repo, _ := strings.Cut(name, "/")
 	return filepath.Join(prefix, "Library", "Taps", user, "homebrew-"+repo)
 }
 
-// Split splits a full name such as jigsmiths/tap/brw into its tap and token.
 func Split(name string) (tap, token string, ok bool) {
 	parts := strings.Split(name, "/")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
@@ -40,7 +38,6 @@ func Split(name string) (tap, token string, ok bool) {
 	return strings.ToLower(parts[0] + "/" + parts[1]), parts[2], true
 }
 
-// List finds the taps of a prefix, sorted by name.
 func List(prefix string) ([]Tap, error) {
 	root := filepath.Join(prefix, "Library", "Taps")
 	users, err := os.ReadDir(root)
@@ -70,8 +67,7 @@ func List(prefix string) ([]Tap, error) {
 	return out, nil
 }
 
-// Casks are the tap's casks as brew loads them on the platform tag, such as
-// "arm64_tahoe". A cask file brw cannot evaluate is left out; Cask says why.
+// A cask file brw cannot evaluate is left out; Cask says why.
 func (t Tap) Casks(tag string) ([]api.Cask, error) {
 	files, err := t.caskFiles()
 	if err != nil {
@@ -89,7 +85,6 @@ func (t Tap) Casks(tag string) ([]api.Cask, error) {
 	return out, nil
 }
 
-// Cask loads the tap's cask called token, or says why brw cannot.
 func (t Tap) Cask(token, tag string) (api.Cask, error) {
 	files, err := t.caskFiles()
 	if err != nil {
@@ -149,8 +144,7 @@ func (t Tap) Remote() string {
 	return url
 }
 
-// Clone taps name from remote, as brew tap does. git writes the tap, so its
-// writes do not go through fsx.
+// git writes the tap, so its writes do not go through fsx.
 func Clone(ctx context.Context, prefix, name, remote string) (Tap, error) {
 	t := Tap{Name: name, Dir: Dir(prefix, name)}
 	if _, err := os.Stat(t.Dir); err == nil {
@@ -160,7 +154,6 @@ func Clone(ctx context.Context, prefix, name, remote string) (Tap, error) {
 	return t, err
 }
 
-// Pull fast-forwards the tap to its remote and says whether it moved.
 func Pull(ctx context.Context, t Tap) (changed bool, err error) {
 	before, err := run(ctx, t.Dir, "rev-parse", "HEAD")
 	if err != nil {

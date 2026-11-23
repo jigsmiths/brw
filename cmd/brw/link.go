@@ -57,8 +57,6 @@ func unlinkCommand(e *env, args []string) error {
 		})
 }
 
-// linkOrUnlink finds the kegs for the names, all before changing anything, and
-// applies do to each.
 func linkOrUnlink(e *env, names []string, prefixArg, journal string, dryRun bool, do func(*linker, cellar.Keg) error,
 	pick func(racks.Finder, string) cellar.Keg) (err error) {
 	prefix, err := filepath.Abs(prefixArg)
@@ -73,7 +71,7 @@ func linkOrUnlink(e *env, names []string, prefixArg, journal string, dryRun bool
 	finder := racks.Finder{Prefix: prefix, Kegs: kegs, Resolve: func(name string) (string, bool) {
 		idx, err := index()
 		if err != nil {
-			return name, true // no listing: report the missing keg
+			return name, true
 		}
 		f, ok := idx.Lookup(name)
 		if !ok {
@@ -232,7 +230,6 @@ func (l *linker) warn(format string, args ...any) {
 	_, _ = fmt.Fprintf(l.e.err, "brw: warning: "+format+"\n", args...)
 }
 
-// pathHint says how to use a keg-only formula without linking it.
 func (l *linker) pathHint(k cellar.Keg) {
 	var dirs []string
 	for _, d := range []string{"bin", "sbin"} {
@@ -248,7 +245,6 @@ func (l *linker) pathHint(k cellar.Keg) {
 
 const versionedReason = ":versioned_formula"
 
-// hostPrefix is where Homebrew installs on this host.
 func (e *env) hostPrefix() string {
 	if e.defaultPrefix != "" {
 		return e.defaultPrefix
@@ -256,7 +252,6 @@ func (e *env) hostPrefix() string {
 	return defaultPrefix(e.host)
 }
 
-// providedByMacOS says whether a keg-only reason is that macOS has its own copy.
 func providedByMacOS(reason string) bool {
 	return reason == ":provided_by_macos" || reason == ":shadowed_by_macos"
 }

@@ -179,7 +179,7 @@ func TestCleanupWithoutTheFormulaListing(t *testing.T) {
 	if err := os.Symlink("nowhere", filepath.Join(prefix, "bin/gone")); err != nil {
 		t.Fatal(err)
 	}
-	e.client = &api.Client{URL: "http://127.0.0.1:1", CacheDir: t.TempDir()} // offline, nothing cached
+	e.client = &api.Client{URL: "http://127.0.0.1:1", CacheDir: t.TempDir()}
 	out, err := runCmd(t, e, "cleanup", "-prefix", prefix)
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +252,7 @@ func TestCleanupOfANamedFormulaLeavesTheRestOfThePrefixAlone(t *testing.T) {
 	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "")
 	e, prefix := installed(t)
 	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "1")
-	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "app"); err != nil { // libx is unneeded now
+	if _, err := runCmd(t, e, "uninstall", "-prefix", prefix, "app"); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "")

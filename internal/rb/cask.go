@@ -18,12 +18,10 @@ import (
 )
 
 type platform struct {
-	os    string // macos or linux
-	arch  string // arm or intel
-	macos string // "27", "10.15"; empty on Linux
-	// host is the machine itself when it differs from the simulated platform:
-	// brew simulates only on_* blocks for formulae, not OS or Hardware::CPU.
-	host *platform
+	os    string
+	arch  string
+	macos string
+	host  *platform
 }
 
 func (p *platform) real() *platform {
@@ -33,19 +31,14 @@ func (p *platform) real() *platform {
 	return p
 }
 
-// ErrUnsupported is returned for a cask or formula file that uses Ruby brw
-// does not evaluate.
 var ErrUnsupported = errors.New("unsupported Ruby")
 
-// today and lookupEnv are what a cask can read from the machine; tests pin them.
 var (
 	today     = func() string { return time.Now().Format(time.DateOnly) }
 	lookupEnv = os.LookupEnv
 )
 
-// LoadCask evaluates a cask file as brew loads it on the platform tag, such as
-// "arm64_tahoe". Paths use the API's placeholders, such as $HOMEBREW_PREFIX.
-// A Ruby flight block becomes the install steps it amounts to.
+// LoadCask evaluates a cask file for the platform tag; flight blocks become install steps.
 func LoadCask(src []byte, tag string) (api.Cask, error) {
 	c, err := evaluate(src, tag)
 	if err != nil {
@@ -93,14 +86,11 @@ type artifact struct {
 	args   []value
 	target string
 	hasTgt bool
-	flight []value // install steps a Ruby flight block was translated to
+	flight []value
 }
 
-// flightDSL translates a Ruby flight block's commands and file operations into
-// install steps. `if File.exist?(path)` becomes a guard.
 type flightDSL struct{ st stepsDSL }
 
-// guardV is the value of File.exist? in a flight block, or of its negation.
 type guardV struct {
 	path   string
 	negate bool
@@ -245,7 +235,7 @@ func evalCask(prog []node, plat *platform) (c *caskB, err error) {
 		c.token = str(in.eval(call.args[0], top))
 		in.ctx = append(in.ctx, c)
 		in.run(call.block.body, &scope{vars: map[string]value{}, parent: top})
-		c.language(in) // as Cask#refresh does after the block
+		c.language(in)
 	}
 	if c.token == "" {
 		fail("no cask")
@@ -268,7 +258,6 @@ func (b *caskB) pick(arm, intel value, plat *platform) value {
 	return intel
 }
 
-// onCondition evaluates an on_* block's condition on plat, which may be simulated.
 func onCondition(name string, args []value, plat *platform) (bool, bool) {
 	switch name {
 	case "on_arm":
@@ -388,7 +377,6 @@ func resolveTarget(key, source, target string) string {
 	case "app_image":
 		return relocated[key] + "/" + target
 	}
-	// $HOMEBREW_PREFIX and $APPDIR stand for absolute paths
 	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "$") || key == "artifact" {
 		return expandHome(target)
 	}
@@ -688,7 +676,7 @@ func (b *caskB) call(in *interp, s *scope, c *callN, args []value, kw *hash) (va
 	case "livecheck", "no_autobump!":
 	case "token":
 		return rstr(b.token), true
-	case "cask": // the lexed @cask of a caveat
+	case "cask":
 		return caskRef{b}, true
 	case "appdir":
 		return rstr("$APPDIR"), true
@@ -754,7 +742,6 @@ func (b *caskB) language(in *interp) value {
 	if b.langDef == nil {
 		fail("no default language")
 	}
-	// The API's base hash is the default language's; the others are language_variations.
 	b.langDone = true
 	b.langEval = in.callBlock(b.langDef)
 	return b.langEval
@@ -1003,8 +990,6 @@ func (b *caskB) caveats() value {
 	return rstr(s)
 }
 
-// hash renders the fields of brew's Cask#to_h that brw reads. brew writes only
-// {"postflight": null} for a Ruby block; brw's form has its translated steps.
 func (b *caskB) hash(brew bool) *hash {
 	h := &hash{}
 	h.put("token", rstr(b.token))
@@ -1074,7 +1059,7 @@ func (b *caskB) artifactsList(brew bool) *arr {
 	out := &arr{}
 	for _, a := range arts {
 		h := &hash{}
-		if strings.HasSuffix(a.key, "flight") { // brew only records that the block exists
+		if strings.HasSuffix(a.key, "flight") {
 			h.put(a.key, nil)
 			out.v = append(out.v, h)
 			continue
@@ -1088,7 +1073,6 @@ func (b *caskB) artifactsList(brew bool) *arr {
 	return out
 }
 
-// compactBlank drops nil, false, empty strings and empty collections, as Rails' compact_blank.
 func compactBlank(vs []value) []value {
 	var out []value
 	for _, v := range vs {
