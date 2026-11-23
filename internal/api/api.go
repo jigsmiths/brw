@@ -63,7 +63,7 @@ type Formula struct {
 		Head struct {
 			URL    string `json:"url"`
 			Branch string `json:"branch"`
-			Using  string `json:"using"` // a strategy such as "git"; empty to detect it from the URL
+			Using  string `json:"using"`
 		} `json:"head"`
 	} `json:"urls"`
 	Deprecated           bool     `json:"deprecated"`
@@ -100,8 +100,7 @@ type Formula struct {
 	PostInstallSteps              []json.RawMessage             `json:"post_install_steps"`
 	PostInstallDefined            bool                          `json:"post_install_defined"`
 	Variations                    map[string]json.RawMessage    `json:"variations"`
-	// HeadDependencies are the head spec's, when they differ from stable's.
-	HeadDependencies HeadDeps `json:"head_dependencies"`
+	HeadDependencies              HeadDeps                      `json:"head_dependencies"`
 }
 
 type HeadDeps struct {

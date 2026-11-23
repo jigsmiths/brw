@@ -204,9 +204,9 @@ func headCommits(cached, commit string, fetched *bool) HeadCommit {
 	return func(_ *api.Formula, installed string, fetch bool) (HeadState, error) {
 		if fetch {
 			*fetched = true
-			return HeadState{Repository: true, Latest: commit, Newer: commit != installed}, nil
+			return HeadState{Latest: commit, Newer: commit != installed}, nil
 		}
-		return HeadState{Repository: true, Latest: cached}, nil
+		return HeadState{Latest: cached}, nil
 	}
 }
 

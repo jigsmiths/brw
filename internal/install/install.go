@@ -128,13 +128,13 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 				return nil, fmt.Errorf("%s: %w", f.FullName, err)
 			}
 			sources[f.Name] = h
-			plan.Items[i].PkgVersion = withRevision(h.version(), f.Revision)
+			plan.Items[i].PkgVersion = withRevision(h.headVersion(), f.Revision)
 		case it.Build:
-			archive, err := in.Fetcher.FetchSource(ctx, f.Name, it.PkgVersion, f.URLs.Stable.URL, f.URLs.Stable.Checksum)
+			p, err := in.Fetcher.FetchSource(ctx, f.Name, it.PkgVersion, f.URLs.Stable.URL, f.URLs.Stable.Checksum)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", f.FullName, err)
 			}
-			sources[f.Name] = buildSource{kind: stableArchive, url: f.URLs.Stable.URL, archive: archive}
+			sources[f.Name] = archive{url: f.URLs.Stable.URL, path: p}
 		}
 	}
 	next := 0

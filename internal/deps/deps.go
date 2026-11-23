@@ -26,7 +26,6 @@ type Resolver struct {
 	override map[string]*api.Formula
 }
 
-// Override has the resolver read f in place of the listing's formula of that name.
 func (r *Resolver) Override(f *api.Formula) {
 	if r.override == nil {
 		r.override = map[string]*api.Formula{}

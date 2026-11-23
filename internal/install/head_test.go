@@ -45,7 +45,7 @@ func TestFetchGitUpdatesItsClone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.revision != first || got.short != first[:7] || got.version() != "HEAD-"+first[:7] || got.dir != filepath.Join(cache, "tool--git") {
+	if got.revision != first || got.short != first[:7] || got.headVersion() != "HEAD-"+first[:7] || got.dir != filepath.Join(cache, "tool--git") {
 		t.Errorf("first fetch = %+v", got)
 	}
 	second := commitFile(t, repo, "a", "2")
@@ -123,7 +123,7 @@ func TestHeadsAskGitHubFirst(t *testing.T) {
 	hs := Heads{Cache: t.TempDir(), GitHubAPI: srv.URL, HTTP: srv.Client()}
 	f := githubTool(map[string]any{"url": "https://github.com/u/tool.git", "branch": "main"})
 
-	if s, err := hs.Check(t.Context(), f, "cf6a8f9", true); err != nil || s != (outdated.HeadState{Repository: true, Latest: "a82d0d6", Newer: true}) {
+	if s, err := hs.Check(t.Context(), f, "cf6a8f9", true); err != nil || s != (outdated.HeadState{Latest: "a82d0d6", Newer: true}) {
 		t.Errorf("a newer commit: %+v, %v", s, err)
 	}
 	if want := "HEAD /repos/u/tool/commits/main application/vnd.github.sha token secret"; len(*asked) == 0 || (*asked)[0] != want {
@@ -155,7 +155,7 @@ func TestHeadsFallBackToGitWhenGitHubCannotSay(t *testing.T) {
 	t.Setenv("HOMEBREW_NO_GITHUB_API", "")
 	hs := Heads{Cache: t.TempDir(), GitHubAPI: srv.URL, HTTP: srv.Client()}
 	f := githubTool(map[string]any{"url": "https://github.com/u/tool.git"})
-	if s, err := hs.Check(t.Context(), f, "cf6a8f9", false); err != nil || s != (outdated.HeadState{Repository: true}) {
+	if s, err := hs.Check(t.Context(), f, "cf6a8f9", false); err != nil || s != (outdated.HeadState{}) {
 		t.Errorf("no clone and no answer: %+v, %v", s, err)
 	}
 }

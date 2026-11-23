@@ -151,7 +151,7 @@ type formulaB struct {
 	license       value
 	stable, head  *spec
 	hasHead       bool
-	installHead   bool // UseHead was called: install the head spec at headVersion
+	installHead   bool
 	headVersion   string
 	cur           *spec
 	revision      int64

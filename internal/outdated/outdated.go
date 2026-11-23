@@ -31,11 +31,9 @@ type installed struct {
 	scheme  int
 }
 
-// HeadState is what a formula's head repository says about installed.
 type HeadState struct {
-	Repository bool   // false for a head brw cannot ask, which is never outdated
-	Latest     string // empty when unknown
-	Newer      bool   // set only when asked to fetch
+	Latest string
+	Newer  bool
 }
 
 type HeadCommit func(f *api.Formula, installed string, fetch bool) (HeadState, error)
@@ -261,7 +259,7 @@ func headOutdated(f *api.Formula, k cellar.Keg, o Options) (headVerdict, error) 
 	}
 	pv, _ := version.ParsePkg(k.Version)
 	s, err := o.Head(f, strings.TrimPrefix(pv.Version.String(), "HEAD-"), true)
-	if err != nil || !s.Repository {
+	if err != nil {
 		return headVerdict{}, err
 	}
 	return headVerdict{outdated: s.Newer, latest: s.Latest, fetched: true}, nil
@@ -270,7 +268,7 @@ func headOutdated(f *api.Formula, k cellar.Keg, o Options) (headVerdict, error) 
 type headVerdict struct {
 	outdated bool
 	latest   string
-	fetched  bool // latest came from asking the repository, not the cached clone
+	fetched  bool
 }
 
 func cachedCommit(f *api.Formula, o Options) string {

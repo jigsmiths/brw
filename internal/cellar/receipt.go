@@ -90,7 +90,6 @@ func (s Source) MarshalJSON() ([]byte, error) {
 
 func (r *Receipt) VersionScheme() int { return r.Source.scheme }
 
-// IsHeadBuild is false for a keg without a receipt.
 func (r *Receipt) IsHeadBuild() bool { return r != nil && r.Source.Spec == SpecHead }
 
 func ParseReceipt(b []byte) (*Receipt, error) {

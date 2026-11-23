@@ -77,7 +77,7 @@ type Planner struct {
 	Optlinked func(name string) bool
 	Now       time.Time // zero means now
 
-	HeadNames []string // names, as given, to build from their head spec
+	HeadNames []string
 
 	upgrading map[string]bool // count as not installed
 }

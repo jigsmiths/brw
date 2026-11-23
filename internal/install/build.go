@@ -187,9 +187,9 @@ func (in *Installer) build(ctx context.Context, it Item, fetched buildSource) (r
 		return Result{}, err
 	}
 	srcSHA, headVersion, version := f.URLs.Stable.Checksum, f.Versions.Head, f.Versions.Stable
-	if fetched.isHead() {
-		src.Formula.UseHead(fetched.version())
-		srcSHA, headVersion, version = "", fetched.version(), fetched.version()
+	if it.Head {
+		src.Formula.UseHead(fetched.headVersion())
+		srcSHA, headVersion, version = "", fetched.headVersion(), fetched.headVersion()
 	}
 	var old *oldKegs
 	if len(it.Upgrade) > 0 {
@@ -227,10 +227,12 @@ func (in *Installer) build(ctx context.Context, it Item, fetched buildSource) (r
 		}
 	}
 	stage, scratch := filepath.Join(top, "src"), filepath.Join(top, "resources")
-	if fetched.kind == headCheckout {
-		err = copyCheckout(fetched.dir, stage)
-	} else {
-		err = in.unpack(broot, fetched.archive, path.Base(fetched.url), stage)
+	var checkout gitCheckout
+	switch s := fetched.(type) {
+	case gitCheckout:
+		checkout, err = s, copyCheckout(s.dir, stage)
+	case archive:
+		err = in.unpack(broot, s.path, path.Base(s.url), stage)
 	}
 	if err != nil {
 		return Result{}, err
@@ -239,9 +241,9 @@ func (in *Installer) build(ctx context.Context, it Item, fetched buildSource) (r
 	if err != nil {
 		return Result{}, err
 	}
-	modified, commit := newestFile(bp), tarCommit(fetched.archive)
-	if fetched.kind == headCheckout {
-		modified, commit = fetched.time, fetched.revision
+	modified, commit := checkout.time, checkout.revision
+	if a, ok := fetched.(archive); ok {
+		modified, commit = newestFile(bp), tarCommit(a.path)
 	}
 	resources, files := map[string]string{}, map[string]string{}
 	for _, r := range src.Formula.Resources() {
@@ -299,8 +301,8 @@ func (in *Installer) build(ctx context.Context, it Item, fetched buildSource) (r
 		Stable: f.Versions.Stable, Head: headVersion, Scheme: f.VersionScheme, Compatibility: f.CompatibilityVersion,
 		Arch: it.Arch, BuiltOn: in.BuiltOn,
 	}
-	if fetched.isHead() {
-		b.HeadBuild, b.SCMRevision = true, fetched.revision
+	if it.Head {
+		b.HeadBuild, b.SCMRevision = true, checkout.revision
 	}
 	receipt, err := cellar.NewBuildReceipt(b)
 	if err != nil {
@@ -356,7 +358,7 @@ func (in *Installer) build(ctx context.Context, it Item, fetched buildSource) (r
 	if err := in.Root.WriteFile(path.Join(keg, ".brew", f.Name+".rb"), kept, 0o644); err != nil {
 		return Result{}, err
 	}
-	if err := in.writeBuiltSBOM(keg, f, version, fetched.url, srcSHA, modified, it.RuntimeDeps); err != nil {
+	if err := in.writeBuiltSBOM(keg, f, version, fetched.sourceURL(), srcSHA, modified, it.RuntimeDeps); err != nil {
 		return Result{}, err
 	}
 	return in.finish(it, keg, f.Aliases, old), nil
