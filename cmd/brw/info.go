@@ -14,6 +14,7 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/info"
 	"github.com/jigsmiths/brw/internal/outdated"
+	"github.com/jigsmiths/brw/internal/tap"
 )
 
 func infoCommand(e *env, args []string) error {
@@ -55,7 +56,11 @@ func infoCommand(e *env, args []string) error {
 		if err != nil {
 			return err
 		}
-		env = info.Env{Index: found.idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale}
+		env = info.Env{Index: found.idx, Host: e.host, Prefix: cellar.Prefix(*prefix), Kegs: kegs, Outdated: stale,
+			TapRemote: func(name string) (string, string) {
+				t := tap.Tap{Name: name, Dir: tap.Dir(*prefix, name)}
+				return t.Remote(), t.Dir
+			}}
 	}
 
 	if *asJSON {
@@ -123,6 +128,23 @@ func (e *env) lookupInfoItems(ctx context.Context, prefix string, kegs []cellar.
 				it := infoItem{formula: f}
 				if !strings.Contains(name, "/") {
 					it.formula, it.shadows = installedResolution(l.idx, kegs, f)
+				}
+				if !formulaOnly {
+					c, err := e.caskOverTapFormula(name, it.formula, func() (*api.CaskIndex, error) {
+						if l.casks == nil {
+							var err error
+							l.casks, err = e.caskIndex(ctx, prefix)
+							return l.casks, err
+						}
+						return l.casks, nil
+					})
+					if err != nil {
+						return l, err
+					}
+					if c != nil {
+						l.items = append(l.items, infoItem{cask: c})
+						continue
+					}
 				}
 				l.items = append(l.items, it)
 				continue

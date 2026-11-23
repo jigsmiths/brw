@@ -4,6 +4,7 @@ package info
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -32,6 +33,30 @@ type Env struct {
 	Kegs     []cellar.Keg
 	Outdated []outdated.Result
 	Now      time.Time // for deprecation dates; the zero value means the current time
+	// TapRemote gives a tap's origin URL, empty without one, and its folder.
+	TapRemote func(tap string) (remote, dir string)
+}
+
+var githubRemote = regexp.MustCompile(`^(?:https?://|git(?:@|://))github\.com[:/](.+)/(.+?)(?:\.git)?$`)
+
+// tapSourceLines are brew info's From and Tap lines for a tap formula, whose
+// file is at path in the tap: a GitHub link, the remote and path, or the
+// file itself when the tap has no remote. Official taps get no Tap line.
+func tapSourceLines(tap, remote, dir, path string) string {
+	var from string
+	switch m := githubRemote.FindStringSubmatch(remote); {
+	case remote == "":
+		from = filepath.Join(dir, path)
+	case m != nil:
+		from = "https://github.com/" + m[1] + "/" + m[2] + "/blob/HEAD/" + path
+	default:
+		from = remote + "/" + path
+	}
+	out := "From: " + from + "\n"
+	if user, _, _ := strings.Cut(tap, "/"); !strings.EqualFold(user, "homebrew") {
+		out += "Tap: " + tap + "\n"
+	}
+	return out
 }
 
 type keg struct {
@@ -142,7 +167,12 @@ func ShadowingText(f *api.Formula, env Env, shadows string) (string, error) {
 	} else {
 		b.WriteString(env.installStatus(f, kegs) + "\n")
 	}
-	fmt.Fprintf(&b, "From: %s/blob/HEAD/%s\n", coreRemote, f.RubySourcePath)
+	if f.FromTap() && env.TapRemote != nil {
+		remote, dir := env.TapRemote(f.Tap)
+		b.WriteString(tapSourceLines(f.Tap, remote, dir, f.RubySourcePath))
+	} else {
+		fmt.Fprintf(&b, "From: %s/blob/HEAD/%s\n", coreRemote, f.RubySourcePath)
+	}
 	if f.License != "" {
 		b.WriteString("License: " + f.License + "\n")
 	}
@@ -473,7 +503,7 @@ func (e Env) dependencies(f *api.Formula, kegs []keg, bottled bool) (string, err
 	if err != nil {
 		return "", err
 	}
-	typed, err := r.Typed(f.Name)
+	typed, err := r.Typed(f.FullName) // a tap's formula may share a core formula's name
 	if err != nil {
 		return "", err
 	}

@@ -138,6 +138,52 @@ func sizes(s string) string {
 	return strings.Join(out, "\n")
 }
 
+// A tap formula's source is its file in the tap's repository, as brew info's
+// github_info gives it, followed by the tap unless it is an official one.
+func TestTapSourceLines(t *testing.T) {
+	for _, tt := range []struct{ tap, remote, want string }{
+		{"hashicorp/tap", "https://github.com/hashicorp/homebrew-tap", "From: https://github.com/hashicorp/homebrew-tap/blob/HEAD/Formula/consul.rb\nTap: hashicorp/tap\n"},
+		{"u/t", "git@github.com:u/homebrew-t.git", "From: https://github.com/u/homebrew-t/blob/HEAD/Formula/consul.rb\nTap: u/t\n"},
+		{"u/t", "https://git.example.com/u/t", "From: https://git.example.com/u/t/Formula/consul.rb\nTap: u/t\n"},
+		{"u/t", "/srv/taps/t", "From: /srv/taps/t/Formula/consul.rb\nTap: u/t\n"},
+		{"u/t", "", "From: /p/Library/Taps/u/homebrew-t/Formula/consul.rb\nTap: u/t\n"},
+		{"homebrew/cask-fonts", "https://github.com/Homebrew/homebrew-cask-fonts", "From: https://github.com/Homebrew/homebrew-cask-fonts/blob/HEAD/Formula/consul.rb\n"},
+	} {
+		if got := tapSourceLines(tt.tap, tt.remote, "/p/Library/Taps/u/homebrew-t", "Formula/consul.rb"); got != tt.want {
+			t.Errorf("%s %s:\n%q\nwant %q", tt.tap, tt.remote, got, tt.want)
+		}
+	}
+}
+
+// A tap formula named like a core one is described with its own
+// dependencies, not the core formula's.
+func TestTapFormulaNamedLikeACoreOne(t *testing.T) {
+	noBottle := map[string]any{"stable": map[string]any{"files": map[string]any{}}}
+	idx := index(t, base("flux", formula{"build_dependencies": []string{"go"}, "bottle": noBottle}), base("go", nil))
+	tapFlux := base("flux", formula{"full_name": "u/t/flux", "tap": "u/t", "desc": "From a tap", "bottle": noBottle,
+		"ruby_source_path": "Formula/flux.rb"})
+	idx.AddTap("u/t", []string{"flux"}, nil, func(name string) (api.Formula, json.RawMessage, error) {
+		raw, err := json.Marshal(tapFlux)
+		if err != nil {
+			return api.Formula{}, nil, err
+		}
+		var f api.Formula
+		return f, raw, json.Unmarshal(raw, &f)
+	})
+	env := envFor(t, t.TempDir(), mac, idx)
+	env.TapRemote = func(string) (string, string) { return "https://github.com/u/homebrew-t", "/unused" }
+	got := text(t, "u/t/flux", env)
+	if strings.Contains(got, "go") {
+		t.Errorf("the tap formula shows the core formula's dependencies:\n%s", got)
+	}
+	if !strings.Contains(got, "From: https://github.com/u/homebrew-t/blob/HEAD/Formula/flux.rb\nTap: u/t\n") {
+		t.Errorf("source lines:\n%s", got)
+	}
+	if core := text(t, "flux", env); !strings.Contains(core, "Build (1): go") {
+		t.Errorf("the core formula lost its dependencies:\n%s", core)
+	}
+}
+
 func TestNotInstalled(t *testing.T) {
 	idx := index(t, base("zsh-lovers", formula{
 		"desc": "Tips, tricks, and examples for zsh", "homepage": "https://grml.org/zsh/#zshlovers", "license": "GPL-2.0-only",

@@ -136,6 +136,49 @@ func TestInstallRunsATapFormulasPostInstall(t *testing.T) {
 	}
 }
 
+// As brew's load_formula_or_cask does, a bare name that finds a formula only
+// in another tap is a cask when a cask has that name.
+func TestABareNameIsACaskOverAnotherTapsFormula(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOMEBREW_NO_REQUIRE_TAP_TRUST", "")
+	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
+	s := newStore(t)
+	s.formula(installtest.Bottle{Name: "app", Version: "1.0", Files: []installtest.File{file("bin/app", "app", 0o755)}}, nil, nil)
+	s.appCask("tool")
+	e, prefix := s.env()
+	origin := t.TempDir()
+	gitIn(t, origin, "init", "-q", "-b", "main")
+	writeTapFormula(t, origin, "tool", bottledTool(t, s.reg, "1.0"))
+	if _, err := tap.Clone(t.Context(), prefix, "u/t", origin); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runCmd(t, e, "trust", "-prefix", prefix, "u/t"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	warning := "Treating tool as a cask. For the formula, use u/t/tool or specify the `--formula` flag. To silence this message, use the `--cask` flag."
+	for _, args := range [][]string{{"info", "-prefix", prefix, "tool"}, {"install", "-n", "-prefix", prefix, "tool"}} {
+		e.err.(*bytes.Buffer).Reset()
+		out, err := runCmd(t, e, args[0], args[1:]...)
+		if err != nil {
+			t.Fatalf("%v: %v\n%s\n%s", args, err, out, e.err)
+		}
+		if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, warning) {
+			t.Errorf("%v: stderr lacks the warning:\n%s", args[0], w)
+		}
+		if strings.Contains(out, "u/t/tool") || !strings.Contains(out, "tool") {
+			t.Errorf("%v took the formula:\n%s", args[0], out)
+		}
+	}
+	e.err.(*bytes.Buffer).Reset()
+	if out, err := runCmd(t, e, "info", "-prefix", prefix, "u/t/tool"); err != nil || !strings.Contains(out, "==> u/t/tool:") {
+		t.Errorf("the full name is the formula: %v\n%s", err, out)
+	}
+	if out, err := runCmd(t, e, "info", "--formula", "-prefix", prefix, "tool"); err != nil || !strings.Contains(out, "==> u/t/tool:") ||
+		strings.Contains(e.err.(*bytes.Buffer).String(), "Treating") {
+		t.Errorf("--formula is the formula, without a warning: %v\n%s\n%s", err, out, e.err)
+	}
+}
+
 func TestUpgradeABottledTapFormula(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	if _, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/tool"); err != nil {

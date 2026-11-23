@@ -172,6 +172,26 @@ func olderVersion(a, b string) bool {
 	return va.Compare(vb) < 0
 }
 
+// caskOverTapFormula is brew's load_formula_or_cask for a bare name that
+// found f: a formula from a tap other than core gives way to a cask of that
+// name, with brew's warning.
+func (e *env) caskOverTapFormula(name string, f *api.Formula, casks func() (*api.CaskIndex, error)) (*api.Cask, error) {
+	if !f.FromTap() || strings.Contains(name, "/") {
+		return nil, nil
+	}
+	idx, err := casks()
+	if err != nil {
+		return nil, err
+	}
+	c, ok := idx.Lookup(name)
+	if !ok {
+		return nil, nil
+	}
+	_, _ = fmt.Fprintf(e.err, "brw: warning: Treating %s as a cask. For the formula, use %s or specify the `--formula` flag. "+
+		"To silence this message, use the `--cask` flag.\n", name, f.FullName)
+	return c, nil
+}
+
 func untrustedTapWarning(name string) string {
 	return fmt.Sprintf("brw: warning: Skipping %s because it is not trusted. Run `brw trust %s` to trust it.", name, name)
 }

@@ -98,18 +98,34 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 		}
 	}
 	var casks *api.CaskIndex
+	loadCasks := func() (*api.CaskIndex, error) {
+		if casks == nil {
+			var err error
+			casks, err = e.caskIndex(ctx, prefix)
+			return casks, err
+		}
+		return casks, nil
+	}
 	for _, name := range names {
 		if r.idx != nil {
-			if _, ok := r.idx.Lookup(name); ok {
+			if f, ok := r.idx.Lookup(name); ok {
+				if !formulaOnly {
+					c, err := e.caskOverTapFormula(name, f, loadCasks)
+					if err != nil {
+						return r, err
+					}
+					if c != nil {
+						r.casks = append(r.casks, *c)
+						continue
+					}
+				}
 				r.formulae = append(r.formulae, name)
 				continue
 			}
 		}
 		if !formulaOnly {
-			if casks == nil {
-				if casks, err = e.caskIndex(ctx, prefix); err != nil {
-					return r, err
-				}
+			if _, err := loadCasks(); err != nil {
+				return r, err
 			}
 			if tapName, token, ok := tap.Split(name); ok && !strings.HasPrefix(tapName, "homebrew/") {
 				c, err := e.tapCask(ctx, prefix, tapName, token)
