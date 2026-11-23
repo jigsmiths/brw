@@ -99,7 +99,7 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 		return nil, err
 	}
 
-	w := &planWalk{p: p, r: r, hostTag: hostTag, plan: &Plan{}, position: map[string]int{}, skipped: map[string]bool{}}
+	w := &planWalk{p: p, r: r, hostTag: hostTag, plan: &Plan{}, visited: map[string]bool{}, skipped: map[string]bool{}}
 	for _, name := range names {
 		f, ok := p.Index.Lookup(name)
 		if !ok {
@@ -129,14 +129,14 @@ type planWalk struct {
 	hostTag  string
 	plan     *Plan
 	problems []error
-	position map[string]int  // formula name to index in plan.Items
+	visited  map[string]bool // set before the dependencies are walked, so a cycle ends
 	skipped  map[string]bool // installed formulae met on the way
 }
 
 // visit adds f, unless it is installed, after its dependencies that are not.
 func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	p, r := w.p, w.r
-	if _, ok := w.position[f.Name]; ok {
+	if w.visited[f.Name] {
 		return nil
 	}
 	if installed, err := p.installed(f); err != nil {
@@ -149,7 +149,7 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 		w.skipped[f.Name] = true
 		return nil
 	}
-	w.position[f.Name] = -1 // guards against a dependency cycle
+	w.visited[f.Name] = true
 	direct, err := r.Direct(f.Name)
 	if err != nil {
 		return err
@@ -166,7 +166,6 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 			return err
 		}
 	}
-	w.position[f.Name] = len(w.plan.Items)
 	g, err := f.ForTag(w.hostTag)
 	if err != nil {
 		return err
