@@ -21,7 +21,8 @@ func TestFixLinkageIsBrewsFixDynamicLinkage(t *testing.T) {
 	t.Cleanup(func() { _ = r.Close() })
 	const built = "Cellar/tool/1.0"
 	kegAbs := filepath.Join(prefix, built)
-	build := "/private/tmp/tool-20261123-1/tool-1.0"
+	// not under /tmp, where the prefix itself is on Linux
+	build := "/brw-build/tool-20261123-1/tool-1.0"
 	files := map[string]string{
 		// A library linked in the build directory gets its opt ID and a
 		// @loader_path name for its neighbour.
@@ -41,7 +42,7 @@ func TestFixLinkageIsBrewsFixDynamicLinkage(t *testing.T) {
 		"bin/tool": macho(typeExecute,
 			dylib(cmdLoad, "libtool.1.dylib"),
 			dylib(cmdLoad, build+"/sub/.libs/libdeep.dylib"),
-			dylib(cmdLoad, "/tmp/tool-20261123-1/missing.dylib"),
+			dylib(cmdLoad, "/brw-build/tool-20261123-1/missing.dylib"),
 			dylib(cmdLoad, prefix+"/opt/dep/lib/libdep.dylib"),
 		),
 		"libexec/plugin.so": macho(typeBundle, dylib(cmdLoad, "/usr/lib/libSystem.B.dylib")),
@@ -57,7 +58,7 @@ func TestFixLinkageIsBrewsFixDynamicLinkage(t *testing.T) {
 	}
 	var warnings []string
 	modified, err := FixLinkage(r, built, Linkage{
-		Prefix: prefix, BuildDirs: []string{"/private/tmp"},
+		Prefix: prefix, BuildDirs: []string{"/brw-build"},
 		Warn: func(s string) { warnings = append(warnings, s) },
 	})
 	if err != nil {
@@ -95,7 +96,7 @@ func TestFixLinkageIsBrewsFixDynamicLinkage(t *testing.T) {
 		t.Errorf("helper id = %q", id)
 	}
 	want := []string{kegAbs + "/lib/libtool.1.dylib", kegAbs + "/lib/sub/libdeep.dylib",
-		"/tmp/tool-20261123-1/missing.dylib", prefix + "/opt/dep/lib/libdep.dylib"}
+		"/brw-build/tool-20261123-1/missing.dylib", prefix + "/opt/dep/lib/libdep.dylib"}
 	for _, name := range []string{"bin/tool", "bin/tool-link"} {
 		if got := parse(name).Dylibs(); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s dylibs = %v\nwant %v", name, got, want)
@@ -104,7 +105,20 @@ func TestFixLinkageIsBrewsFixDynamicLinkage(t *testing.T) {
 	if fi, _ := os.Stat(filepath.Join(kegAbs, "bin/tool")); fi.Mode().Perm() != 0o444 {
 		t.Errorf("mode = %v", fi.Mode().Perm())
 	}
-	if want := []string{"Could not fix /tmp/tool-20261123-1/missing.dylib in " + kegAbs + "/bin/tool"}; !reflect.DeepEqual(warnings, want) {
+	if want := []string{"Could not fix /brw-build/tool-20261123-1/missing.dylib in " + kegAbs + "/bin/tool"}; !reflect.DeepEqual(warnings, want) {
 		t.Errorf("warnings = %q", warnings)
+	}
+}
+
+// CMake writes /tmp for /private/tmp, so brew counts both as the build's.
+func TestInBuildDirCoversTmpForPrivateTmp(t *testing.T) {
+	x := &fixer{l: Linkage{BuildDirs: []string{"/private/tmp"}}}
+	for name, want := range map[string]bool{
+		"/private/tmp/tool-1/lib/a.dylib": true, "/tmp/tool-1/lib/a.dylib": true,
+		"/private/tmpfoo/a.dylib": false, "/usr/local/lib/a.dylib": false,
+	} {
+		if got := x.inBuildDir(name); got != want {
+			t.Errorf("inBuildDir(%s) = %v, want %v", name, got, want)
+		}
 	}
 }
