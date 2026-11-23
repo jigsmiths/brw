@@ -91,7 +91,7 @@ func (e *env) item(spec installtest.Bottle, onRequest, kegOnly bool, extra map[s
 	cellarKind := ":any"
 	return Item{
 		Formula: formulaJSON(e.t, spec.Name, extra), Tag: "arm64_tahoe", HostTag: "arm64_tahoe", Bottle: e.reg.Add(spec, cellarKind),
-		PkgVersion: spec.Version, OnRequest: onRequest, KegOnly: kegOnly,
+		PkgVersion: spec.Version, OnRequest: onRequest, KegOnly: kegOnly, Link: !kegOnly,
 	}
 }
 
@@ -604,7 +604,7 @@ func (e *env) installOld(linked bool, onRequest bool) Item {
 	}
 	it := e.item(jq, onRequest, false, nil)
 	it.Upgrade = kegs
-	it.Linked = &linked
+	it.Link = linked
 	return it
 }
 
@@ -724,7 +724,7 @@ func TestUpgradeKeepsGoingAfterAFormulaFails(t *testing.T) {
 	}
 	linked := true
 	second := e.item(installtest.Bottle{Name: "tool", Version: "1.0", Files: []installtest.File{file("bin/tool", "new", 0o755)}}, true, false, nil)
-	second.Upgrade, second.Linked = toolKegs, &linked
+	second.Upgrade, second.Link = toolKegs, linked
 	if err := os.MkdirAll(filepath.Join(e.prefix, "Cellar/jq/1.0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -919,7 +919,7 @@ func TestUpgradeUpdatesTheSBOMToo(t *testing.T) {
 	e := newEnv(t)
 	old := e.installOld(true, true)
 	upgrade := e.item(sbomBottle(`{"packages":[{"name":"extra"}]}`), true, false, nil)
-	upgrade.Upgrade, upgrade.Linked = old.Upgrade, old.Linked
+	upgrade.Upgrade, upgrade.Link = old.Upgrade, old.Link
 	if _, err := e.install(upgrade); err != nil {
 		t.Fatal(err)
 	}
@@ -939,7 +939,7 @@ func (e *env) installCurrent(linked bool) Item {
 		e.t.Fatal(err)
 	}
 	it := e.item(jq, true, false, nil)
-	it.Upgrade, it.Linked, it.Reinstall = kegs, &linked, true
+	it.Upgrade, it.Link, it.Reinstall = kegs, linked, true
 	return it
 }
 
@@ -1014,7 +1014,7 @@ func TestReinstallThatFailsRestoresTheOldKegAndLinksIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	broken := e.item(brokenJq(), true, false, nil)
-	broken.Upgrade, broken.Linked, broken.Reinstall = it.Upgrade, it.Linked, true
+	broken.Upgrade, broken.Link, broken.Reinstall = it.Upgrade, it.Link, true
 	if _, err := e.install(broken); err == nil {
 		t.Fatal("the unsafe archive should fail")
 	}
@@ -1032,7 +1032,7 @@ func TestReinstallThatFailsLeavesAnUnlinkedKegUnlinked(t *testing.T) {
 	e := newEnv(t)
 	it := e.installCurrent(false)
 	broken := e.item(brokenJq(), true, false, nil)
-	broken.Upgrade, broken.Linked, broken.Reinstall = it.Upgrade, it.Linked, true
+	broken.Upgrade, broken.Link, broken.Reinstall = it.Upgrade, it.Link, true
 	if _, err := e.install(broken); err == nil {
 		t.Fatal("expected a failure")
 	}

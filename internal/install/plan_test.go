@@ -511,8 +511,8 @@ func TestPlanUpgradeCarriesOverHowTheOldKegWasInstalled(t *testing.T) {
 		t.Errorf("on request: asked = %v, needed = %v; each keeps what its old receipt said", asked.OnRequest, needed.OnRequest)
 	}
 	for _, it := range plan.Items {
-		if len(it.Upgrade) != 1 || it.Upgrade[0].Version != "0.9" || it.Linked == nil || !*it.Linked {
-			t.Errorf("%s: upgrade = %v, linked = %v", it.Formula.Name, it.Upgrade, it.Linked)
+		if len(it.Upgrade) != 1 || it.Upgrade[0].Version != "0.9" || !it.Link {
+			t.Errorf("%s: upgrade = %v, link = %v", it.Formula.Name, it.Upgrade, it.Link)
 		}
 		if it.PkgVersion != "1.0" {
 			t.Errorf("%s: version = %s", it.Formula.Name, it.PkgVersion)
@@ -524,8 +524,8 @@ func TestPlanUpgradeCarriesOverHowTheOldKegWasInstalled(t *testing.T) {
 func TestPlanUpgradeKeepsAnUnlinkedKegUnlinked(t *testing.T) {
 	idx := index(t, f("app"))
 	plan, errs := upgradePlanner(t, idx, false, keg("app", "0.9")).PlanUpgrade([]string{"app"})
-	if len(errs) != 0 || plan.Items[0].Linked == nil || *plan.Items[0].Linked {
-		t.Errorf("errs = %v, linked = %v: brew leaves it unlinked", errs, plan.Items[0].Linked)
+	if len(errs) != 0 || plan.Items[0].Link {
+		t.Errorf("errs = %v, link = %v: brew leaves it unlinked", errs, plan.Items[0].Link)
 	}
 }
 
@@ -535,22 +535,22 @@ func TestPlanUpgradeLinksAKegWithoutAnOptLink(t *testing.T) {
 	p := upgradePlanner(t, idx, false, keg("app", "0.9"))
 	p.Optlinked = func(string) bool { return false }
 	plan, errs := p.PlanUpgrade([]string{"app"})
-	if len(errs) != 0 || plan.Items[0].Linked == nil || !*plan.Items[0].Linked {
-		t.Errorf("errs = %v, linked = %v: brew links it", errs, plan.Items[0].Linked)
+	if len(errs) != 0 || !plan.Items[0].Link {
+		t.Errorf("errs = %v, link = %v: brew links it", errs, plan.Items[0].Link)
 	}
 }
 
 func TestPlanUpgradeKeepsAnUnlinkedKegOnlyKegUnlinked(t *testing.T) {
 	idx := index(t, with(f("app"), "keg_only", true))
 	plan, errs := upgradePlanner(t, idx, false, keg("app", "0.9")).PlanUpgrade([]string{"app"})
-	if len(errs) != 0 || plan.Items[0].Linked == nil || *plan.Items[0].Linked {
-		t.Errorf("errs = %v, linked = %v: keg-only formulae stay unlinked", errs, plan.Items[0].Linked)
+	if len(errs) != 0 || plan.Items[0].Link {
+		t.Errorf("errs = %v, link = %v: keg-only formulae stay unlinked", errs, plan.Items[0].Link)
 	}
 }
 
 func TestPlanUpgradeAFreshInstallHasNothingToCarryOver(t *testing.T) {
 	plan, err := planner(t, mac, index(t, f("app"))).Plan([]string{"app"})
-	if err != nil || plan.Items[0].Upgrade != nil || plan.Items[0].Linked != nil {
+	if err != nil || plan.Items[0].Upgrade != nil || !plan.Items[0].Link {
 		t.Errorf("a plain install: %+v, %v", plan.Items[0], err)
 	}
 }
@@ -653,7 +653,7 @@ func TestPlanReinstallPlansAFormulaWhoseCurrentVersionIsInstalled(t *testing.T) 
 		t.Fatalf("plan = %v, errs = %v", names(plan), errs)
 	}
 	for _, it := range plan.Items {
-		if !it.Reinstall || len(it.Upgrade) != 1 || it.Upgrade[0].Version != "1.0" || it.Linked == nil || !*it.Linked {
+		if !it.Reinstall || len(it.Upgrade) != 1 || it.Upgrade[0].Version != "1.0" || !it.Link {
 			t.Errorf("%s: %+v", it.Formula.Name, it)
 		}
 	}
@@ -667,7 +667,7 @@ func TestPlanReinstallOfAnOutdatedFormulaIsAnUpgradeToo(t *testing.T) {
 	if len(errs) != 0 || plan.Items[0].PkgVersion != "1.0" || !plan.Items[0].Reinstall || plan.Items[0].Upgrade[0].Version != "0.9" {
 		t.Fatalf("errs = %v, item = %+v", errs, plan.Items[0])
 	}
-	if plan.Items[0].Linked == nil || !*plan.Items[0].Linked {
+	if !plan.Items[0].Link {
 		t.Error("the reinstalled keg should stay linked")
 	}
 }
@@ -678,7 +678,7 @@ func TestPlanReinstallOfAFormulaThatIsNotInstalledIsAPlainInstall(t *testing.T) 
 		t.Fatalf("plan = %v, errs = %v", names(plan), errs)
 	}
 	for _, it := range plan.Items {
-		if it.Reinstall || it.Upgrade != nil || it.Linked != nil {
+		if it.Reinstall || it.Upgrade != nil {
 			t.Errorf("%s has nothing to reinstall: %+v", it.Formula.Name, it)
 		}
 	}

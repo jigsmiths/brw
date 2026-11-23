@@ -55,11 +55,10 @@ type Item struct {
 	KegOnly    bool
 	Warnings   []string
 
-	// Upgrade holds the kegs of the older versions this one replaces, and Linked
-	// whether to link the new keg, which an upgrade takes from the old one. Both
-	// are unset for a fresh install.
+	// Link says whether to link the new keg: not keg-only, or for an upgrade what the old keg had.
+	Link bool
+	// Upgrade holds the kegs of the older versions this one replaces, unset for a fresh install.
 	Upgrade []cellar.Keg
-	Linked  *bool
 	// Reinstall puts the old keg aside, installs afresh, and deletes the old keg once that worked.
 	Reinstall bool
 }
@@ -176,6 +175,7 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 		return err
 	}
 	it := Item{Formula: f, HostTag: w.hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)}
+	it.Link = !it.KegOnly
 	if p.builds(f) {
 		it.BuildDeps = f.BuildDependencies
 	}
@@ -332,11 +332,9 @@ func (p *Planner) markUpgrades(plan *Plan, reinstall bool) {
 		it.OnRequest = current.Receipt != nil && current.Receipt.InstalledOnRequest
 		// brew keeps an opt-linked keg linked or unlinked as it was, else links
 		// unless keg-only (upgrade.rb).
-		linked := !it.KegOnly
 		if p.Optlinked(it.Formula.Name) {
-			linked = p.Linked(it.Formula.Name)
+			it.Link = p.Linked(it.Formula.Name)
 		}
-		it.Linked = &linked
 	}
 }
 
