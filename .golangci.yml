@@ -5,7 +5,14 @@ linters:
   enable:
     - errorlint
     - misspell
+    - nolintlint
     - unconvert
+
+  settings:
+    nolintlint:
+      allow-unused: true
+      require-explanation: true
+      require-specific: true
 
 formatters:
   enable:

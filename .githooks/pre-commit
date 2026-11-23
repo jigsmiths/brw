@@ -13,5 +13,9 @@ if [ -n "$(go fix -diff ./...)" ]; then
   echo "pre-commit: run go fix ./..." >&2
   exit 1
 fi
+if git grep -nI -e "$(printf '\342\200\224')"; then
+  echo "pre-commit: remove the em dashes above" >&2
+  exit 1
+fi
 golangci-lint run ./...
 go test ./...
