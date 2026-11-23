@@ -13,7 +13,7 @@ import (
 
 // rawEntry is an API entry as the server sends it, with the keys in this order.
 const rawEntry = `{"name":"jq","full_name":"jq","tap":"homebrew/core","desc":"a < b & c","versions":{"stable":"1.0","head":null,"bottle":true},` +
-	`"bottle":{"stable":{"rebuild":0,"root_url":"https://r","files":{"arm64_golden_gate":{"cellar":":any","url":"u1","sha256":"s1"},"arm64_tahoe":{"cellar":":any","url":"u2","sha256":"s2"}}}},` +
+	`"bottle":{"stable":{"rebuild":0,"root_url":"https://r","manifest_sha256":"m1","files":{"arm64_golden_gate":{"cellar":":any","url":"u1","sha256":"s1"},"arm64_tahoe":{"cellar":":any","url":"u2","sha256":"s2"}}}},` +
 	`"dependencies":["a"],"caveats":"see $HOMEBREW_CELLAR/jq and $HOMEBREW_PREFIX/etc","installed":[],"linked_keg":null,"pinned":false,"outdated":false,` +
 	`"service":{"run":["$HOMEBREW_PREFIX/opt/jq/bin/jq"],"log":"$HOMEBREW_CELLAR/x"},"executables":["jq"],"variations":{"arm64_golden_gate":{"dependencies":["a","b"]}},` +
 	`"vulnerabilities":[],"ruby_source_path":"Formula/j/jq.rb"}`
@@ -60,6 +60,10 @@ func TestJSONKeysAndOverrides(t *testing.T) {
 	}
 	if got := string(o.vals["bottle"]); !strings.Contains(got, `"arm64_golden_gate"`) || strings.Contains(got, "arm64_tahoe") {
 		t.Errorf("bottle should only hold this host's file: %s", got)
+	}
+	// brew loads formulae from its internal API, which has no manifest_sha256 to show.
+	if got := string(o.vals["bottle"]); strings.Contains(got, "manifest_sha256") {
+		t.Errorf("bottle kept manifest_sha256: %s", got)
 	}
 }
 

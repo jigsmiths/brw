@@ -64,7 +64,7 @@ func CaskText(c *api.Cask, env CaskEnv) (string, error) {
 	}
 	b.WriteString(cask.Version)
 	if cask.AutoUpdates {
-		b.WriteString(" (auto_updates)")
+		b.WriteString(" (auto updates)")
 	}
 	b.WriteByte('\n')
 
@@ -255,6 +255,9 @@ func caskRequirements(c api.Cask) string {
 		}
 		reqs = append(reqs, arch+" architecture")
 	}
+	if l := c.DependsOn.Linux; len(l) > 0 && string(l) != "null" {
+		reqs = append(reqs, "Linux")
+	}
 	if m := c.DependsOn.MacOS; m != nil {
 		if len(m.Versions) == 0 {
 			reqs = append(reqs, "macOS")
@@ -444,14 +447,13 @@ Note that it is very difficult to remove Rosetta 2 once it is installed.
 func CaskDeprecation(c *api.Cask, now time.Time) string {
 	var kind, reason string
 	switch {
-	case c.Deprecated:
-		kind, reason = "Deprecated", c.DeprecationReason
 	case c.Disabled:
 		kind, reason = "Disabled", c.DisableReason
+	case c.Deprecated:
+		kind, reason = "Deprecated", c.DeprecationReason
 	default:
 		return ""
 	}
-	// Brew names the kind deprecated first but takes a disabled cask's replacement first.
 	replacement := replacementWithType(c.DeprecationReplacementFormula, c.DeprecationReplacementCask)
 	if c.Disabled {
 		replacement = replacementWithType(c.DisableReplacementFormula, c.DisableReplacementCask)
