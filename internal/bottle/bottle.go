@@ -134,6 +134,23 @@ func (f *Fetcher) Fetch(ctx context.Context, req Request) (Result, error) {
 	return Result{Path: path, Tab: ann.tab, SBOMSupplement: ann.supplement}, nil
 }
 
+// FetchSource downloads a formula's source, such as a release archive, into
+// the cache under name and version, reusing one that still matches sha256.
+func (f *Fetcher) FetchSource(ctx context.Context, name, version, url, sha256 string) (string, error) {
+	base := url[strings.LastIndex(url, "/")+1:]
+	if i := strings.IndexAny(base, "?#"); i >= 0 {
+		base = base[:i]
+	}
+	path := filepath.Join(f.Dir, name+"--"+version+"--"+base)
+	if verified(path, sha256) {
+		return path, nil
+	}
+	if err := os.MkdirAll(f.Dir, 0o755); err != nil { //fsx:allow download cache
+		return "", err
+	}
+	return path, f.download(ctx, name+" ("+version+")", api.BottleFile{URL: url, SHA256: sha256}, path)
+}
+
 // fetchPlain fetches a bottle served outside a registry, as a tap's root_url
 // may be. It has no manifest, so its tab is its own INSTALL_RECEIPT.json, as
 // brew reads it, and no registry token is sent.
@@ -262,6 +279,10 @@ func (f *Fetcher) download(ctx context.Context, name string, file api.BottleFile
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != file.SHA256 {
 		return fmt.Errorf("%s: sha256 is %s, want %s", file.URL, got, file.SHA256)
+	}
+	// keep the server's time, as curl --remote-time does for brew
+	if when, err := http.ParseTime(resp.Header.Get("Last-Modified")); err == nil {
+		_ = os.Chtimes(tmp.Name(), when, when) //fsx:allow download cache
 	}
 	return os.Rename(tmp.Name(), path) //fsx:allow download cache
 }

@@ -1094,16 +1094,30 @@ func TestInstallLocksTheDependenciesInThePlan(t *testing.T) {
 	}
 }
 
-func TestSentence(t *testing.T) {
-	names := func(n ...string) []bottle.Request {
-		var reqs []bottle.Request
-		for _, name := range n {
-			reqs = append(reqs, bottle.Request{Name: name})
+// A build sees only what brew lets through to its builds, as bin/brew
+// filters the environment before anything runs.
+func TestBuildEnvironmentIsFilteredLikeBrews(t *testing.T) {
+	t.Setenv("HOME", "/home/me")
+	t.Setenv("HOMEBREW_GITHUB_API_TOKEN", "t")
+	t.Setenv("BUN_INSTALL", "/elsewhere")
+	t.Setenv("GOPATH", "/go")
+	env := buildEnv(map[string]string{"PATH": "/p/bin:/usr/bin", "X": "1"})
+	want := map[string]bool{"HOME=/home/me": true, "HOMEBREW_GITHUB_API_TOKEN=t": true, "PATH=/p/bin:/usr/bin": true, "X=1": true}
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "BUN_INSTALL=") || strings.HasPrefix(kv, "GOPATH=") {
+			t.Errorf("%s got through", kv)
 		}
-		return reqs
+		delete(want, kv)
 	}
+	if len(want) > 0 {
+		t.Errorf("missing %v from %v", want, env)
+	}
+}
+
+func TestSentence(t *testing.T) {
+	names := func(n ...string) []string { return n }
 	for _, c := range []struct {
-		in   []bottle.Request
+		in   []string
 		want string
 	}{
 		{names("jq"), "jq"},

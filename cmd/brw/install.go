@@ -19,6 +19,7 @@ import (
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/progress"
+	"github.com/jigsmiths/brw/internal/rb"
 	"github.com/jigsmiths/brw/internal/tap"
 	"github.com/jigsmiths/brw/internal/trust"
 )
@@ -300,9 +301,56 @@ func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) er
 		return errors.Join(append(failures, err)...)
 	}
 	err = withRoot(prefix, journal, func(root *fsx.Root) error {
-		return runInstall(e, root, prefix, filepath.Join(client.CacheDir, "downloads"), plan)
+		return runInstall(e, root, prefix, filepath.Join(client.CacheDir, "downloads"), plan, withBuilds(e, prefix, idx, client))
 	})
 	return errors.Join(append(failures, err)...)
+}
+
+// withBuilds lets the installer build a tap formula that has no bottle for
+// this host, as brew does: from its formula file, recording this machine.
+func withBuilds(e *env, prefix string, idx *api.Index, client *api.Client) func(*install.Installer) {
+	return func(in *install.Installer) {
+		tag, _ := platform.Tag(e.host)
+		in.Version, _ = buildInfo()
+		in.BuiltOn = buildSystem()
+		in.LoadSource = func(f *api.Formula) (install.Source, error) {
+			file := filepath.Join(tap.Dir(prefix, f.Tap), filepath.FromSlash(f.RubySourcePath))
+			code, err := os.ReadFile(file)
+			if err != nil {
+				return install.Source{}, err
+			}
+			rf, err := rb.LoadFormula(code, f.Name, tag)
+			if err != nil {
+				return install.Source{}, err
+			}
+			return install.Source{Formula: rf, Path: file, Code: code}, nil
+		}
+		in.DepInfo = func(fullName string) (pkgVersion, license, url, sha string) {
+			d, ok := idx.Lookup(fullName)
+			if !ok {
+				return "", "", "", ""
+			}
+			pkgVersion, license = pkgVersionOf(d.Versions.Stable, d.Revision), d.License
+			bottleTag, ok := platform.Select(e.host, d.BottleTags())
+			if !ok {
+				return pkgVersion, license, "", ""
+			}
+			var file api.BottleFile
+			var err error
+			if d.FromTap() {
+				file, err = idx.TapBottle(d.FullName, bottleTag)
+			} else {
+				var files map[string]api.BottleFile
+				if files, err = client.Bottles(map[string]string{d.Name: bottleTag}); err == nil {
+					file = files[d.Name]
+				}
+			}
+			if err != nil {
+				return pkgVersion, license, "", ""
+			}
+			return pkgVersion, license, file.URL, file.SHA256
+		}
+	}
 }
 
 // runInstall carries out a plan and reports what went wrong. opts adjust the

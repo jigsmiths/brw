@@ -29,15 +29,21 @@ const DefaultURL = "https://formulae.brew.sh/api/formula.jws.json"
 
 // Formula is an entry of the formula listing, with the fields brw uses.
 type Formula struct {
-	Name                 string   `json:"name"`
-	FullName             string   `json:"full_name"`
-	Desc                 string   `json:"desc"`
-	Homepage             string   `json:"homepage"`
-	License              string   `json:"license"`
-	Caveats              string   `json:"caveats"`
-	RubySourcePath       string   `json:"ruby_source_path"`
-	TapGitHead           string   `json:"tap_git_head"`          // a tap formula's tap commit
-	CompatibilityVersion int      `json:"compatibility_version"` // 0 when the formula sets none
+	Name                 string `json:"name"`
+	FullName             string `json:"full_name"`
+	Desc                 string `json:"desc"`
+	Homepage             string `json:"homepage"`
+	License              string `json:"license"`
+	Caveats              string `json:"caveats"`
+	RubySourcePath       string `json:"ruby_source_path"`
+	TapGitHead           string `json:"tap_git_head"`          // a tap formula's tap commit
+	CompatibilityVersion int    `json:"compatibility_version"` // 0 when the formula sets none
+	URLs                 struct {
+		Stable struct {
+			URL      string `json:"url"`
+			Checksum string `json:"checksum"`
+		} `json:"stable"`
+	} `json:"urls"`
 	Deprecated           bool     `json:"deprecated"`
 	Disabled             bool     `json:"disabled"`
 	DeprecationReason    string   `json:"deprecation_reason"`

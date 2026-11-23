@@ -46,10 +46,12 @@ type Item struct {
 	// from the formula as brew does. Nil leaves the bottle's list as it is.
 	RuntimeDeps []cellar.Dependency
 	Bottle      api.BottleFile
-	PkgVersion  string // version and revision, which names the keg directory
-	OnRequest   bool   // asked for by name, not only needed by something else
-	KegOnly     bool
-	Warnings    []string
+	// Build installs a tap formula from its download, as it has no bottle for this host.
+	Build      bool
+	PkgVersion string // version and revision, which names the keg directory
+	OnRequest  bool   // asked for by name, not only needed by something else
+	KegOnly    bool
+	Warnings   []string
 
 	// Upgrade holds the kegs of the older versions this one replaces, and Linked
 	// whether to link the new keg, which an upgrade takes from the old one. Both
@@ -485,7 +487,10 @@ func (p *Planner) check(it *Item, problems *[]error) {
 		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.Name, ErrPostInstall, strings.Join(u, ", ")))
 	}
 	tag, ok := platform.Select(p.Host, f.BottleTags())
-	if !ok {
+	switch {
+	case !ok && f.FromTap() && f.URLs.Stable.URL != "" && p.Host.OS == "darwin":
+		it.Build = true // as brew does, from the formula's download
+	case !ok:
 		hostTag, _ := platform.Tag(p.Host)
 		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.FullName, ErrNoBottle, hostTag))
 	}

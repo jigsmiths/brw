@@ -66,6 +66,26 @@ func LoadFormula(src []byte, name, tag string) (*Formula, error) {
 	return &Formula{b}, nil
 }
 
+// SkipClean are the formula's skip_clean paths, relative to its prefix; a
+// symbol such as :la is written with its colon.
+func (f *Formula) SkipClean() []string { return f.b.skipClean }
+
+// symListKeep flattens skip_clean's arguments, keeping symbols apart from paths.
+func symListKeep(args []value) []string {
+	var out []string
+	for _, a := range args {
+		switch x := a.(type) {
+		case *arr:
+			out = append(out, symListKeep(x.v)...)
+		case sym:
+			out = append(out, ":"+string(x))
+		default:
+			out = append(out, str(x))
+		}
+	}
+	return out
+}
+
 // MarshalJSON writes brew's Formula#to_hash for what the file decides. The
 // tap supplies the rest: full_name, tap, aliases, oldnames, versioned_formulae
 // and where the file came from.
@@ -426,9 +446,7 @@ func (b *formulaB) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 	case "deprecate!", "disable!":
 		b.lifecycle(c.name, kw)
 	case "skip_clean":
-		for _, a := range args {
-			b.skipClean = append(b.skipClean, str(a))
-		}
+		b.skipClean = append(b.skipClean, symListKeep(args)...)
 	case "include":
 		if len(args) != 1 {
 			fail("include")

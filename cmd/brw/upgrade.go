@@ -201,12 +201,12 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 		upgradeNames[i] = r.FullName
 	}
 	plan, planErrs := planner.PlanUpgrade(upgradeNames)
-	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures)
+	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures, withBuilds(e, prefix, idx, client))
 }
 
 // applyPlan shows or carries out the plan, cleaning up old kegs after each
 // formula. what ends the "cannot be ..." message, for example "upgraded".
-func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error) error {
+func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error, builds func(*install.Installer)) error {
 	for _, err := range planErrs {
 		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 	}
@@ -225,7 +225,7 @@ func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what stri
 		return errors.Join(append(failures, printPlan(e, prefix, plan))...)
 	}
 	err := withRoot(prefix, journal, func(root *fsx.Root) error {
-		return runInstall(e, root, prefix, downloads, plan, func(in *install.Installer) {
+		return runInstall(e, root, prefix, downloads, plan, builds, func(in *install.Installer) {
 			in.KeepGoing = true
 			in.After = func(it install.Item, _ install.Result) { cleanAfterUpgrade(e, root, prefix, it) }
 		})

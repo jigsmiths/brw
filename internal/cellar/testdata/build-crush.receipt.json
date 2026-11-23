@@ -1,0 +1,37 @@
+{
+  "homebrew_version": "7.0.15-111-ge40c695",
+  "used_options": [],
+  "unused_options": [],
+  "built_as_bottle": false,
+  "poured_from_bottle": false,
+  "loaded_from_api": false,
+  "loaded_from_internal_api": false,
+  "installed_on_request": true,
+  "changed_files": null,
+  "time": 1795420582,
+  "source_modified_time": 1795109067,
+  "compiler": "clang",
+  "aliases": [],
+  "runtime_dependencies": [],
+  "source": {
+    "tap": "charmbracelet/tap",
+    "tap_git_head": "279dec178983eb547a45fd7aa46c40856daa1c94",
+    "spec": "stable",
+    "path": "/prefix/Library/Taps/charmbracelet/homebrew-tap/crush.rb",
+    "versions": {
+      "stable": "0.102.0",
+      "head": null,
+      "version_scheme": 0,
+      "compatibility_version": null
+    }
+  },
+  "arch": "arm64",
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27.2",
+    "cpu_family": "arm_firestorm_icestorm",
+    "xcode": null,
+    "clt": "27.2.0.0.1792721180",
+    "preferred_perl": "5.34"
+  }
+}

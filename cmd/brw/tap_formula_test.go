@@ -197,20 +197,3 @@ func TestOutdatedWarnsAboutAFormulaBrwCannotRead(t *testing.T) {
 		t.Errorf("stderr = %q", w)
 	}
 }
-
-// Until brw installs from a tap's downloads, a formula without a bottle for
-// this host cannot be upgraded; it is named by its tap.
-func TestUpgradeOfATapFormulaWithoutABottle(t *testing.T) {
-	e, prefix, _ := tapFormulaStore(t)
-	trustTap(t, e, prefix, "u/t")
-	tapKeg(t, prefix, "tool", "0.9", "u/t")
-	if _, err := runCmd(t, e, "upgrade", "-prefix", prefix, "tool"); err == nil {
-		t.Error("upgraded a formula with no bottle")
-	}
-	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, "u/t/tool: no bottle for this host") {
-		t.Errorf("stderr = %q", w)
-	}
-	if !exists(t, prefix, "Cellar/tool/0.9") {
-		t.Error("the keg went away")
-	}
-}

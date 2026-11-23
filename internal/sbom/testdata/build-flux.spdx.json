@@ -1,0 +1,79 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "spdxVersion": "SPDX-2.3",
+  "name": "SBOM-SPDX-flux-2.10.1",
+  "creationInfo": {
+    "created": "2026-11-20T13:05:50Z",
+    "creators": [
+      "Tool: https://github.com/Homebrew/brew"
+    ]
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://formulae.brew.sh/spdx/flux-2.10.1.json",
+  "documentDescribes": [
+    "SPDXRef-Archive-flux-src",
+    "SPDXRef-Compiler"
+  ],
+  "files": [
+    {
+      "SPDXID": "SPDXRef-File-flux",
+      "fileName": "flux_2.10.1_darwin_arm64.tar.gz",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c0a8dc285c568905ae38e25074985f3181c82a3c8d66316959561f27a626909d"
+        }
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Archive-flux-src",
+      "name": "flux",
+      "versionInfo": "2.10.1",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "builtDate": "2026-11-20T13:05:50Z",
+      "licenseConcluded": "NOASSERTION",
+      "downloadLocation": "https://github.com/fluxcd/flux2/releases/download/v2.10.1/flux_2.10.1_darwin_arm64.tar.gz",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:brew/fluxcd/tap/flux@2.10.1",
+          "referenceType": "purl"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "c0a8dc285c568905ae38e25074985f3181c82a3c8d66316959561f27a626909d"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Compiler",
+      "name": "clang",
+      "versionInfo": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "checksums": [],
+      "externalRefs": []
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-File-flux",
+      "relationshipType": "PACKAGE_OF",
+      "relatedSpdxElement": "SPDXRef-Archive-flux-src"
+    },
+    {
+      "spdxElementId": "SPDXRef-Compiler",
+      "relationshipType": "BUILD_TOOL_OF",
+      "relatedSpdxElement": "SPDXRef-Archive-flux-src"
+    }
+  ]
+}

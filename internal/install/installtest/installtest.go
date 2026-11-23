@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -119,6 +120,47 @@ func (r *Registry) AddPlain(b Bottle, tag, cellar string) api.BottleFile {
 	file := b.Name + "-" + b.Version + "." + tag + ".bottle.tar.gz"
 	r.plain[file] = digest
 	return api.BottleFile{Cellar: cellar, SHA256: digest, URL: r.URL + "/plain/" + file}
+}
+
+// AddSource serves a formula's download, such as a release tarball, and
+// returns its URL and checksum.
+func (r *Registry) AddSource(file string, body []byte) (url, sha256 string) {
+	digest := r.store(body)
+	r.plain[file] = digest
+	return r.URL + "/plain/" + file, digest
+}
+
+// Tarball is a tar.gz of files, by path, as a release archive holds them.
+// A body starting with #! is executable.
+func Tarball(t testing.TB, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	names := make([]string, 0, len(files))
+	for n := range files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		mode := int64(0o644)
+		if strings.HasPrefix(files[n], "#!") {
+			mode = 0o755
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: n, Mode: mode, Size: int64(len(files[n])), ModTime: modTime, Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(files[n])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 // PlainRoot is the root_url of bottles AddPlain serves.

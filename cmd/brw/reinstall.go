@@ -57,5 +57,5 @@ func reinstallCommand(e *env, args []string) error {
 		},
 	}
 	plan, planErrs := planner.PlanReinstall(formulae)
-	return applyPlan(e, prefix, *journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "reinstalled", plan, planErrs, nil)
+	return applyPlan(e, prefix, *journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "reinstalled", plan, planErrs, nil, withBuilds(e, prefix, idx, client))
 }

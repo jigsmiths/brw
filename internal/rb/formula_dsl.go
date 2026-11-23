@@ -150,16 +150,20 @@ func (b *bottleB) hash(name, pkgVersion string) *hash {
 
 // instanceDSL answers what a Formula instance knows: its paths, name and
 // version. Paths use the API's placeholders.
-type instanceDSL struct{ f *formulaB }
+type instanceDSL struct {
+	f    *formulaB
+	root string // the Homebrew prefix: PrefixPlaceholder, or the real one while installing
+}
 
-func (b *formulaB) instance() *instanceDSL { return &instanceDSL{b} }
+func (b *formulaB) instance() *instanceDSL { return &instanceDSL{f: b, root: PrefixPlaceholder} }
 
 func (d *instanceDSL) prefix() string {
-	return PrefixPlaceholder + "/Cellar/" + d.f.name + "/" + d.f.pkgVersion()
+	return d.root + "/Cellar/" + d.f.name + "/" + d.f.pkgVersion()
 }
 
 // formulaPath gives a Formula's path method relative to prefix, or false.
-func formulaPath(prefix, optPrefix, name, method string) (string, bool) {
+// root is the Homebrew prefix, for the paths outside the keg.
+func formulaPath(prefix, optPrefix, name, root, method string) (string, bool) {
 	sub := map[string]string{
 		"bin": "bin", "sbin": "sbin", "lib": "lib", "libexec": "libexec", "share": "share", "include": "include",
 		"frameworks": "Frameworks", "kext_prefix": "Library/Extensions", "man": "share/man", "info": "share/info",
@@ -177,13 +181,15 @@ func formulaPath(prefix, optPrefix, name, method string) (string, bool) {
 	case "opt_prefix":
 		return optPrefix, true
 	case "etc":
-		return PrefixPlaceholder + "/etc", true
+		return root + "/etc", true
 	case "pkgetc":
-		return PrefixPlaceholder + "/etc/" + name, true
+		return root + "/etc/" + name, true
 	case "var":
-		return PrefixPlaceholder + "/var", true
+		return root + "/var", true
 	case "rack":
-		return PrefixPlaceholder + "/Cellar/" + name, true
+		return root + "/Cellar/" + name, true
+	case "HOMEBREW_PREFIX":
+		return root, true
 	}
 	if rel, ok := sub[method]; ok {
 		return path.Join(prefix, rel), true
@@ -210,7 +216,7 @@ func (d *instanceDSL) call(in *interp, s *scope, c *callN, args []value, kw *has
 		}
 		return in.run(c.block.body, &scope{vars: map[string]value{}, parent: s}), true
 	}
-	if p, ok := formulaPath(d.prefix(), PrefixPlaceholder+"/opt/"+f.name, f.name, c.name); ok && len(args) == 0 {
+	if p, ok := formulaPath(d.prefix(), d.root+"/opt/"+f.name, f.name, d.root, c.name); ok && len(args) == 0 {
 		return rstr(p), true
 	}
 	switch c.name {
@@ -239,7 +245,7 @@ func (passwd) rubyValue() {}
 
 // formulaRef is Formula["name"] in a formula: another formula, of which
 // only the opt paths are known before it is installed.
-type formulaRef struct{ name string }
+type formulaRef struct{ name, root string }
 
 func (formulaRef) rubyValue() {}
 
@@ -247,7 +253,7 @@ func (r formulaRef) method(name string) value {
 	if !strings.HasPrefix(name, "opt_") {
 		fail("Formula[%q].%s", r.name, name)
 	}
-	p, ok := formulaPath("", PrefixPlaceholder+"/opt/"+r.name, r.name, name)
+	p, ok := formulaPath("", r.root+"/opt/"+r.name, r.name, r.root, name)
 	if !ok {
 		fail("Formula[%q].%s", r.name, name)
 	}

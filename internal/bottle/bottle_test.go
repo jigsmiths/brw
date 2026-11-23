@@ -379,6 +379,25 @@ func TestFetchReportsDownloadProgress(t *testing.T) {
 	}
 }
 
+// A source download keeps the server's time, as brew's curl --remote-time
+// does; a formula's source_modified_time can come from it.
+func TestFetchSourceKeepsTheServersTime(t *testing.T) {
+	when := time.Date(2026, 10, 26, 14, 49, 20, 0, time.UTC)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Last-Modified", when.Format(http.TimeFormat))
+		_, _ = w.Write([]byte("binary"))
+	}))
+	t.Cleanup(srv.Close)
+	sum := sha256.Sum256([]byte("binary"))
+	path, err := fetcher(t).FetchSource(context.Background(), "tool", "1.0", srv.URL+"/tool-darwin-arm64", hex.EncodeToString(sum[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || !fi.ModTime().Equal(when) || filepath.Base(path) != "tool--1.0--tool-darwin-arm64" {
+		t.Errorf("%s: %v, %v", path, fi.ModTime(), err)
+	}
+}
+
 // A tap's bottle outside GitHub Packages has no manifest: brew reads the tab
 // from the bottle's own receipt, and sends no registry token.
 func TestFetchAPlainBottleReadsItsOwnReceipt(t *testing.T) {

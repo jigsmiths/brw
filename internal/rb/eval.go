@@ -216,8 +216,9 @@ type dsl interface {
 }
 
 type interp struct {
-	plat *platform
-	ctx  []dsl
+	plat  *platform
+	ctx   []dsl
+	build *builder // set while a formula's install method runs
 }
 
 func (in *interp) run(body []node, s *scope) value {
@@ -383,7 +384,7 @@ func (in *interp) eval(n node, s *scope) value {
 		for _, a := range x.args {
 			args = append(args, in.eval(a, s))
 		}
-		return index(recv, args)
+		return in.index(recv, args)
 	case *callN:
 		return in.evalCall(x, s)
 	case *caseN:
@@ -476,7 +477,7 @@ func caseEq(pat, v value) bool {
 
 func (in *interp) constant(name string) value {
 	switch name {
-	case "MacOS", "OS", "Hardware::CPU", "ENV", "Pathname", "File", "Dir", "Formula", "Etc", "Process":
+	case "MacOS", "OS", "Hardware::CPU", "ENV", "Pathname", "File", "Dir", "Formula", "Etc", "Process", "FileUtils", "Utils":
 		return special(name)
 	case "HOMEBREW_PREFIX":
 		return rstr("$HOMEBREW_PREFIX")
@@ -621,15 +622,38 @@ func cmpOp(op string, c int) bool {
 	return false
 }
 
+// index is recv[args], which while a formula installs can read the real
+// files and environment.
+func (in *interp) index(recv value, args []value) value {
+	if x, ok := recv.(special); ok && len(args) == 1 {
+		switch {
+		case x == "Formula":
+			root := PrefixPlaceholder
+			if in.build != nil {
+				root = in.build.env.Prefix
+			}
+			return formulaRef{name: str(args[0]), root: root}
+		case x == "Dir" && in.build != nil:
+			return in.build.glob(str(args[0]))
+		case x == "ENV" && in.build != nil:
+			if v, ok := in.build.env.Env[str(args[0])]; ok {
+				return rstr(v)
+			}
+			if v, ok := lookupEnv(str(args[0])); ok {
+				return rstr(v)
+			}
+			return nil
+		}
+	}
+	return index(recv, args)
+}
+
 func index(recv value, args []value) value {
 	switch x := recv.(type) {
 	case special:
 		if x == "Dir" {
 			// Dir[] globs staged files when brew loads the cask; none exist before install
 			return &arr{}
-		}
-		if x == "Formula" && len(args) == 1 {
-			return formulaRef{str(args[0])}
 		}
 	case *arr:
 		if len(args) == 1 {
@@ -737,6 +761,13 @@ func rubySub(s string) string {
 }
 
 func (in *interp) method(recv value, name string, args []value, blk *proc) value {
+	if in.build != nil {
+		if s, ok := recv.(rstr); ok {
+			if v, ok := in.build.pathMethod(in, string(s), name, args, blk); ok {
+				return v
+			}
+		}
+	}
 	switch x := recv.(type) {
 	case caskRef:
 		if name == "url" {
@@ -1077,6 +1108,11 @@ func compareMac(a, b string) int {
 }
 
 func (in *interp) specialMethod(x special, name string, args []value) value {
+	if b := in.build; b != nil {
+		if v, ok := b.classMethod(x, name, args); ok {
+			return v
+		}
+	}
 	if f := in.flight(); f != nil && x == "File" && name != "expand_path" {
 		return f.file(in, nil, name, args)
 	}

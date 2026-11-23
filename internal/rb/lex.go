@@ -332,6 +332,15 @@ func (l *lexer) regexAllowed(space bool) bool {
 
 func (l *lexer) number(space bool) {
 	st := l.i
+	if l.peek(0) == '0' && strings.ContainsRune("xXoObB", l.peek(1)) {
+		// 0x1f, 0o755, 0b101: the parser reads the prefix
+		l.i += 2
+		for l.i < len(l.src) && (isIdent(l.src[l.i])) {
+			l.i++
+		}
+		l.emit(token{k: tInt, s: strings.ReplaceAll(string(l.src[st:l.i]), "_", ""), spaceBef: space})
+		return
+	}
 	isFloat := false
 	for l.i < len(l.src) && (unicode.IsDigit(l.src[l.i]) || l.src[l.i] == '_' || (l.src[l.i] == '.' && unicode.IsDigit(l.peek(1)) && !isFloat)) {
 		if l.src[l.i] == '.' {

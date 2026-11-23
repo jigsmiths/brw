@@ -521,7 +521,8 @@ func (p *parser) primary() node {
 	switch t.k {
 	case tInt:
 		p.i++
-		v, err := strconv.ParseInt(t.s, 10, 64)
+		// base 0 reads Ruby's literals: 0755 and 0o755 octal, 0x hex, 0b binary
+		v, err := strconv.ParseInt(t.s, 0, 64)
 		if err != nil {
 			p.fail("integer %s", t.s)
 		}
