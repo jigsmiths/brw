@@ -289,7 +289,7 @@ func isSubsequence(sub, lines []string) bool {
 // uninstalled ones.
 func infoNames(t *testing.T, e *env) []string {
 	t.Helper()
-	idx, err := e.index(t.Context())
+	idx, err := e.index(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

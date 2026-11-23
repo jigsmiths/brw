@@ -118,7 +118,7 @@ func autoremoveCommand(e *env, args []string) error {
 // config file hints and build dependencies, so it is loaded when needed and
 // removing things works without it.
 func newRemover(e *env, root *fsx.Root, prefix string, kegs []cellar.Keg, dryRun bool) *uninstall.Remover {
-	index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background()) })
+	index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background(), prefix) })
 	return &uninstall.Remover{
 		Root: root, Prefix: prefix, Linker: &link.Linker{Root: root, Prefix: prefix}, Kegs: kegs,
 		Resolve: func(name string) (string, bool) {

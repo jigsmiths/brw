@@ -69,7 +69,7 @@ func linkOrUnlink(e *env, names []string, prefixArg, journal string, dryRun bool
 	if err != nil {
 		return err
 	}
-	index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background()) })
+	index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background(), prefix) })
 	finder := racks.Finder{Prefix: prefix, Kegs: kegs, Resolve: func(name string) (string, bool) {
 		idx, err := index()
 		if err != nil {

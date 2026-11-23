@@ -12,7 +12,8 @@ import (
 
 // Result is an outdated formula, as brew outdated reports it.
 type Result struct {
-	Name              string
+	Name              string // the rack
+	FullName          string // tap/name for a tap's formula, as brew prints it
 	InstalledVersions []string
 	CurrentVersion    string
 	Pinned            bool
@@ -26,22 +27,14 @@ type installed struct {
 	scheme  int
 }
 
-// Check returns the outdated formulae, sorted by name. Formulae the API does
-// not know under that exact name, or that were installed from another tap, are
-// skipped.
+// Check returns the outdated formulae, sorted by name. A rack is checked
+// against the formula of the tap its kegs came from; one the index has no
+// formula for is skipped, and OtherTap names it.
 func Check(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg) ([]Result, error) {
-	byName := map[string][]cellar.Keg{}
-	for _, k := range kegs {
-		byName[k.Name] = append(byName[k.Name], k)
-	}
 	var out []Result
-	for name, group := range byName {
-		f, ok := idx.Lookup(name)
-		if !ok || f.Name != name {
-			continue
-		}
-		group = FromTap(group, f.Tap)
-		if len(group) == 0 {
+	for name, group := range racks(kegs) {
+		f, group, ok := Formula(idx, name, group)
+		if !ok {
 			continue
 		}
 		r, outdated, err := evaluate(prefix, f, group)
@@ -52,24 +45,53 @@ func Check(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg) ([]Result, e
 			out = append(out, r)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool { return out[i].FullName < out[j].FullName })
 	return out, nil
 }
 
-// OtherTap returns, sorted, the racks Check skips because all their kegs came
-// from a tap other than the listing's.
-func OtherTap(idx *api.Index, kegs []cellar.Keg) []string {
+func racks(kegs []cellar.Keg) map[string][]cellar.Keg {
 	byName := map[string][]cellar.Keg{}
 	for _, k := range kegs {
 		byName[k.Name] = append(byName[k.Name], k)
 	}
-	var out []string
-	for name, group := range byName {
-		tap := "homebrew/core"
-		if f, ok := idx.Lookup(name); ok && f.Name == name {
-			tap = f.Tap
+	return byName
+}
+
+// KegTap is the tap a rack's kegs came from when it is not homebrew/core and
+// they agree on it, else "".
+func KegTap(kegs []cellar.Keg) string {
+	tap := ""
+	for _, k := range kegs {
+		if k.Receipt == nil || k.Receipt.Source.Tap == "" || k.Receipt.Source.Tap == "homebrew/core" {
+			return ""
 		}
-		if len(FromTap(group, tap)) == 0 {
+		if tap != "" && k.Receipt.Source.Tap != tap {
+			return ""
+		}
+		tap = k.Receipt.Source.Tap
+	}
+	return tap
+}
+
+// Formula is the formula a rack was installed from, as Formulary.from_keg
+// finds it: its tap's when its kegs came from one, else the API's under that
+// exact name. kegs are those of the rack from that formula's tap.
+func Formula(idx *api.Index, name string, group []cellar.Keg) (*api.Formula, []cellar.Keg, bool) {
+	tap := KegTap(group)
+	f, ok := idx.LookupFrom(tap, name)
+	if !ok || f.Name != name {
+		return nil, nil, false
+	}
+	group = FromTap(group, f.Tap)
+	return f, group, len(group) > 0
+}
+
+// OtherTap returns, sorted, the racks Check skips because the index has no
+// formula for the tap their kegs came from.
+func OtherTap(idx *api.Index, kegs []cellar.Keg) []string {
+	var out []string
+	for name, group := range racks(kegs) {
+		if _, _, ok := Formula(idx, name, group); !ok && KegTap(group) != "" {
 			out = append(out, name)
 		}
 	}
@@ -145,7 +167,10 @@ func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg) (Result, 
 		}
 		return a.pkg.Compare(b.pkg)
 	})
-	r := Result{Name: f.Name, CurrentVersion: latest.String(), Pinned: pinned, PinnedVersion: pinnedVersion}
+	r := Result{Name: f.Name, FullName: f.FullName, CurrentVersion: latest.String(), Pinned: pinned, PinnedVersion: pinnedVersion}
+	if r.FullName == "" {
+		r.FullName = f.Name
+	}
 	for _, in := range all {
 		r.InstalledVersions = append(r.InstalledVersions, in.version)
 	}

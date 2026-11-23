@@ -108,7 +108,7 @@ func TestUpToDate(t *testing.T) {
 
 func TestOlderKegIsOutdated(t *testing.T) {
 	got := check(t, index(t, formula{name: "jq", version: "1.9"}), prefix(t, keg{name: "jq", version: "1.8", linked: true}))
-	want := []Result{{Name: "jq", InstalledVersions: []string{"1.8"}, CurrentVersion: "1.9"}}
+	want := []Result{{Name: "jq", FullName: "jq", InstalledVersions: []string{"1.8"}, CurrentVersion: "1.9"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -195,7 +195,7 @@ func TestHeadKegIsNotOutdated(t *testing.T) {
 func TestPinnedFormulaIsListedWithItsPin(t *testing.T) {
 	p := prefix(t, keg{name: "jq", version: "1.7", linked: true, pinned: true})
 	got := check(t, index(t, formula{name: "jq", version: "1.8"}), p)
-	want := []Result{{Name: "jq", InstalledVersions: []string{"1.7"}, CurrentVersion: "1.8", Pinned: true, PinnedVersion: "1.7"}}
+	want := []Result{{Name: "jq", FullName: "jq", InstalledVersions: []string{"1.7"}, CurrentVersion: "1.8", Pinned: true, PinnedVersion: "1.7"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}

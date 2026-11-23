@@ -134,6 +134,40 @@ func TestLoadFormulaRefusesRubyItCannotTranslate(t *testing.T) {
 	}
 }
 
+func TestCaveatsAnswerOnSystemBlocks(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	src := "class Foo < Formula\n  url \"https://example.com/foo-1.0.tar.gz\"\n  def caveats\n    on_macos do\n      \"mac\"\n    end\n  end\nend\n"
+	for tag, want := range map[string]any{"arm64_golden_gate": "mac", "x86_64_linux": nil} {
+		f, err := LoadFormula([]byte(src), "foo", tag)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := json.Marshal(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var h map[string]any
+		_ = json.Unmarshal(b, &h)
+		if h["caveats"] != want {
+			t.Errorf("%s: caveats %v, want %v", tag, h["caveats"], want)
+		}
+	}
+}
+
+// def caveats runs only when the hash is made; Ruby it cannot run there is
+// refused like any other.
+func TestCaveatsRubyItCannotRunIsRefused(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	src := "class Foo < Formula\n  url \"https://example.com/foo-1.0.tar.gz\"\n  def caveats\n    File.read(\"/etc/x\")\n  end\nend\n"
+	f, err := LoadFormula([]byte(src), "foo", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := json.Marshal(f); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("err = %v, want ErrUnsupported", err)
+	}
+}
+
 func TestLoadFormulaDetectsTheVersionFromTheURL(t *testing.T) {
 	asBrewHost(t, "brewuser")
 	f, err := LoadFormula([]byte("class Foo < Formula\n  url \"https://example.com/foo-1.2.3.tar.gz\"\n  revision 2\nend\n"), "foo", "arm64_golden_gate")

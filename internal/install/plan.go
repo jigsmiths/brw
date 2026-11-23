@@ -476,7 +476,7 @@ func (p *Planner) check(it *Item, problems *[]error) {
 	tag, ok := platform.Select(p.Host, f.BottleTags())
 	if !ok {
 		hostTag, _ := platform.Tag(p.Host)
-		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.Name, ErrNoBottle, hostTag))
+		*problems = append(*problems, fmt.Errorf("%s: %w (%s)", f.FullName, ErrNoBottle, hostTag))
 	}
 	it.Tag = tag
 	for _, name := range f.ConflictsWith {

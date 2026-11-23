@@ -69,7 +69,18 @@ func LoadFormula(src []byte, name, tag string) (*Formula, error) {
 // MarshalJSON writes brew's Formula#to_hash for what the file decides. The
 // tap supplies the rest: full_name, tap, aliases, oldnames, versioned_formulae
 // and where the file came from.
-func (f *Formula) MarshalJSON() ([]byte, error) { return json.Marshal(f.b.hash()) }
+func (f *Formula) MarshalJSON() (b []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			u, ok := r.(unsupported)
+			if !ok {
+				panic(r)
+			}
+			err = fmt.Errorf("%s: %w", f.b.name, u)
+		}
+	}()
+	return json.Marshal(f.b.hash())
+}
 
 // spec is a SoftwareSpec: the stable or head download, or a resource.
 type spec struct {

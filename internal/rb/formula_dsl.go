@@ -201,6 +201,15 @@ func (d *instanceDSL) call(in *interp, s *scope, c *callN, args []value, kw *has
 	if def, ok := f.defs[c.name]; ok {
 		return in.callDef(def, args, kw, s), true
 	}
+	if ok, isOn := onCondition(c.name, args, in.plat); isOn {
+		if c.block == nil {
+			fail("%s without block", c.name)
+		}
+		if !ok {
+			return nil, true
+		}
+		return in.run(c.block.body, &scope{vars: map[string]value{}, parent: s}), true
+	}
 	if p, ok := formulaPath(d.prefix(), PrefixPlaceholder+"/opt/"+f.name, f.name, c.name); ok && len(args) == 0 {
 		return rstr(p), true
 	}

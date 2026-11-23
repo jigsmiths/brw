@@ -27,7 +27,7 @@ func reinstallCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	idx, client, err := e.indexAndClient(context.Background())
+	idx, client, err := e.indexAndClient(context.Background(), prefix)
 	if err != nil {
 		return err
 	}

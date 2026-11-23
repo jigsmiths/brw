@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/outdated"
@@ -86,7 +87,7 @@ func outdatedCommand(e *env, args []string) error {
 	long := !quiet && (verbose || e.tty)
 	var b strings.Builder
 	for _, r := range formulae {
-		b.WriteString(r.Name)
+		b.WriteString(r.FullName)
 		if long {
 			b.WriteString(" (" + strings.Join(r.InstalledVersions, ", ") + ") < " + r.CurrentVersion + pinnedAt(r))
 		}
@@ -113,7 +114,11 @@ func pinnedAt(r outdated.Result) string {
 func outdatedEntries(results []outdated.Result) []outdatedJSON {
 	out := []outdatedJSON{}
 	for _, r := range results {
-		j := outdatedJSON{r.Name, r.InstalledVersions, r.CurrentVersion, r.Pinned, nil}
+		name := r.FullName
+		if name == "" {
+			name = r.Name // a cask's
+		}
+		j := outdatedJSON{name, r.InstalledVersions, r.CurrentVersion, r.Pinned, nil}
 		if r.Pinned {
 			j.PinnedVersion = &r.PinnedVersion
 		}
@@ -140,19 +145,40 @@ func (e *env) outdatedFormulae(prefix string) ([]outdated.Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	idx, err := e.index(context.Background())
+	idx, err := e.index(context.Background(), prefix)
 	if err != nil {
 		return nil, err
 	}
-	e.warnOtherTap(outdated.OtherTap(idx, kegs))
+	e.warnOtherTap(idx, kegs, outdated.OtherTap(idx, kegs))
 	return outdated.Check(idx, cellar.Prefix(prefix), kegs)
 }
 
-// warnOtherTap says which formulae were left out because brw can't read their taps yet.
-func (e *env) warnOtherTap(names []string) {
-	if len(names) > 0 {
-		_, _ = fmt.Fprintf(e.err, "brw: warning: not checking formulae from other taps: %s\n", strings.Join(names, ", "))
+// warnOtherTap says which formulae were left out: those of a tap brw has
+// not got or does not trust, and on their own lines, those it cannot read.
+func (e *env) warnOtherTap(idx *api.Index, kegs []cellar.Keg, names []string) {
+	var missing []string
+	for _, name := range names {
+		if err := tapFormulaError(idx, kegs, name); err != nil {
+			_, _ = fmt.Fprintf(e.err, "brw: warning: not checking %s: %v\n", name, err)
+			continue
+		}
+		missing = append(missing, name)
 	}
+	if len(missing) > 0 {
+		_, _ = fmt.Fprintf(e.err, "brw: warning: not checking formulae from other taps: %s\n", strings.Join(missing, ", "))
+	}
+}
+
+// tapFormulaError is why the formula a rack came from could not be read,
+// or nil when its tap is not there or not trusted.
+func tapFormulaError(idx *api.Index, kegs []cellar.Keg, rack string) error {
+	var group []cellar.Keg
+	for _, k := range kegs {
+		if k.Name == rack {
+			group = append(group, k)
+		}
+	}
+	return idx.LoadError(outdated.KegTap(group) + "/" + rack)
 }
 
 // outdatedCasks checks the installed casks against the cask listing, which is

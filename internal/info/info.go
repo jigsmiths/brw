@@ -69,7 +69,12 @@ func (a keg) compare(b keg) int {
 	return a.pkg.Compare(b.pkg)
 }
 
-func Text(f *api.Formula, env Env) (string, error) {
+func Text(f *api.Formula, env Env) (string, error) { return ShadowingText(f, env, "") }
+
+// ShadowingText is Text for a formula a bare name found through its installed
+// keg, which shadows the formula of the tap shadows: it is titled by its name
+// and warned about, as brew info does.
+func ShadowingText(f *api.Formula, env Env, shadows string) (string, error) {
 	var b strings.Builder
 	tag, err := platform.Tag(env.Host)
 	if err != nil {
@@ -100,11 +105,18 @@ func Text(f *api.Formula, env Env) (string, error) {
 	if outdated != nil && len(specs) > 0 {
 		specs[0] = env.installedVersion(f, kegs) + " → " + specs[0]
 	}
-	fmt.Fprintf(&b, "==> %s: %s", f.FullName, strings.Join(specs, ", "))
+	title := f.FullName
+	if shadows != "" {
+		title = f.Name
+	}
+	fmt.Fprintf(&b, "==> %s: %s", title, strings.Join(specs, ", "))
 	if here.KegOnly {
 		b.WriteString(" [keg-only]")
 	}
 	b.WriteByte('\n')
+	if shadows != "" {
+		fmt.Fprintf(&b, "Warning: `%s` shadows `%s/%s`.\n", f.Name, shadows, f.Name)
+	}
 
 	if f.Desc != "" {
 		b.WriteString(f.Desc + "\n")

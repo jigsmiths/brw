@@ -181,9 +181,16 @@ func Parse(b []byte) ([]Formula, error) {
 }
 
 // Index finds formulae by name, alias or old name. Real names win over aliases.
+// The API's formulae win over a tap's for a bare name.
 type Index struct {
 	byName map[string]*Formula
 	all    []*Formula
+
+	tapFull  map[string]*tapFormula   // tap/name, tap/alias
+	tapBare  map[string][]*tapFormula // name or alias, in the taps that have it
+	tapOrder []*tapFormula
+	skipped  []string
+	onSkip   func(tap string)
 }
 
 // NewIndex indexes formulae, which it keeps pointers into.
@@ -203,12 +210,25 @@ func NewIndex(formulae []Formula) *Index {
 	return idx
 }
 
-// Formulae returns every formula once, in listing order.
-func (i *Index) Formulae() []*Formula { return i.all }
+// Formulae returns every formula once: the API's in listing order, then the
+// taps' that evaluate.
+func (i *Index) Formulae() []*Formula {
+	if len(i.tapOrder) == 0 && len(i.skipped) == 0 {
+		return i.all
+	}
+	return append(slices.Clip(i.all), i.tapFormulae()...)
+}
 
+// Lookup finds a formula by name, alias, old name or full name, such as
+// fluxcd/tap/flux.
 func (i *Index) Lookup(name string) (*Formula, bool) {
-	f, ok := i.byName[name]
-	return f, ok
+	if parts := strings.Split(name, "/"); len(parts) == 3 {
+		return i.LookupFrom(parts[0]+"/"+parts[1], parts[2])
+	}
+	if f, ok := i.byName[name]; ok {
+		return f, true
+	}
+	return i.lookupTap(name)
 }
 
 // freshFor is how long a validated listing is used without asking the server.

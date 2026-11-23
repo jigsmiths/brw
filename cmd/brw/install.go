@@ -72,7 +72,7 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 	var r resolved
 	var err error
 	if !caskOnly {
-		if r.idx, r.client, err = e.indexAndClient(ctx); err != nil {
+		if r.idx, r.client, err = e.indexAndClient(ctx, prefix); err != nil {
 			return r, err
 		}
 	}

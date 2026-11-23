@@ -40,7 +40,7 @@ func pinOrUnpin(e *env, verb string, args []string) error {
 	if err != nil {
 		return err
 	}
-	index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background()) })
+	index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background(), prefix) })
 	finder := racks.Finder{Prefix: prefix, Kegs: kegs, Resolve: func(name string) (string, bool) {
 		idx, err := index()
 		if err != nil {
