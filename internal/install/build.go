@@ -283,7 +283,7 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	b := cellar.Build{
 		HomebrewVersion: in.Version, OnRequest: it.OnRequest, Time: in.now(), SourceModified: modified,
 		Aliases: f.Aliases, Deps: it.RuntimeDeps, Tap: f.Tap, TapGitHead: f.TapGitHead, Path: src.Path,
-		Stable: f.Versions.Stable, Scheme: f.VersionScheme, Compatibility: f.CompatibilityVersion,
+		Stable: f.Versions.Stable, Head: f.Versions.Head, Scheme: f.VersionScheme, Compatibility: f.CompatibilityVersion,
 		Arch: it.Arch, BuiltOn: in.BuiltOn,
 	}
 	receipt, err := cellar.NewBuildReceipt(b)

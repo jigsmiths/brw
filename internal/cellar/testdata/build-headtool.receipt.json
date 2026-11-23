@@ -1,0 +1,37 @@
+{
+  "homebrew_version": "7.0.15-111-ge40c695",
+  "used_options": [],
+  "unused_options": [],
+  "built_as_bottle": false,
+  "poured_from_bottle": false,
+  "loaded_from_api": false,
+  "loaded_from_internal_api": false,
+  "installed_on_request": true,
+  "changed_files": null,
+  "time": 1795440991,
+  "source_modified_time": 1795440985,
+  "compiler": "clang",
+  "aliases": [],
+  "runtime_dependencies": [],
+  "source": {
+    "tap": "u/test",
+    "tap_git_head": "dc4d4c25060478139e0c3ad06e288de3061ae970",
+    "spec": "stable",
+    "path": "/prefix/Library/Taps/u/homebrew-test/Formula/headtool.rb",
+    "versions": {
+      "stable": "1.0",
+      "head": "HEAD",
+      "version_scheme": 0,
+      "compatibility_version": null
+    }
+  },
+  "arch": "arm64",
+  "built_on": {
+    "os": "Macintosh",
+    "os_version": "macOS 27.2",
+    "cpu_family": "arm_firestorm_icestorm",
+    "xcode": null,
+    "clt": "27.2.0.0.1792721180",
+    "preferred_perl": "5.34"
+  }
+}

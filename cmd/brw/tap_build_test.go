@@ -105,6 +105,26 @@ func TestInstallAMetaPackageFromDevNull(t *testing.T) {
 	if want := "            #!/bin/sh\n\n            echo \"installed!\"\n"; err != nil || string(b) != want {
 		t.Errorf("bin/meta = %q, %v; want %q", b, err, want)
 	}
+	b, _ = os.ReadFile(filepath.Join(prefix, "Cellar/meta/1.1.0/INSTALL_RECEIPT.json"))
+	if !strings.Contains(string(b), `"head": null`) {
+		t.Errorf("a formula without a head URL records one:\n%s", b)
+	}
+}
+
+// brew records a formula's head spec in a stable build's receipt too.
+func TestAStableBuildRecordsTheHeadSpec(t *testing.T) {
+	e, prefix, origin, _ := tapBottleStore(t)
+	writeTapFormula(t, origin, "meta", "class Meta < Formula\n  version \"1.0\"\n"+
+		"  url \"file:///dev/null\"\n  sha256 \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n"+
+		"  head \"https://example.com/meta.git\", branch: \"main\"\n\n"+
+		"  def install\n    (prefix/\"x\").write \"x\"\n  end\nend\n")
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/meta"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	b, _ := os.ReadFile(filepath.Join(prefix, "Cellar/meta/1.0/INSTALL_RECEIPT.json"))
+	if !strings.Contains(string(b), `"spec": "stable"`) || !strings.Contains(string(b), `"head": "HEAD"`) {
+		t.Errorf("receipt:\n%s", b)
+	}
 }
 
 func TestABuildStagesResourcesAndAppliesPatches(t *testing.T) {

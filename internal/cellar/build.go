@@ -22,6 +22,7 @@ type Build struct {
 	Tap, TapGitHead string // the tap's commit; empty writes null
 	Path            string
 	Stable          string
+	Head            string // the head spec's version, "HEAD" before a fetch; empty when it has none
 	Scheme          int
 	Compatibility   int // 0 when the formula sets none
 	Arch            string
@@ -63,7 +64,7 @@ func NewBuildReceipt(b Build) (*Receipt, error) {
 		Spec       string   `json:"spec"`
 		Path       string   `json:"path"`
 		Versions   versions `json:"versions"`
-	}{b.Tap, orNull(b.TapGitHead), "stable", b.Path, versions{Stable: b.Stable, VersionScheme: b.Scheme, CompatibilityVersion: compat}})
+	}{b.Tap, orNull(b.TapGitHead), "stable", b.Path, versions{Stable: b.Stable, Head: orNull(b.Head), VersionScheme: b.Scheme, CompatibilityVersion: compat}})
 	if err != nil {
 		return nil, err
 	}
