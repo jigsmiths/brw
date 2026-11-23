@@ -457,8 +457,10 @@ func (in *Installer) resolvePaths(action string, paths []string, each func(path 
 	}
 }
 
+const accessWrite = 0x2
+
 func writable(dir string) bool {
-	return syscall.Access(dir, 0x2) == nil // W_OK
+	return syscall.Access(dir, accessWrite) == nil
 }
 
 // deletePaths is brew's delete directive. brew always uses sudo; brw tries
