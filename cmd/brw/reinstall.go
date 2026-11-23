@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/jigsmiths/brw/internal/cellar"
+	"github.com/jigsmiths/brw/internal/outdated"
 )
 
 func reinstallCommand(e *env, args []string) error {
@@ -47,6 +50,17 @@ func reinstallCommand(e *env, args []string) error {
 		return errors.Join(problems...)
 	}
 	planner := e.newPlanner(prefix, idx, client, kegs)
+	for _, name := range formulae {
+		var own []cellar.Keg
+		for _, k := range kegs {
+			if k.Name == name {
+				own = append(own, k)
+			}
+		}
+		if f, group, ok := outdated.Formula(idx, name, own); ok && f.Versions.Head != "" && cellar.Prefix(prefix).DefaultKeg(group).Receipt.IsHeadBuild() {
+			planner.HeadNames = append(planner.HeadNames, name)
+		}
+	}
 	plan, planErrs := planner.PlanReinstall(formulae)
 	return applyPlan(e, prefix, *journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "reinstalled", plan, planErrs, nil, withBuilds(e, prefix, idx, client))
 }

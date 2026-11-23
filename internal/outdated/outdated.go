@@ -4,6 +4,8 @@ package outdated
 import (
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
@@ -17,6 +19,9 @@ type Result struct {
 	CurrentVersion    string
 	Pinned            bool
 	PinnedVersion     string
+	NoNewerHead       bool // brew prints "latest HEAD" for it
+	Head              bool
+	JSONVersion       string // brew's JSON current_version: "HEAD" for a HEAD formula unless a fetch found a newer commit
 }
 
 type installed struct {
@@ -26,17 +31,33 @@ type installed struct {
 	scheme  int
 }
 
+type HeadState struct {
+	Latest string
+	Newer  bool
+}
+
+type HeadCommit func(f *api.Formula, installed string, fetch bool) (HeadState, error)
+
+type Options struct {
+	Head      HeadCommit
+	FetchHead bool
+}
+
 // Check returns the outdated formulae, sorted by name. A rack is checked
 // against the formula of the tap its kegs came from; one the index has no
 // formula for is skipped, and OtherTap names it.
 func Check(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg) ([]Result, error) {
+	return CheckWith(idx, prefix, kegs, Options{})
+}
+
+func CheckWith(idx *api.Index, prefix cellar.Prefix, kegs []cellar.Keg, o Options) ([]Result, error) {
 	var out []Result
 	for name, group := range racks(kegs) {
 		f, group, ok := Formula(idx, name, group)
 		if !ok {
 			continue
 		}
-		r, outdated, err := evaluate(prefix, f, group)
+		r, outdated, err := evaluate(prefix, f, group, o)
 		if err != nil {
 			return nil, err
 		}
@@ -109,8 +130,8 @@ func FromTap(kegs []cellar.Keg, tap string) []cellar.Keg {
 
 // evaluate follows Formula#outdated_kegs: the formula is current if any keg is at
 // least the latest version (on the same or a newer scheme) and is linked or
-// pinned. A HEAD keg is never outdated.
-func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg) (Result, bool, error) {
+// pinned.
+func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg, o Options) (Result, bool, error) {
 	latest, err := version.NewPkg(f.Versions.Stable, f.Revision)
 	if err != nil {
 		return Result{}, false, err
@@ -118,8 +139,12 @@ func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg) (Result, 
 	pinnedVersion, pinned := prefix.Pinned(f.Name)
 
 	all := make([]installed, 0, len(kegs))
-	hasHead, current := false, false
-	for _, k := range kegs {
+	var head *cellar.Keg
+	current := false
+	for i, k := range kegs {
+		if pv, err := version.ParsePkg(k.Version); err == nil && pv.Version.IsHead() && (head == nil || newerHead(k, *head)) {
+			head = &kegs[i]
+		}
 		in := installed{version: k.Version}
 		if k.Receipt != nil {
 			in.scheme = k.Receipt.VersionScheme()
@@ -131,7 +156,6 @@ func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg) (Result, 
 			continue
 		}
 		if in.pkg.Version.IsHead() {
-			hasHead = true
 			continue
 		}
 		if f.VersionScheme > in.scheme && latest.Compare(in.pkg) != 0 {
@@ -146,8 +170,15 @@ func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg) (Result, 
 			current = true
 		}
 	}
-	if current || hasHead {
+	if current {
 		return Result{}, false, nil
+	}
+	var verdict headVerdict
+	if head != nil {
+		var err error
+		if verdict, err = headOutdated(f, *head, o); err != nil || !verdict.outdated {
+			return Result{}, false, err
+		}
 	}
 
 	slices.SortStableFunc(all, func(a, b installed) int {
@@ -171,5 +202,79 @@ func evaluate(prefix cellar.Prefix, f *api.Formula, kegs []cellar.Keg) (Result, 
 	for _, in := range all {
 		r.InstalledVersions = append(r.InstalledVersions, in.version)
 	}
+	if head != nil && f.Versions.Head != "" && prefix.DefaultKeg(kegs).Receipt.IsHeadBuild() {
+		r.Head, r.CurrentVersion = true, head.Version
+		if verdict.latest != "" {
+			r.CurrentVersion = withRevision("HEAD-"+verdict.latest, f.Revision)
+		}
+		r.NoNewerHead = slices.Contains(r.InstalledVersions, r.CurrentVersion)
+		r.JSONVersion = "HEAD"
+		if verdict.fetched {
+			r.JSONVersion = r.CurrentVersion
+		}
+	}
 	return r, true, nil
+}
+
+func withRevision(v string, revision int) string {
+	if revision > 0 {
+		return v + "_" + strconv.Itoa(revision)
+	}
+	return v
+}
+
+func newerHead(a, b cellar.Keg) bool {
+	ta, tb := modified(a), modified(b)
+	if ta != tb {
+		return ta > tb
+	}
+	pa, _ := version.ParsePkg(a.Version)
+	pb, _ := version.ParsePkg(b.Version)
+	return pa.Revision > pb.Revision
+}
+
+func modified(k cellar.Keg) int64 {
+	if k.Receipt == nil {
+		return 0
+	}
+	return k.Receipt.SourceModifiedTime
+}
+
+// headOutdated is brew's head_version_outdated?: the formula moved to a newer
+// version scheme or stable version than the HEAD keg's receipt records, or,
+// with FetchHead, its repository has a commit the keg is not at.
+func headOutdated(f *api.Formula, k cellar.Keg, o Options) (headVerdict, error) {
+	if k.Receipt != nil {
+		if k.Receipt.VersionScheme() < f.VersionScheme {
+			return headVerdict{outdated: true, latest: cachedCommit(f, o)}, nil
+		}
+		was, err1 := version.Parse(k.Receipt.Source.StableAtInstall)
+		now, err2 := version.Parse(f.Versions.Stable)
+		if k.Receipt.Source.StableAtInstall != "" && err1 == nil && err2 == nil && was.Compare(now) < 0 {
+			return headVerdict{outdated: true, latest: cachedCommit(f, o)}, nil
+		}
+	}
+	if !o.FetchHead || o.Head == nil || f.Versions.Head == "" {
+		return headVerdict{}, nil
+	}
+	pv, _ := version.ParsePkg(k.Version)
+	s, err := o.Head(f, strings.TrimPrefix(pv.Version.String(), "HEAD-"), true)
+	if err != nil {
+		return headVerdict{}, err
+	}
+	return headVerdict{outdated: s.Newer, latest: s.Latest, fetched: true}, nil
+}
+
+type headVerdict struct {
+	outdated bool
+	latest   string
+	fetched  bool
+}
+
+func cachedCommit(f *api.Formula, o Options) string {
+	if o.Head == nil || f.Versions.Head == "" {
+		return ""
+	}
+	s, _ := o.Head(f, "", false)
+	return s.Latest
 }

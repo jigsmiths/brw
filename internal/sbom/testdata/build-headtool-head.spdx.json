@@ -1,0 +1,58 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "spdxVersion": "SPDX-2.3",
+  "name": "SBOM-SPDX-headtool-HEAD-cf6a8f9",
+  "creationInfo": {
+    "created": "2026-11-23T13:36:25Z",
+    "creators": [
+      "Tool: https://github.com/Homebrew/brew"
+    ]
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://formulae.brew.sh/spdx/headtool-HEAD-cf6a8f9.json",
+  "documentDescribes": [
+    "SPDXRef-Archive-headtool-src",
+    "SPDXRef-Compiler"
+  ],
+  "files": [],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Archive-headtool-src",
+      "name": "headtool",
+      "versionInfo": "HEAD-cf6a8f9",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "builtDate": "2026-11-23T13:36:25Z",
+      "licenseConcluded": "MIT",
+      "downloadLocation": "https://example.com/headtool.git",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:brew/u/test/headtool@HEAD-cf6a8f9",
+          "referenceType": "purl"
+        }
+      ],
+      "checksums": []
+    },
+    {
+      "SPDXID": "SPDXRef-Compiler",
+      "name": "clang",
+      "versionInfo": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseDeclared": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "downloadLocation": "NOASSERTION",
+      "checksums": [],
+      "externalRefs": []
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-Compiler",
+      "relationshipType": "BUILD_TOOL_OF",
+      "relatedSpdxElement": "SPDXRef-Archive-headtool-src"
+    }
+  ]
+}

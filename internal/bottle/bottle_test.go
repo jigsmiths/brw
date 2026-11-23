@@ -398,6 +398,61 @@ func TestFetchSourceKeepsTheServersTime(t *testing.T) {
 	}
 }
 
+func TestFetchSourceReadsAFileURL(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "tool.tar.gz")
+	when := time.Date(2026, 10, 26, 14, 49, 20, 0, time.UTC)
+	if err := os.WriteFile(src, []byte("binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(src, when, when); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte("binary"))
+	path, err := fetcher(t).FetchSource(context.Background(), "tool", "1.0", "file://"+src, hex.EncodeToString(sum[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || !fi.ModTime().Equal(when) || filepath.Base(path) != "tool--1.0--tool.tar.gz" {
+		t.Errorf("%s: %v, %v", path, fi.ModTime(), err)
+	}
+
+	empty := sha256.Sum256(nil)
+	path, err = fetcher(t).FetchSource(context.Background(), "meta", "1.0", "file:///dev/null", hex.EncodeToString(empty[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Size() != 0 || filepath.Base(path) != "meta--1.0--null" {
+		t.Errorf("%s: %v", path, err)
+	}
+
+	if _, err := fetcher(t).FetchSource(context.Background(), "tool", "1.0", "file://"+src+".missing", hex.EncodeToString(sum[:])); err == nil {
+		t.Error("a missing file was fetched")
+	}
+}
+
+func TestFetchUnverifiedKeepsWhatItHas(t *testing.T) {
+	var body atomic.Value
+	body.Store("one")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body.Load().(string)))
+	}))
+	t.Cleanup(srv.Close)
+	f := fetcher(t)
+	for range 2 {
+		path, err := f.FetchUnverified(context.Background(), "tool", "HEAD", srv.URL+"/tool.tar.gz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b, _ := os.ReadFile(path); string(b) != "one" || filepath.Base(path) != "tool--HEAD--tool.tar.gz" {
+			t.Errorf("%s = %q", path, b)
+		}
+		body.Store("two")
+	}
+	if _, err := f.FetchSource(context.Background(), "tool", "1.0", srv.URL+"/tool.tar.gz", ""); err == nil {
+		t.Error("a source without a checksum was fetched")
+	}
+}
+
 // A tap's bottle outside GitHub Packages has no manifest: brew reads the tab
 // from the bottle's own receipt, and sends no registry token.
 func TestFetchAPlainBottleReadsItsOwnReceipt(t *testing.T) {

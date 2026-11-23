@@ -19,22 +19,25 @@ type Patch struct {
 }
 
 func (f *Formula) Resources() []Resource {
-	if f.b.stable == nil {
+	sp := f.b.active()
+	if sp == nil {
 		return nil
 	}
 	var out []Resource
-	for _, r := range f.b.stable.resource {
+	for _, r := range sp.resource {
 		out = append(out, Resource{Name: r.name, URL: r.url, SHA256: r.checksum})
 	}
 	return out
 }
 
+// Patches are in the order brew applies them.
 func (f *Formula) Patches() []Patch {
-	if f.b.stable == nil {
+	sp := f.b.active()
+	if sp == nil {
 		return nil
 	}
 	var out []Patch
-	for _, h := range f.b.stable.patches {
+	for _, h := range sp.patches {
 		p, ok := h.(*hash)
 		if !ok {
 			continue
@@ -113,8 +116,8 @@ func (b *builder) resourceMethod(in *interp, r resourceRef, name string, args []
 }
 
 func (b *builder) resource(name string) resourceRef {
-	if b.f.stable != nil {
-		for _, r := range b.f.stable.resource {
+	if sp := b.f.active(); sp != nil {
+		for _, r := range sp.resource {
 			if r.name == name {
 				return resourceRef{r}
 			}

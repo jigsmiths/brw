@@ -22,6 +22,40 @@ const abandoned = time.Hour
 // bottleFile is a cached bottle or its tab: name--version.tag.bottle[.rebuild].ext
 var bottleFile = regexp.MustCompile(`^(.+?)--(.+)\.([a-z0-9_]+)\.bottle(?:\.(\d+))?\.(?:tar\.gz|tab\.json)$`)
 
+var headClone = regexp.MustCompile(`^(.+)--git(?:-sparse)?$`)
+
+func (c *Cleaner) CleanClones(names []string) error {
+	if c.Downloads == "" {
+		return nil
+	}
+	cache := filepath.Dir(c.Downloads)
+	entries, err := os.ReadDir(cache)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var failed []error
+	for _, e := range entries {
+		m := headClone.FindStringSubmatch(e.Name())
+		if m == nil || !e.IsDir() || (len(names) > 0 && !slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, m[1]) })) {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if age := c.Now().Sub(fi.ModTime()); c.PruneDays == 0 || (c.PruneDays > 0 && age > time.Duration(c.PruneDays)*24*time.Hour) {
+			abs := filepath.Join(cache, e.Name())
+			if err := c.cleanPath(abs, func() error { return os.RemoveAll(abs) }); err != nil { //fsx:allow download cache
+				failed = append(failed, err)
+			}
+		}
+	}
+	return errors.Join(failed...)
+}
+
 func (c *Cleaner) CleanDownloads(names []string) error {
 	if c.Downloads == "" {
 		return nil

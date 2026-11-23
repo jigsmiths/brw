@@ -77,7 +77,7 @@ func cleanupCommand(e *env, args []string) (err error) {
 				if err != nil {
 					return cleanup.Formula{}, false
 				}
-				return cleanup.Formula{PkgVersion: v.String(), Scheme: f.VersionScheme, Rebuild: f.Bottle.Stable.Rebuild}, true
+				return cleanup.Formula{PkgVersion: v.String(), Scheme: f.VersionScheme, Rebuild: f.Bottle.Stable.Rebuild, HasHead: f.Versions.Head != ""}, true
 			}
 		}
 		var failed []error
@@ -90,7 +90,7 @@ func cleanupCommand(e *env, args []string) (err error) {
 				failed = append(failed, newRemover(e, root, prefix, kegs, dryRun).Autoremove())
 			}
 		}
-		failed = append(failed, c.CleanDownloads(names))
+		failed = append(failed, c.CleanDownloads(names), c.CleanClones(names))
 		if len(names) == 0 {
 			failed = append(failed, c.Leftovers())
 		}

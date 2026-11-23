@@ -23,6 +23,14 @@ type Resolver struct {
 	linux    bool
 	macMajor int
 	reverse  map[string][]string
+	override map[string]*api.Formula
+}
+
+func (r *Resolver) Override(f *api.Formula) {
+	if r.override == nil {
+		r.override = map[string]*api.Formula{}
+	}
+	r.override[f.Name], r.override[f.FullName] = f, f
 }
 
 // NewResolver returns a Resolver for host; it fails if host has no bottle tag.
@@ -50,6 +58,9 @@ func NotFound(idx *api.Index, name string) error {
 }
 
 func (r *Resolver) formula(name string) (*api.Formula, error) {
+	if f, ok := r.override[name]; ok {
+		return f, nil
+	}
 	f, ok := r.idx.Lookup(name)
 	if !ok {
 		return nil, fmt.Errorf("%s: %w", name, NotFound(r.idx, name))

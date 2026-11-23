@@ -17,16 +17,21 @@ type formula struct {
 	version  string
 	revision int
 	scheme   int
+	head     bool
 }
 
 func index(t *testing.T, formulae ...formula) *api.Index {
 	t.Helper()
 	var list []map[string]any
 	for _, f := range formulae {
+		versions := map[string]any{"stable": f.version}
+		if f.head {
+			versions["head"] = "HEAD"
+		}
 		list = append(list, map[string]any{
 			"name":           f.name,
 			"tap":            "homebrew/core",
-			"versions":       map[string]any{"stable": f.version},
+			"versions":       versions,
 			"revision":       f.revision,
 			"version_scheme": f.scheme,
 		})
@@ -48,6 +53,8 @@ type keg struct {
 	tap           string // receipt tap; empty leaves it out
 	linked        bool   // opt and linked records point at this keg
 	pinned        bool
+	spec, stable  string
+	modified      int64
 }
 
 func prefix(t *testing.T, kegs ...keg) cellar.Prefix {
@@ -55,7 +62,8 @@ func prefix(t *testing.T, kegs ...keg) cellar.Prefix {
 	dir := t.TempDir()
 	for _, k := range kegs {
 		path := filepath.Join(dir, "Cellar", k.name, k.version)
-		receipt := fmt.Sprintf(`{"source":{"tap":%q,"versions":{"version_scheme":%d}}}`, k.tap, k.scheme)
+		receipt := fmt.Sprintf(`{"source_modified_time":%d,"source":{"tap":%q,"spec":%q,"versions":{"stable":%q,"version_scheme":%d}}}`,
+			k.modified, k.tap, k.spec, k.stable, k.scheme)
 		must(t, os.MkdirAll(path, 0o755))
 		must(t, os.WriteFile(filepath.Join(path, "INSTALL_RECEIPT.json"), []byte(receipt), 0o644))
 		if k.linked {
@@ -189,6 +197,52 @@ func TestHeadKegIsNotOutdated(t *testing.T) {
 	got := check(t, index(t, formula{name: "jq", version: "1.8"}), prefix(t, keg{name: "jq", version: "HEAD-abc123"}))
 	if len(got) != 0 {
 		t.Errorf("got %+v", got)
+	}
+}
+
+func headCommits(cached, commit string, fetched *bool) HeadCommit {
+	return func(_ *api.Formula, installed string, fetch bool) (HeadState, error) {
+		if fetch {
+			*fetched = true
+			return HeadState{Latest: commit, Newer: commit != installed}, nil
+		}
+		return HeadState{Latest: cached}, nil
+	}
+}
+
+func TestHeadKegOutdatedLikeBrew(t *testing.T) {
+	idx := index(t, formula{name: "tool", version: "1.0", head: true})
+	head := keg{name: "tool", version: "HEAD-cf6a8f9", spec: "head", stable: "1.0", modified: 2, linked: true}
+	stable := keg{name: "tool", version: "1.0", spec: "stable", stable: "1.0", modified: 1}
+	run := func(p cellar.Prefix, o Options) []Result {
+		t.Helper()
+		kegs, err := p.Kegs()
+		must(t, err)
+		got, err := CheckWith(idx, p, kegs, o)
+		must(t, err)
+		return got
+	}
+	var fetched bool
+	if got := run(prefix(t, head, stable), Options{Head: headCommits("cf6a8f9", "a82d0d6", &fetched)}); len(got) != 0 || fetched {
+		t.Errorf("without --fetch-HEAD: %+v (fetched %v)", got, fetched)
+	}
+	want := []Result{{Name: "tool", FullName: "tool", InstalledVersions: []string{"1.0", "HEAD-cf6a8f9"}, CurrentVersion: "HEAD-a82d0d6", Head: true, JSONVersion: "HEAD-a82d0d6"}}
+	if got := run(prefix(t, head, stable), Options{Head: headCommits("cf6a8f9", "a82d0d6", &fetched), FetchHead: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("--fetch-HEAD:\n got %+v\nwant %+v", got, want)
+	}
+	if got := run(prefix(t, head), Options{Head: headCommits("cf6a8f9", "cf6a8f9", &fetched), FetchHead: true}); len(got) != 0 {
+		t.Errorf("--fetch-HEAD with no new commit: %+v", got)
+	}
+
+	old := head
+	old.stable = "0.9"
+	want = []Result{{Name: "tool", FullName: "tool", InstalledVersions: []string{"HEAD-cf6a8f9"}, CurrentVersion: "HEAD-cf6a8f9", NoNewerHead: true, Head: true, JSONVersion: "HEAD"}}
+	if got := run(prefix(t, old), Options{Head: headCommits("cf6a8f9", "a82d0d6", &fetched)}); !reflect.DeepEqual(got, want) {
+		t.Errorf("stable moved on:\n got %+v\nwant %+v", got, want)
+	}
+	old.stable, old.scheme = "1.0", -1
+	if got := run(prefix(t, old), Options{}); len(got) != 1 {
+		t.Errorf("version scheme moved on: %+v", got)
 	}
 }
 

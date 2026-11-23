@@ -2,6 +2,7 @@
 package cleanup
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ type Formula struct {
 	PkgVersion string // the version and revision, such as "1.2_1"
 	Scheme     int
 	Rebuild    int // of the bottle
+	HasHead    bool
 }
 
 type Cleaner struct {
@@ -143,14 +145,19 @@ func (c *Cleaner) cleanFormula(name string, kegs []cellar.Keg) (err error) {
 	if !ok {
 		return nil
 	}
-	latestInstalled := slices.ContainsFunc(kegs, func(k cellar.Keg) bool { return k.Version == current.PkgVersion })
-	if !latestInstalled {
-		if _, pinned := c.cellar().Pinned(name); !pinned {
-			c.warn("Skipping %s: most recent version %s not installed", name, current.PkgVersion)
+	var old []cellar.Keg
+	if current.HasHead && c.cellar().DefaultKeg(kegs).Receipt.IsHeadBuild() && slices.ContainsFunc(kegs, isHead) {
+		old = oldOfHead(kegs)
+	} else {
+		latestInstalled := slices.ContainsFunc(kegs, func(k cellar.Keg) bool { return k.Version == current.PkgVersion })
+		if !latestInstalled {
+			if _, pinned := c.cellar().Pinned(name); !pinned {
+				c.warn("Skipping %s: most recent version %s not installed", name, current.PkgVersion)
+			}
+			return nil
 		}
-		return nil
+		old = oldOnes(kegs, current)
 	}
-	old := oldOnes(kegs, current)
 	if len(old) == 0 {
 		return nil
 	}
@@ -187,6 +194,55 @@ func (c *Cleaner) cleanFormula(name string, kegs []cellar.Keg) (err error) {
 		}
 	}
 	return errors.Join(failed...)
+}
+
+func isHead(k cellar.Keg) bool {
+	pv, err := version.ParsePkg(k.Version)
+	return err == nil && pv.Version.IsHead()
+}
+
+// oldOfHead is brew's eligible_kegs_for_cleanup for a formula on its head spec.
+func oldOfHead(kegs []cellar.Keg) []cellar.Keg {
+	var heads, stable []cellar.Keg
+	for _, k := range kegs {
+		if isHead(k) {
+			heads = append(heads, k)
+		} else if _, err := version.ParsePkg(k.Version); err == nil {
+			stable = append(stable, k)
+		}
+	}
+	modified := func(k cellar.Keg) int64 {
+		if k.Receipt == nil {
+			return 0
+		}
+		return k.Receipt.SourceModifiedTime
+	}
+	newest := slices.MaxFunc(heads, func(a, b cellar.Keg) int {
+		if ma, mb := modified(a), modified(b); ma != mb {
+			return cmp.Compare(ma, mb)
+		}
+		pa, _ := version.ParsePkg(a.Version)
+		pb, _ := version.ParsePkg(b.Version)
+		return cmp.Compare(pa.Revision, pb.Revision)
+	})
+	scheme := func(k cellar.Keg) int {
+		if k.Receipt == nil {
+			return 0
+		}
+		return k.Receipt.VersionScheme()
+	}
+	slices.SortFunc(stable, func(a, b cellar.Keg) int {
+		if sa, sb := scheme(a), scheme(b); sa != sb {
+			return cmp.Compare(sa, sb)
+		}
+		pa, _ := version.ParsePkg(a.Version)
+		pb, _ := version.ParsePkg(b.Version)
+		return pa.Compare(pb)
+	})
+	if len(stable) > 0 {
+		stable = stable[:len(stable)-1]
+	}
+	return append(slices.DeleteFunc(heads, func(k cellar.Keg) bool { return k.Version == newest.Version }), stable...)
 }
 
 // A keg is old when its version scheme is older, or the scheme is the same and the version older.

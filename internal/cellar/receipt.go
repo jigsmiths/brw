@@ -49,22 +49,33 @@ type Dependency struct {
 
 // Source keeps its raw JSON because brew's key order varies.
 type Source struct {
-	Tap    string
-	scheme int
-	raw    json.RawMessage
+	Tap             string
+	Spec            Spec
+	StableAtInstall string
+	scheme          int
+	raw             json.RawMessage
 }
+
+type Spec string
+
+const (
+	SpecStable Spec = "stable"
+	SpecHead   Spec = "head"
+)
 
 func (s *Source) UnmarshalJSON(b []byte) error {
 	var v struct {
 		Tap      string `json:"tap"`
+		Spec     Spec   `json:"spec"`
 		Versions struct {
-			Scheme int `json:"version_scheme"`
+			Stable string `json:"stable"`
+			Scheme int    `json:"version_scheme"`
 		} `json:"versions"`
 	}
 	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
-	s.Tap, s.scheme = v.Tap, v.Versions.Scheme
+	s.Tap, s.Spec, s.StableAtInstall, s.scheme = v.Tap, v.Spec, v.Versions.Stable, v.Versions.Scheme
 	s.raw = append(s.raw[:0], b...)
 	return nil
 }
@@ -78,6 +89,8 @@ func (s Source) MarshalJSON() ([]byte, error) {
 }
 
 func (r *Receipt) VersionScheme() int { return r.Source.scheme }
+
+func (r *Receipt) IsHeadBuild() bool { return r != nil && r.Source.Spec == SpecHead }
 
 func ParseReceipt(b []byte) (*Receipt, error) {
 	var r Receipt

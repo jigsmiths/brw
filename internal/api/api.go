@@ -60,6 +60,11 @@ type Formula struct {
 			URL      string `json:"url"`
 			Checksum string `json:"checksum"`
 		} `json:"stable"`
+		Head struct {
+			URL    string `json:"url"`
+			Branch string `json:"branch"`
+			Using  string `json:"using"`
+		} `json:"head"`
 	} `json:"urls"`
 	Deprecated           bool     `json:"deprecated"`
 	Disabled             bool     `json:"disabled"`
@@ -95,6 +100,43 @@ type Formula struct {
 	PostInstallSteps              []json.RawMessage             `json:"post_install_steps"`
 	PostInstallDefined            bool                          `json:"post_install_defined"`
 	Variations                    map[string]json.RawMessage    `json:"variations"`
+	HeadDependencies              HeadDeps                      `json:"head_dependencies"`
+}
+
+type HeadDeps struct {
+	Listed                  bool                     `json:"-"`
+	Dependencies            []string                 `json:"dependencies"`
+	BuildDependencies       []string                 `json:"build_dependencies"`
+	RecommendedDependencies []string                 `json:"recommended_dependencies"`
+	OptionalDependencies    []string                 `json:"optional_dependencies"`
+	UsesFromMacOS           []UsesFromMacOS          `json:"uses_from_macos"`
+	UsesBounds              []struct{ Since string } `json:"uses_from_macos_bounds"`
+}
+
+func (h *HeadDeps) UnmarshalJSON(b []byte) error {
+	type plain HeadDeps
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*h = HeadDeps(p)
+	h.Listed = true
+	return nil
+}
+
+func (f Formula) HeadSpec() Formula {
+	if h := f.HeadDependencies; h.Listed {
+		f.Dependencies, f.BuildDependencies = h.Dependencies, h.BuildDependencies
+		f.RecommendedDependencies, f.OptionalDependencies = h.RecommendedDependencies, h.OptionalDependencies
+		f.UsesFromMacOS, f.UsesBounds = slices.Clone(h.UsesFromMacOS), h.UsesBounds
+		for j := range f.UsesFromMacOS {
+			if j < len(f.UsesBounds) {
+				f.UsesFromMacOS[j].Since = f.UsesBounds[j].Since
+			}
+		}
+		f.Variations = nil // brew builds variations from the stable spec
+	}
+	return f
 }
 
 // Reason is a symbol such as ":versioned_formula" or free text.

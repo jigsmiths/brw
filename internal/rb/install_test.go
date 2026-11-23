@@ -115,6 +115,31 @@ end
 	}
 }
 
+func TestPathnamePlusJoins(t *testing.T) {
+	src := toolHead + `    (bin+"meta").write "m"
+    (prefix + "/elsewhere").to_s
+    (share+"a"+"b").write "ab"
+    (Pathname.new(prefix) + "c").write "c"
+    (lib/"d").write "bin" + "dir"
+  end
+end
+`
+	_, keg, _, err := installInto(t, src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"bin", "bin/meta", "c", "lib", "lib/d", "share", "share/a", "share/a/b"}
+	if got := tree(t, keg); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("keg:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if b, _ := os.ReadFile(filepath.Join(keg, "lib/d")); string(b) != "bindir" {
+		t.Errorf("lib/d = %q", b)
+	}
+	if got := pathPlus("/p/bin", "/elsewhere"); got != "/elsewhere" {
+		t.Errorf("pathPlus with an absolute path = %q", got)
+	}
+}
+
 func TestGenerateCompletionsRunsTheProgram(t *testing.T) {
 	src := toolHead + `    bin.install "tool"
     generate_completions_from_executable(bin/"tool", "completion")
@@ -690,6 +715,75 @@ end
 	}
 	if b, _ := os.ReadFile(filepath.Join(keg, "got")); string(b) != "false,true,false,false,false,true,false" {
 		t.Errorf("got %s", b)
+	}
+}
+
+func TestInstallingTheHeadSpec(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	src := `class Tool < Formula
+  url "https://example.com/tool-1.0.tar.gz", revision: "stablecommit"
+  sha256 "aa"
+  revision 1
+
+  head do
+    url "https://example.com/tool.git", branch: "main"
+    resource "headonly" do
+      url "https://example.com/headonly-1.0.tar.gz"
+      sha256 "bb"
+    end
+    patch :DATA
+  end
+
+  resource "shared" do
+    url "https://example.com/shared-1.0.tar.gz"
+    sha256 "cc"
+  end
+
+  def install
+    got = [version, pkg_version, build.head?, build.stable?, resources.map(&:name).join("+")]
+    (prefix/"got").write got.join(",")
+    system "echo", *std_go_args(ldflags: :goreleaser)
+  end
+end
+__END__
+--- a
++++ b
+`
+	f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := f.Head(); !ok || got != (HeadSource{URL: "https://example.com/tool.git", Branch: "main"}) {
+		t.Errorf("head = %+v, %v", got, ok)
+	}
+	f.UseHead("HEAD-abc1234")
+	if got := f.Resources(); len(got) != 2 || got[0].Name != "headonly" || got[1].Name != "shared" {
+		t.Errorf("resources = %+v", got)
+	}
+	if got := f.Patches(); len(got) != 1 || got[0].Data != "--- a\n+++ b\n" {
+		t.Errorf("patches = %+v", got)
+	}
+	prefix, build := t.TempDir(), t.TempDir()
+	h := &dirHost{t: t}
+	env := &InstallEnv{Host: h, Prefix: prefix, Buildpath: build, TarCommit: "abc1234def"}
+	if err := f.Install(env); err != nil {
+		t.Fatal(err)
+	}
+	keg := filepath.Join(prefix, "Cellar/tool/HEAD-abc1234_1")
+	if b, err := os.ReadFile(filepath.Join(keg, "got")); err != nil || string(b) != "HEAD-abc1234,HEAD-abc1234_1,true,false,headonly+shared" {
+		t.Errorf("got %q, %v", b, err)
+	}
+	if args := strings.Join(h.ran[len(h.ran)-1], " "); !strings.Contains(args, "-X 'main.version=HEAD-abc1234' -X 'main.commit=abc1234def'") {
+		t.Errorf("std_go_args: %s", args)
+	}
+
+	stable, _ := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if got := stable.Resources(); len(got) != 1 || got[0].Name != "shared" {
+		t.Errorf("stable resources = %+v", got)
+	}
+	noHead, _ := LoadFormula([]byte(toolHead+"  end\nend\n"), "tool", "arm64_golden_gate")
+	if got, ok := noHead.Head(); ok {
+		t.Errorf("a formula without a head has one: %+v", got)
 	}
 }
 

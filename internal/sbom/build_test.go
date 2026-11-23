@@ -21,6 +21,19 @@ func TestBuiltMatchesWhatBrewWritesByteForByte(t *testing.T) {
 	}
 }
 
+func TestBuiltFromHeadMatchesBrew(t *testing.T) {
+	got, err := Built(BuildParams{
+		Name: "headtool", FullName: "u/test/headtool", Version: "HEAD-cf6a8f9", URL: "https://example.com/headtool.git",
+		License: "MIT", Compiler: "clang", SourceModified: time.Unix(1795440985, 0), Creator: "Tool: https://github.com/Homebrew/brew",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := read(t, "build-headtool-head.spdx.json"); string(got) != string(want) {
+		t.Errorf("not what brew wrote\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 // A runtime dependency is listed with the bottle it was poured from, and its
 // URL only when the installed version is the formula's current one.
 func TestBuiltListsRuntimeDependencies(t *testing.T) {
