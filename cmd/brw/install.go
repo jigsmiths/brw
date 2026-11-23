@@ -311,7 +311,7 @@ func installFormulae(e *env, prefix, journal string, dryRun bool, r resolved) er
 func withBuilds(e *env, prefix string, idx *api.Index, client *api.Client) func(*install.Installer) {
 	return func(in *install.Installer) {
 		tag, _ := platform.Tag(e.host)
-		in.Version, _ = buildInfo()
+		in.Version = homebrewVersion(prefix)
 		in.BuiltOn = buildSystem()
 		in.MacVersion = strings.TrimPrefix(in.BuiltOn.OSVersion, "macOS ")
 		in.SDK = sdkPath()

@@ -70,6 +70,9 @@ func TestInstallATapFormulaFromItsDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := r["source"].(map[string]any)
+	if r["homebrew_version"] != noRepositoryVersion {
+		t.Errorf("homebrew_version = %v, want the prefix's Homebrew version", r["homebrew_version"])
+	}
 	if r["poured_from_bottle"] != false || r["built_as_bottle"] != false || r["changed_files"] != nil ||
 		src["path"] != filepath.Join(tap.Dir(prefix, "u/t"), "Formula", "tool.rb") || src["tap"] != "u/t" ||
 		r["source_modified_time"] != float64(1791806400) { // the archive's newest file

@@ -50,7 +50,8 @@ type Installer struct {
 
 	// LoadSource gives a tap formula's file to build it when it has no bottle for this host.
 	LoadSource func(f *api.Formula) (Source, error)
-	// Version is brw's, for the receipt of a formula it builds.
+	// Version is the prefix's Homebrew version, for the receipt of a formula
+	// it builds.
 	Version string
 	// BuiltOn describes this machine, for the receipt of a formula it builds.
 	BuiltOn cellar.BuiltOn
