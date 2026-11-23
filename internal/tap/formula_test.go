@@ -1,6 +1,7 @@
 package tap
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -91,6 +92,74 @@ func TestFormulaAddsWhatTheTapDecides(t *testing.T) {
 	if h["tap_git_head"] != head[:len(head)-1] || h["ruby_source_path"] != "Formula/tool.rb" ||
 		h["ruby_source_checksum"].(map[string]any)["sha256"] != hex.EncodeToString(sum[:]) {
 		t.Errorf("source: %v %v %v", h["tap_git_head"], h["ruby_source_path"], h["ruby_source_checksum"])
+	}
+}
+
+// brew info --json prints the hash in brew's order, so the tap's fields are
+// filled in where rb's hash has them and nothing is reordered.
+func TestFormulaKeepsBrewsKeyOrder(t *testing.T) {
+	dir := t.TempDir()
+	git(t, dir, "init", "-q", "-b", "main")
+	src := formulaFile("Tool", "1.2")
+	write(t, filepath.Join(dir, "Formula", "tool.rb"), src)
+	git(t, dir, "add", "-A")
+	git(t, dir, "commit", "-q", "-m", "tool")
+	_, raw, err := Tap{Name: "u/t", Dir: dir}.Formula("tool", "arm64_golden_gate", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := rb.LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.Marshal(loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := func(b []byte) ([]string, map[string]string) {
+		var order []string
+		vals := map[string]string{}
+		dec := json.NewDecoder(bytes.NewReader(b))
+		if _, err := dec.Token(); err != nil {
+			t.Fatal(err)
+		}
+		for dec.More() {
+			k, err := dec.Token()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var v json.RawMessage
+			if err := dec.Decode(&v); err != nil {
+				t.Fatal(err)
+			}
+			order = append(order, k.(string))
+			vals[k.(string)] = string(v)
+		}
+		return order, vals
+	}
+	gotOrder, gotVals := keys(raw)
+	rbOrder, wantVals := keys(want)
+	// rb's hash leaves the tap's keys to the tap; brew has them here
+	var wantOrder []string
+	for _, k := range rbOrder {
+		wantOrder = append(wantOrder, k)
+		switch k {
+		case "name":
+			wantOrder = append(wantOrder, "full_name", "tap", "oldnames", "aliases", "versioned_formulae")
+		case "service":
+			wantOrder = append(wantOrder, "tap_git_head", "ruby_source_path", "ruby_source_checksum")
+		}
+	}
+	if !reflect.DeepEqual(gotOrder, wantOrder) {
+		t.Errorf("keys:\n%v\nwant\n%v", gotOrder, wantOrder)
+	}
+	for _, k := range []string{"versions", "urls", "bottle"} {
+		if gotVals[k] != wantVals[k] {
+			t.Errorf("%s = %s\nwant %s", k, gotVals[k], wantVals[k])
+		}
+	}
+	if gotVals["tap"] != `"u/t"` || gotVals["full_name"] != `"u/t/tool"` {
+		t.Errorf("tap %s, full_name %s", gotVals["tap"], gotVals["full_name"])
 	}
 }
 

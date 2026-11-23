@@ -13,13 +13,48 @@ import (
 )
 
 // formulaFields are the parts of brew's formula hash a formula file decides.
-var formulaFields = strings.Fields(`name desc license homepage versions urls patches revision version_scheme
-compatibility_version bottle pour_bottle_only_if keg_only keg_only_reason options build_dependencies dependencies
+var formulaFields = strings.Fields(`name desc license homepage versions urls patches local_patch_checksums revision
+version_scheme compatibility_version autobump no_autobump_message skip_livecheck bottle pour_bottle_only_if keg_only keg_only_reason options build_dependencies dependencies
 test_dependencies recommended_dependencies optional_dependencies no_linkage_dependencies uses_from_macos
 uses_from_macos_bounds head_dependencies requirements conflicts_with conflicts_with_reasons link_overwrite caveats
-deprecated deprecation_date deprecation_reason deprecation_replacement_formula deprecation_replacement_cask
+installed linked_keg pinned outdated deprecated deprecation_date deprecation_reason deprecation_replacement_formula deprecation_replacement_cask
 deprecate_args disabled disable_date disable_reason disable_replacement_formula disable_replacement_cask
 disable_args post_install_steps post_install_defined service`)
+
+// The corpus has only the defaults; these are the other values brew's
+// to_hash gives autobump, no_autobump_message and skip_livecheck.
+func TestAutobumpAndLivecheckSkip(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	for _, tt := range []struct {
+		body string
+		want map[string]any
+	}{
+		{"", map[string]any{"autobump": true, "no_autobump_message": nil, "skip_livecheck": false, "local_patch_checksums": map[string]any{}}},
+		{"  no_autobump! because: :requires_manual_review\n  livecheck do\n    skip \"No version information\"\n  end\n",
+			map[string]any{"autobump": false, "no_autobump_message": "requires_manual_review", "skip_livecheck": true}},
+		{"  no_autobump! because: \"bumped by its own workflow\"\n  livecheck do\n    url :stable\n    strategy :github_latest\n  end\n",
+			map[string]any{"autobump": false, "no_autobump_message": "bumped by its own workflow", "skip_livecheck": false}},
+	} {
+		src := "class Tool < Formula\n  url \"https://example.com/tool-1.0.tar.gz\"\n" + tt.body + "end\n"
+		f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := json.Marshal(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range tt.want {
+			if !reflect.DeepEqual(got[k], v) {
+				t.Errorf("%q: %s = %v, want %v", tt.body, k, got[k], v)
+			}
+		}
+	}
+}
 
 // formulaTags are OnSystem::VALID_OS_ARCH_TAGS, which brew evaluates variations on.
 var formulaTags = strings.Fields(`arm64_golden_gate golden_gate arm64_tahoe tahoe arm64_sequoia sequoia arm64_sonoma

@@ -1,6 +1,14 @@
 {
   "formulae": [
     {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
       "bottle": {},
       "build_dependencies": [],
       "caveats": null,

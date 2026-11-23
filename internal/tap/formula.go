@@ -1,6 +1,7 @@
 package tap
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -151,6 +152,61 @@ func ReverseMigrations(taps []Tap) (map[string][]string, error) {
 // platform tag, and adds what the tap decides: its full name, aliases, old
 // names and where the file came from. migrations is ReverseMigrations of
 // every tap. raw is the formula's hash, as Homebrew's API would have it.
+// setKeys sets top-level keys of a JSON object where they are, so the object
+// keeps the order brew writes it in. A key it lacks goes after the key named
+// third, else at the end.
+func setKeys(obj []byte, set [][3]any) (json.RawMessage, error) {
+	dec := json.NewDecoder(bytes.NewReader(obj))
+	if tok, err := dec.Token(); err != nil {
+		return nil, err
+	} else if tok != json.Delim('{') {
+		return nil, errors.New("not a JSON object")
+	}
+	var keys []string
+	vals := map[string]json.RawMessage{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			return nil, err
+		}
+		keys = append(keys, tok.(string))
+		vals[tok.(string)] = v
+	}
+	for _, kv := range set {
+		k := kv[0].(string)
+		v, err := json.Marshal(kv[1])
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := vals[k]; !ok {
+			after, _ := kv[2].(string)
+			if i := slices.Index(keys, after); i >= 0 {
+				keys = slices.Insert(keys, i+1, k)
+			} else {
+				keys = append(keys, k)
+			}
+		}
+		vals[k] = v
+	}
+	var out bytes.Buffer
+	out.WriteByte('{')
+	for i, k := range keys {
+		if i > 0 {
+			out.WriteByte(',')
+		}
+		kb, _ := json.Marshal(k)
+		out.Write(kb)
+		out.WriteByte(':')
+		out.Write(vals[k])
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
+}
+
 func (t Tap) Formula(name, tag string, migrations map[string][]string) (f api.Formula, raw json.RawMessage, err error) {
 	files, err := t.FormulaFiles()
 	if err != nil {
@@ -170,10 +226,6 @@ func (t Tap) Formula(name, tag string, migrations map[string][]string) (f api.Fo
 	}
 	b, err := json.Marshal(loaded)
 	if err != nil {
-		return f, nil, err
-	}
-	var h map[string]any
-	if err := json.Unmarshal(b, &h); err != nil {
 		return f, nil, err
 	}
 	renames, err := readJSONMap(filepath.Join(t.Dir, "formula_renames.json"))
@@ -198,17 +250,18 @@ func (t Tap) Formula(name, tag string, migrations map[string][]string) (f api.Fo
 	head, _ := run(context.Background(), t.Dir, "rev-parse", "HEAD")
 	rel, _ := filepath.Rel(t.Dir, file)
 	sum := sha256.Sum256(src)
-	h["full_name"] = t.Name + "/" + name
-	h["tap"] = t.Name
-	h["oldnames"] = oldnames
-	h["aliases"] = aliases
-	// brew finds no versioned formulae for a third-party tap's formula: it
-	// keys them by full name and looks them up by name.
-	h["versioned_formulae"] = []string{}
-	h["tap_git_head"] = head
-	h["ruby_source_path"] = filepath.ToSlash(rel)
-	h["ruby_source_checksum"] = map[string]string{"sha256": hex.EncodeToString(sum[:])}
-	raw, err = json.Marshal(h)
+	raw, err = setKeys(b, [][3]any{
+		{"full_name", t.Name + "/" + name, "name"},
+		{"tap", t.Name, "full_name"},
+		{"oldnames", oldnames, "tap"},
+		{"aliases", aliases, "oldnames"},
+		// brew finds no versioned formulae for a third-party tap's formula: it
+		// keys them by full name and looks them up by name.
+		{"versioned_formulae", []string{}, "aliases"},
+		{"tap_git_head", head, "service"},
+		{"ruby_source_path", filepath.ToSlash(rel), "tap_git_head"},
+		{"ruby_source_checksum", map[string]string{"sha256": hex.EncodeToString(sum[:])}, "ruby_source_path"},
+	})
 	if err != nil {
 		return f, nil, err
 	}

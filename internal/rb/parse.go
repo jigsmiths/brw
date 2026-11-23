@@ -388,10 +388,13 @@ func (p *parser) callArgs(c *callN, allowCommand bool) {
 	}
 	switch {
 	case p.isKw("do") && c.recv == nil && (c.name == "livecheck" || c.name == "test"):
-		// brw never runs livecheck or test blocks, so their Ruby only has to be skipped
+		// brw never runs livecheck or test blocks, so their Ruby only has to be
+		// skipped; the formula hash only says whether livecheck calls skip.
 		p.i++
-		p.skipBlock()
 		c.block = &blockN{}
+		if p.skipBlock() {
+			c.block.body = []node{&callN{name: "skip"}}
+		}
 		c.bare = false
 	case p.isKw("do"):
 		p.i++
@@ -405,12 +408,19 @@ func (p *parser) callArgs(c *callN, allowCommand bool) {
 }
 
 // skipBlock skips to the end that closes a do block, counting Ruby's openers.
-func (p *parser) skipBlock() {
+// skipBlock skips to the block's end, reporting whether a statement of the
+// block itself starts with skip.
+func (p *parser) skipBlock() (skips bool) {
 	depth := 1
 	for depth > 0 {
 		t := p.next()
 		if t.k == tEOF {
 			p.fail("unterminated block")
+		}
+		if depth == 1 && t.k == tIdent && t.s == "skip" {
+			if prev := p.t[p.i-2]; prev.k == tNL || (prev.k == tKw && prev.s == "do") {
+				skips = true
+			}
 		}
 		if t.k != tKw {
 			continue
@@ -427,6 +437,7 @@ func (p *parser) skipBlock() {
 			depth--
 		}
 	}
+	return skips
 }
 
 func (p *parser) block(end string) *blockN {

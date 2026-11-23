@@ -1,6 +1,14 @@
 {
   "formulae": [
     {
+      "autobump": true,
+      "local_patch_checksums": {},
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
       "bottle": {},
       "build_dependencies": [],
       "caveats": "Rift requires Accessibility permissions to control windows.\nGrant permissions in System Settings > Privacy & Security > Accessibility.\n\nTo copy the example configuration:\n  mkdir -p ~/.config/rift && cp $HOMEBREW_PREFIX/Cellar/rift/0.8.5/share/rift/rift.default.toml ~/.config/rift/config.toml\n",

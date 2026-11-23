@@ -278,9 +278,13 @@ func (b *formulaB) hash() *hash {
 		patches.v = append(patches.v, b.stable.patches...)
 	}
 	h.put("patches", patches)
+	h.put("local_patch_checksums", &hash{}) // rb refuses local patch files
 	h.put("revision", rint(b.revision))
 	h.put("version_scheme", rint(b.scheme))
 	h.put("compatibility_version", b.compat)
+	h.put("autobump", rbool(b.noAutobump == nil))
+	h.put("no_autobump_message", b.noAutobump)
+	h.put("skip_livecheck", rbool(b.skipLivecheck))
 
 	bottle := &hash{}
 	if b.bottle != nil && b.stable != nil {
@@ -327,6 +331,11 @@ func (b *formulaB) hash() *hash {
 	h.put("conflicts_with_reasons", why)
 	h.put("link_overwrite", strsOrEmpty(b.linkOverwrite))
 	h.put("caveats", b.caveats())
+	// what is installed is the prefix's to say; brew info fills these in
+	h.put("installed", &arr{v: []value{}})
+	h.put("linked_keg", nil)
+	h.put("pinned", rbool(false))
+	h.put("outdated", rbool(false))
 	h.put("deprecated", rbool(b.deprecated))
 	h.put("deprecation_date", b.deprecationDate)
 	h.put("deprecation_reason", symName(b.deprecationReason))

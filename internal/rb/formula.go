@@ -163,6 +163,8 @@ type formulaB struct {
 	postSteps     *stepsDSL
 	skipClean     []string
 	preserveRpath bool
+	noAutobump    value // no_autobump!'s because: a symbol or a message
+	skipLivecheck bool
 	// the service block, run again for its files once the keg is linked
 	serviceBlk   *blockN
 	serviceScope *scope
@@ -461,7 +463,22 @@ func (b *formulaB) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		}
 	case "preserve_rpath":
 		b.preserveRpath = true
-	case "livecheck", "test", "no_autobump!", "autobump", "allow_network_access!", "deny_network_access!",
+	case "no_autobump!":
+		because := kwGet(kw, "because")
+		if because == nil {
+			fail("no_autobump! without because")
+		}
+		b.noAutobump = because
+	case "livecheck":
+		// Of the livecheck block, the hash only says whether it skips.
+		if c.block != nil {
+			for _, n := range c.block.body {
+				if call, ok := n.(*callN); ok && call.recv == nil && call.name == "skip" {
+					b.skipLivecheck = true
+				}
+			}
+		}
+	case "test", "autobump", "allow_network_access!", "deny_network_access!",
 		"cxxstdlib_check", "fails_with", "needs", "env", "plist_options", "opoo", "pour_bottle":
 		// These change nothing brw installs.
 	default:
