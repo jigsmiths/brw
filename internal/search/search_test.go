@@ -99,7 +99,7 @@ func TestNames(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			got, err := Names(index(t), tt.query)
+			got, err := Names(index(t), tt.query, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -110,8 +110,32 @@ func TestNames(t *testing.T) {
 	}
 }
 
+// brew leaves formulae for the other OS out of a name search, unless installed.
+func TestNamesLeaveOutFormulaeForTheOtherOS(t *testing.T) {
+	linux := []api.Requirement{{Name: "linux", Specs: []string{"stable"}}}
+	idx := api.NewIndex([]api.Formula{
+		{Name: "libboth"},
+		{Name: "liblinux", Requirements: linux},
+		{Name: "libmac", Requirements: []api.Requirement{{Name: "macos", Version: "14", Specs: []string{"stable"}}}},
+		{Name: "libkept", Requirements: linux},
+	})
+	installed := func(name string) bool { return name == "libkept" }
+	for goos, want := range map[string][]string{
+		"darwin": {"libboth", "libkept", "libmac"},
+		"linux":  {"libboth", "libkept", "liblinux"},
+	} {
+		got, err := Names(idx, "/^lib/", func(f *api.Formula) bool { return f.ForOS(goos) || installed(f.Name) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: Names = %v, want %v", goos, got, want)
+		}
+	}
+}
+
 func TestNamesInvalidRegex(t *testing.T) {
-	if _, err := Names(index(t), "/(/"); err == nil {
+	if _, err := Names(index(t), "/(/", nil); err == nil {
 		t.Error("expected error")
 	}
 }

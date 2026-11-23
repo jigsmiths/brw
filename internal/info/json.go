@@ -216,6 +216,8 @@ func hostBottle(f *api.Formula, host platform.Host, raw json.RawMessage) (json.R
 	if stable.vals["files"], err = files.MarshalJSON(); err != nil {
 		return nil, err
 	}
+	// brew's internal API, which brew info reads, has no manifest_sha256.
+	stable.delete("manifest_sha256")
 	if bottle.vals["stable"], err = stable.MarshalJSON(); err != nil {
 		return nil, err
 	}

@@ -478,7 +478,7 @@ func TestInfoCasks(t *testing.T) {
 	}
 	for _, want := range []string{
 		"==> jq: stable 1.8.2",
-		"\n\n==> slack (Slack): 4.53.292 (auto_updates)\n",
+		"\n\n==> slack (Slack): 4.53.292 (auto updates)\n",
 		"Installed (as dependency)\nFrom: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/s/slack.rb\n",
 		"==> Apps\nSlack.app\n",
 	} {

@@ -82,10 +82,32 @@ func caskText(t *testing.T, env CaskEnv, token string) string {
 	return text
 }
 
+// A disabled cask reads as disabled even while still deprecated, and a Linux
+// requirement is listed, as brew does.
+func TestCaskTextDisabledAndLinux(t *testing.T) {
+	var c api.Cask
+	if err := json.Unmarshal([]byte(`{"token":"old","full_token":"old","tap":"homebrew/cask","name":["Old"],"version":"1.0",
+		"deprecated":true,"deprecation_reason":"discontinued","disabled":true,"disable_reason":"discontinued","disable_date":"2026-03-16",
+		"depends_on":{"arch":[{"type":"intel","bits":64}],"linux":"#<LinuxRequirement:0x1>"},"artifacts":[]}`), &c); err != nil {
+		t.Fatal(err)
+	}
+	env := caskEnv(t, t.TempDir())
+	env.Casks = api.NewCaskIndex([]api.Cask{c})
+	got := caskText(t, env, "old")
+	for _, want := range []string{
+		"\nDisabled because it is discontinued upstream! It was disabled on 2026-03-16.\n",
+		"==> Requirements\nRequired: x86_64 architecture, Linux\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in\n%s", want, got)
+		}
+	}
+}
+
 func TestCaskTextInstalled(t *testing.T) {
 	prefix := t.TempDir()
 	installCask(t, prefix, "slack", "4.53.292", true, 1500)
-	want := `==> slack (Slack): 4.53.292 (auto_updates)
+	want := `==> slack (Slack): 4.53.292 (auto updates)
 Team communication and collaboration software
 https://slack.com/
 Installed (on request)
@@ -195,7 +217,7 @@ directory to your PATH environment variable, e.g., (for Bash shell):
 func TestCaskTextDeprecatedNeedsRosetta(t *testing.T) {
 	env := caskEnv(t, t.TempDir())
 	env.Rosetta = false
-	want := `==> bridge (Quixel Bridge): 2025.0.0 (auto_updates)
+	want := `==> bridge (Quixel Bridge): 2025.0.0 (auto updates)
 3D asset manager
 https://quixel.com/
 Deprecated because it is discontinued upstream! It will be disabled on 2026-12-18.
