@@ -54,6 +54,9 @@ type Installer struct {
 	Version string
 	// BuiltOn describes this machine, for the receipt of a formula it builds.
 	BuiltOn cellar.BuiltOn
+	// SDK is the macOS SDK a build compiles against, and MacVersion the
+	// version it targets, such as "27.2".
+	SDK, MacVersion string
 	// Run runs a build's commands; nil runs them for real.
 	Run RunFunc
 	// DepInfo gives a runtime dependency's current pkg_version, license and

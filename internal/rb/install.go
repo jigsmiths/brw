@@ -5,8 +5,12 @@ import (
 	"io/fs"
 	"maps"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Host does what an install body asks of the machine. Paths are absolute.
@@ -33,6 +37,12 @@ type InstallEnv struct {
 	Prefix    string
 	Buildpath string
 	Env       map[string]string // set by the body with ENV["X"] = v; nil starts empty
+	Tap       string            // the formula's, which std_go_args(ldflags: :goreleaser) names
+	// Resources are the downloaded resources by name, which Unpack extracts
+	// into a directory under Scratch when the install method stages one.
+	Resources map[string]string
+	Unpack    func(archive, dir string) error
+	Scratch   string
 }
 
 // buildFailure is an install body failing as brew's would, such as a command
@@ -207,7 +217,13 @@ func (b *builder) pathMethod(in *interp, p string, name string, args []value, bl
 	dir := b.abs(p)
 	switch name {
 	case "install":
-		eachSource(args, func(src, n string) { b.installP(dir, src, n) })
+		for _, a := range args {
+			if r, ok := a.(resourceRef); ok {
+				b.installResource(dir, r)
+			} else {
+				eachSource([]value{a}, func(src, n string) { b.installP(dir, src, n) })
+			}
+		}
 	case "install_symlink":
 		eachSource(args, func(src, n string) { b.installSymlinkP(dir, b.absFrom(dir, src), n) })
 	case "mkpath":
@@ -559,8 +575,24 @@ func (b *builder) call(in *interp, s *scope, c *callN, args []value, kw *hash) (
 		b.cwd = b.abs(str(args[0]))
 		defer func() { b.cwd = prev }()
 		return in.run(c.block.body, &scope{vars: map[string]value{}, parent: s}), true
+	case c.name == "inreplace" && c.block != nil:
+		b.inreplaceBlock(in, s, args, c.block)
 	case c.name == "inreplace":
-		b.inreplace(args, kw, c.block != nil)
+		b.inreplace(args, kw, false)
+	case strings.HasPrefix(c.name, "std_") && strings.HasSuffix(c.name, "_args"):
+		return b.stdArgs(c.name, kw), true
+	case c.name == "time":
+		return rstr(buildTime().Format(time.RFC3339)), true
+	case c.name == "resource" && len(args) == 1:
+		return b.resource(str(args[0])), true
+	case c.name == "resources":
+		out := &arr{}
+		if b.f.stable != nil {
+			for _, r := range b.f.stable.resource {
+				out.v = append(out.v, resourceRef{r})
+			}
+		}
+		return out, true
 	case fileUtils[c.name]:
 		b.fileUtil(c.name, args)
 	case c.name == "ohai" || c.name == "opoo" || c.name == "odebug":
@@ -656,11 +688,262 @@ func (b *builder) classMethod(x special, name string, args []value) (value, bool
 		}
 		return nil, false
 	}
+	if x == "ENV" {
+		return b.envMethod(name, args)
+	}
 	if x == "FileUtils" && fileUtils[name] {
 		b.fileUtil(name, args)
 		return nil, true
 	}
 	return nil, false
+}
+
+// buildTime is Formula#time: SOURCE_DATE_EPOCH when set, else now.
+func buildTime() time.Time {
+	if s, ok := lookupEnv("SOURCE_DATE_EPOCH"); ok {
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return time.Unix(n, 0).UTC()
+		}
+	}
+	return time.Now().UTC()
+}
+
+func (b *builder) prefixPath(m string) string {
+	inst := &instanceDSL{f: b.f, root: b.env.Prefix}
+	p, _ := formulaPath(inst.prefix(), "", b.f.name, b.env.Prefix, m)
+	return p
+}
+
+func list(vs ...string) *arr { return strs(vs) }
+
+// joined is Array(v).join(sep), as the std_*_args join their options.
+func joined(v value, sep string) string {
+	if a, ok := v.(*arr); ok {
+		var parts []string
+		for _, e := range a.v {
+			parts = append(parts, str(e))
+		}
+		return strings.Join(parts, sep)
+	}
+	return str(v)
+}
+
+func makeJobs(env map[string]string) string {
+	if n, err := strconv.Atoi(strings.TrimPrefix(env["MAKEFLAGS"], "-j")); err == nil {
+		return strconv.Itoa(n)
+	}
+	return strconv.Itoa(runtime.NumCPU())
+}
+
+// stdArgs are Formula#std_configure_args and its kin, as brew defines them.
+func (b *builder) stdArgs(name string, kw *hash) value {
+	or := func(k, def string) string {
+		if v := kwGet(kw, k); v != nil {
+			return str(v)
+		}
+		return def
+	}
+	prefix := b.prefixPath("prefix")
+	switch name {
+	case "std_configure_args":
+		p := or("prefix", prefix)
+		libdir := or("libdir", "lib")
+		if !filepath.IsAbs(libdir) {
+			libdir = filepath.Join(p, libdir)
+		}
+		return list("--disable-debug", "--disable-dependency-tracking", "--prefix="+p, "--libdir="+libdir)
+	case "std_cmake_args":
+		args := []string{"-DCMAKE_INSTALL_PREFIX=" + or("install_prefix", prefix), "-DCMAKE_INSTALL_LIBDIR=" + or("install_libdir", "lib"),
+			"-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_FIND_FRAMEWORK=" + or("find_framework", "LAST"), "-DCMAKE_VERBOSE_MAKEFILE=ON"}
+		// brew's own FetchContent trap, which a prefix without brew's library lacks
+		trap := filepath.Join(b.env.Prefix, "Library", "Homebrew", "cmake", "trap_fetchcontent_provider.cmake")
+		if _, err := b.env.Host.Lstat(trap); err == nil {
+			args = append(args, "-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="+trap)
+		}
+		return list(append(args, "-Wno-author", "-DBUILD_TESTING=OFF", "-DCCACHE_FOUND=OFF")...)
+	case "std_go_args":
+		ldflags := kwGet(kw, "ldflags")
+		if ldflags == sym("goreleaser") {
+			builtBy, _, _ := strings.Cut(b.env.Tap, "/")
+			if builtBy == "" {
+				builtBy = "Homebrew"
+			}
+			commit := builtBy
+			if r := kwGet(b.f.stable.specs, "revision"); r != nil {
+				commit = str(r)
+			}
+			ldflags = list("-X 'main.version="+b.f.version()+"'", "-X 'main.commit="+commit+"'",
+				"-X 'main.date="+buildTime().Format(time.RFC3339)+"'", "-X 'main.builtBy="+builtBy+"'")
+		}
+		flags := "-s -w"
+		if ldflags != nil {
+			flags += " " + joined(ldflags, " ")
+		}
+		out := []string{"-trimpath", "-o=" + or("output", filepath.Join(b.prefixPath("bin"), b.f.name))}
+		if t := kwGet(kw, "tags"); t != nil {
+			out = append(out, "-tags="+joined(t, ","))
+		}
+		out = append(out, "-ldflags="+flags)
+		if g := kwGet(kw, "gcflags"); g != nil {
+			out = append(out, "-gcflags="+joined(g, " "))
+		}
+		return list(out...)
+	case "std_cargo_args":
+		args := []string{"--jobs", makeJobs(b.env.Env), "--locked", "--root=" + or("root", prefix), "--path=" + or("path", ".")}
+		if f := kwGet(kw, "features"); f != nil {
+			args = append(args, "--features="+joined(f, ","))
+		}
+		return list(args...)
+	case "std_meson_args":
+		return list("--prefix="+or("prefix", prefix), "--libdir="+or("libdir", "lib"), "--buildtype=release", "--wrap-mode=nofallback")
+	case "std_swift_args":
+		return list("--configuration", "release", "--jobs", makeJobs(b.env.Env))
+	}
+	fail("%s", name)
+	return nil
+}
+
+// envMethod is one of ENV's methods brew adds for builds.
+func (b *builder) envMethod(name string, args []value) (value, bool) {
+	env := b.env.Env
+	arg := func(i int) string {
+		if i >= len(args) {
+			fail("ENV.%s needs %d arguments", name, i+1)
+		}
+		return str(args[i])
+	}
+	join := func(key, val, sep string, front bool) {
+		switch {
+		case env[key] == "":
+			env[key] = val
+		case front:
+			env[key] = val + sep + env[key]
+		default:
+			env[key] = env[key] + sep + val
+		}
+	}
+	switch name {
+	case "append":
+		sep := " "
+		if len(args) > 2 {
+			sep = arg(2)
+		}
+		join(arg(0), arg(1), sep, false)
+	case "prepend":
+		sep := " "
+		if len(args) > 2 {
+			sep = arg(2)
+		}
+		join(arg(0), arg(1), sep, true)
+	case "append_path":
+		join(arg(0), arg(1), ":", false)
+	case "prepend_path":
+		join(arg(0), arg(1), ":", true)
+	case "delete":
+		delete(env, arg(0))
+	case "deparallelize":
+		fields := strings.Fields(env["MAKEFLAGS"])
+		fields = slices.DeleteFunc(fields, func(f string) bool { return strings.HasPrefix(f, "-j") })
+		env["MAKEFLAGS"] = strings.Join(fields, " ")
+	case "make_jobs":
+		n, _ := strconv.Atoi(makeJobs(env))
+		return rint(n), true
+	case "cxx11":
+		join("CXX", "-std=c++11", " ", false)
+		join("CXX", "-stdlib=libc++", " ", false)
+	case "libcxx":
+		join("CXX", "-stdlib=libc++", " ", false)
+	case "cc", "cxx":
+		return rstr(env[strings.ToUpper(name)]), true
+	case "O0", "O1":
+		for _, k := range []string{"CFLAGS", "CXXFLAGS", "OBJCFLAGS", "OBJCXXFLAGS"} {
+			fields := slices.DeleteFunc(strings.Fields(env[k]), func(f string) bool { return strings.HasPrefix(f, "-O") })
+			env[k] = strings.Join(append(fields, "-"+name), " ")
+		}
+	default:
+		return nil, false
+	}
+	return nil, true
+}
+
+// buffer is the string inreplace yields to its block, which gsub! and its
+// kin change in place.
+type buffer struct{ s string }
+
+func (*buffer) rubyValue() {}
+
+// bufferMethod is a method on inreplace's string.
+func bufferMethod(x *buffer, name string, args []value) value {
+	sub := func(all bool) value {
+		if len(args) != 2 {
+			fail("%s with a block", name)
+		}
+		before := x.s
+		if re, ok := args[0].(*regex); ok {
+			if all {
+				x.s = compile(re).ReplaceAllString(x.s, rubySub(str(args[1])))
+			} else if loc := compile(re).FindStringSubmatchIndex(x.s); loc != nil {
+				var out []byte
+				out = compile(re).ExpandString(out, rubySub(str(args[1])), x.s, loc)
+				x.s = x.s[:loc[0]] + string(out) + x.s[loc[1]:]
+			}
+		} else if all {
+			x.s = strings.ReplaceAll(x.s, str(args[0]), str(args[1]))
+		} else {
+			x.s = strings.Replace(x.s, str(args[0]), str(args[1]), 1)
+		}
+		if x.s == before {
+			return nil // Ruby's bang methods return nil when nothing changed
+		}
+		return x
+	}
+	switch name {
+	case "gsub!":
+		return sub(true)
+	case "sub!":
+		return sub(false)
+	case "change_make_var!", "remove_make_var!":
+		value := ""
+		if name == "change_make_var!" {
+			value = str(args[1])
+		}
+		re := regexp.MustCompile(`(?m)^(` + regexp.QuoteMeta(str(args[0])) + `)[ \t]*([\\+:?]?=)[ \t]*(?:\\\n|[^\n])*$`)
+		if !re.MatchString(x.s) {
+			failBuild("%s: no make variable %s", name, str(args[0]))
+		}
+		x.s = re.ReplaceAllString(x.s, "${1}${2}"+value)
+		return nil
+	case "to_s", "to_str":
+		return rstr(x.s)
+	}
+	return strMethod(x.s, name, args)
+}
+
+// inreplaceBlock is Utils::Inreplace.inreplace with a block: each file is
+// yielded as a string the block edits, then written back.
+func (b *builder) inreplaceBlock(in *interp, s *scope, args []value, blk *blockN) {
+	var paths []string
+	for _, a := range args {
+		if x, ok := a.(*arr); ok {
+			for _, v := range x.v {
+				paths = append(paths, str(v))
+			}
+		} else {
+			paths = append(paths, str(a))
+		}
+	}
+	for _, p := range paths {
+		data, err := b.env.Host.ReadFile(b.abs(p))
+		b.must(err)
+		buf := &buffer{s: string(data)}
+		in.callBlock(&proc{b: blk, env: s}, buf)
+		if buf.s == string(data) {
+			failBuild("inreplace failed: %s was not changed", p)
+		}
+		fi, err := b.env.Host.Lstat(b.abs(p))
+		b.must(err)
+		b.write(p, buf.s, fi.Mode().Perm())
+	}
 }
 
 // set is ENV["X"] = v.

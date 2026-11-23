@@ -3,11 +3,14 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/install/installtest"
+	"github.com/jigsmiths/brw/internal/machoedit"
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
@@ -84,6 +87,69 @@ func TestInstallATapFormulaFromItsDownload(t *testing.T) {
 	}
 	if exists(t, prefix, "Cellar/.brw-staging") {
 		t.Error("the build directory was left behind")
+	}
+}
+
+func TestABuildStagesResourcesAndAppliesPatches(t *testing.T) {
+	e, prefix, origin, reg := tapBottleStore(t)
+	url, sum := reg.AddSource("tool-1.0.tar.gz", installtest.Tarball(t, map[string]string{
+		"tool-1.0/a.txt": "one\n", "tool-1.0/b.txt": "two\n",
+	}))
+	resURL, resSum := reg.AddSource("extra-2.0.tar.gz", installtest.Tarball(t, map[string]string{"extra-2.0/lib.txt": "lib\n"}))
+	patchURL, patchSum := reg.AddSource("fix.patch", []byte("--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-one\n+uno\n"))
+	writeTapFormula(t, origin, "tool", "class Tool < Formula\n  url \""+url+"\"\n  sha256 \""+sum+"\"\n\n"+
+		"  resource \"extra\" do\n    url \""+resURL+"\"\n    sha256 \""+resSum+"\"\n  end\n\n"+
+		"  patch do\n    url \""+patchURL+"\"\n    sha256 \""+patchSum+"\"\n  end\n\n"+
+		"  patch :DATA\n\n"+
+		"  def install\n    prefix.install \"a.txt\", \"b.txt\"\n    (libexec/\"extra\").install resource(\"extra\")\n  end\nend\n"+
+		"__END__\n--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-two\n+@@HOMEBREW_PREFIX@@\n")
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/tool"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	keg := filepath.Join(prefix, "Cellar/tool/1.0")
+	for file, want := range map[string]string{"a.txt": "uno\n", "b.txt": prefix + "\n", "libexec/extra/lib.txt": "lib\n"} {
+		if b, err := os.ReadFile(filepath.Join(keg, file)); err != nil || string(b) != want {
+			t.Errorf("%s = %q, %v; want %q", file, b, err, want)
+		}
+	}
+	if exists(t, prefix, "Cellar/.brw-staging") {
+		t.Error("the build directory was left behind")
+	}
+}
+
+// A real compile: make and clang build a library and a program that links it
+// by a relative name, which the installed keg must still find.
+func TestABuildCompilesAndFixesLinkage(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("brw builds from source on macOS only")
+	}
+	if err := exec.Command("/usr/bin/xcrun", "--find", "clang").Run(); err != nil {
+		t.Skip("no compiler:", err)
+	}
+	e, prefix, origin, reg := tapBottleStore(t)
+	url, sum := reg.AddSource("hello-1.0.tar.gz", installtest.Tarball(t, map[string]string{
+		"hello-1.0/hello.c": "#include <stdio.h>\nvoid hello(void) { puts(\"hello from a dylib\"); }\n",
+		"hello-1.0/main.c":  "void hello(void);\nint main(void) { hello(); return 0; }\n",
+		"hello-1.0/Makefile": "all:\n\t$(CC) $(CFLAGS) $(LDFLAGS) -dynamiclib -o libhello.dylib hello.c\n" +
+			"\t$(CC) $(CFLAGS) $(LDFLAGS) -o hello main.c -L. -lhello\n",
+	}))
+	writeTapFormula(t, origin, "hello", "class Hello < Formula\n  url \""+url+"\"\n  sha256 \""+sum+"\"\n\n"+
+		"  def install\n    system \"make\"\n    bin.install \"hello\"\n    lib.install \"libhello.dylib\"\n  end\nend\n")
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/hello"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	keg := filepath.Join(prefix, "Cellar/hello/1.0")
+	b, _ := os.ReadFile(filepath.Join(keg, "lib/libhello.dylib"))
+	lib, err := machoedit.Parse(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, _ := lib.DylibID(); id != filepath.Join(prefix, "opt/hello/lib/libhello.dylib") {
+		t.Errorf("id = %q", id)
+	}
+	out, err := exec.Command(filepath.Join(prefix, "bin/hello")).CombinedOutput()
+	if err != nil || string(out) != "hello from a dylib\n" {
+		t.Errorf("running the installed program: %v\n%s", err, out)
 	}
 }
 

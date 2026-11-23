@@ -46,8 +46,10 @@ type Item struct {
 	// from the formula as brew does. Nil leaves the bottle's list as it is.
 	RuntimeDeps []cellar.Dependency
 	Bottle      api.BottleFile
-	// Build installs a tap formula from its download, as it has no bottle for this host.
+	// Build installs a tap formula from its download, as it has no bottle for
+	// this host, with BuildDeps installed first.
 	Build      bool
+	BuildDeps  []string
 	PkgVersion string // version and revision, which names the keg directory
 	OnRequest  bool   // asked for by name, not only needed by something else
 	KegOnly    bool
@@ -151,6 +153,9 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	if err != nil {
 		return err
 	}
+	if p.builds(f) {
+		direct = append(slices.Clone(direct), f.BuildDependencies...)
+	}
 	for _, d := range direct {
 		df, ok := p.Index.Lookup(d)
 		if !ok {
@@ -169,7 +174,11 @@ func (w *planWalk) visit(f *api.Formula, requested bool) error {
 	if err != nil {
 		return err
 	}
-	w.plan.Items = append(w.plan.Items, Item{Formula: f, HostTag: w.hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)})
+	it := Item{Formula: f, HostTag: w.hostTag, Arch: hostArch(p.Host), RuntimeDeps: runtime, OnRequest: requested, KegOnly: g.KegOnly && !p.autoLinks(f, requested), PkgVersion: pkgVersion(f)}
+	if p.builds(f) {
+		it.BuildDeps = f.BuildDependencies
+	}
+	w.plan.Items = append(w.plan.Items, it)
 	return nil
 }
 
@@ -471,6 +480,13 @@ func (p *Planner) installed(f *api.Formula) (bool, error) {
 	return true, nil
 }
 
+// builds says whether f is installed from its download: a tap formula with
+// no bottle for this host. brw builds on macOS only so far.
+func (p *Planner) builds(f *api.Formula) bool {
+	_, bottled := platform.Select(p.Host, f.BottleTags())
+	return !bottled && f.FromTap() && f.URLs.Stable.URL != "" && p.Host.OS == "darwin"
+}
+
 // check records what stops f being installed, and picks its bottle tag.
 func (p *Planner) check(it *Item, problems *[]error) {
 	f := it.Formula
@@ -488,7 +504,7 @@ func (p *Planner) check(it *Item, problems *[]error) {
 	}
 	tag, ok := platform.Select(p.Host, f.BottleTags())
 	switch {
-	case !ok && f.FromTap() && f.URLs.Stable.URL != "" && p.Host.OS == "darwin":
+	case p.builds(f):
 		it.Build = true // as brew does, from the formula's download
 	case !ok:
 		hostTag, _ := platform.Tag(p.Host)

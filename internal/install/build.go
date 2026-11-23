@@ -1,6 +1,7 @@
 package install
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +20,7 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/rb"
+	"github.com/jigsmiths/brw/internal/relocate"
 	"github.com/jigsmiths/brw/internal/sbom"
 )
 
@@ -87,6 +91,45 @@ func buildpath(dir string) (string, error) {
 	return dir, nil
 }
 
+// applyPatches applies a formula's patches to its staged source in order, as
+// brew's Patch.apply does. An external patch must be a single patch file.
+func (in *Installer) applyPatches(ctx context.Context, name string, patches []rb.Patch, dir string) error {
+	for _, p := range patches {
+		text := p.Data
+		if p.URL != "" {
+			lower := strings.ToLower(path.Base(p.URL))
+			if strings.Contains(lower, ".tar") || strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".tgz") {
+				return fmt.Errorf("patch %s: patches from archives aren't supported", p.URL)
+			}
+			file, err := in.Fetcher.FetchSource(ctx, name+"--patch", p.SHA256[:min(len(p.SHA256), 12)], p.URL, p.SHA256)
+			if err != nil {
+				return fmt.Errorf("patch %s: %w", p.URL, err)
+			}
+			b, err := os.ReadFile(file)
+			if err != nil {
+				return err
+			}
+			text = string(b)
+		} else {
+			text = strings.ReplaceAll(text, "@@HOMEBREW_PREFIX@@", in.Prefix)
+		}
+		cmd := exec.CommandContext(ctx, "/usr/bin/patch", "-g", "0", "-f", "-"+p.Strip)
+		cmd.Dir, cmd.Stdin = dir, strings.NewReader(text)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("applying a patch: %w\n%s", err, out)
+		}
+	}
+	return nil
+}
+
+// makeJobs is HOMEBREW_MAKE_JOBS, else the number of CPUs, as brew picks it.
+func makeJobs() int {
+	if n, err := strconv.Atoi(os.Getenv("HOMEBREW_MAKE_JOBS")); err == nil && n > 0 {
+		return n
+	}
+	return runtime.NumCPU()
+}
+
 // newestFile is brew's source_modified_time: the newest mtime under dir.
 func newestFile(dir string) time.Time {
 	var newest time.Time
@@ -137,13 +180,16 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 		err = errors.Join(err, in.Root.RemoveStaging(dest))
 		_ = in.Root.Remove(fsx.Staging) // only succeeds when empty
 	}()
-	if err := in.Root.MkdirAll(dest, 0o755); err != nil {
-		return Result{}, err
+	for _, d := range []string{"src", "resources"} {
+		if err := in.Root.MkdirAll(path.Join(dest, d), 0o755); err != nil {
+			return Result{}, err
+		}
 	}
-	stage, err := in.Root.Abs(dest)
+	top, err := in.Root.Abs(dest)
 	if err != nil {
 		return Result{}, err
 	}
+	stage, scratch := filepath.Join(top, "src"), filepath.Join(top, "resources")
 	if err := in.unpack(download, path.Base(f.URLs.Stable.URL), stage); err != nil {
 		return Result{}, err
 	}
@@ -152,6 +198,16 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 		return Result{}, err
 	}
 	modified := newestFile(bp)
+	resources, files := map[string]string{}, map[string]string{}
+	for _, r := range src.Formula.Resources() {
+		if resources[r.Name], err = in.Fetcher.FetchSource(ctx, f.Name+"--"+r.Name, it.PkgVersion, r.URL, r.SHA256); err != nil {
+			return Result{}, fmt.Errorf("resource %s: %w", r.Name, err)
+		}
+		files[resources[r.Name]] = path.Base(r.URL)
+	}
+	if err := in.applyPatches(ctx, f.Name, src.Formula.Patches(), bp); err != nil {
+		return Result{}, err
+	}
 
 	rack := path.Join("Cellar", f.Name)
 	keg := path.Join(rack, it.PkgVersion)
@@ -170,14 +226,24 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 			}
 		}
 	}()
-	// As superenv's PATH: the dependencies' programs, then the system's.
-	var paths []string
+	var bins []string
 	for _, d := range it.RuntimeDeps {
-		paths = append(paths, filepath.Join(in.Prefix, "opt", path.Base(d.FullName), "bin"))
+		bins = append(bins, filepath.Join(in.Prefix, "opt", path.Base(d.FullName), "bin"))
 	}
-	paths = append(paths, "/usr/bin", "/bin", "/usr/sbin", "/sbin")
+	for _, d := range it.BuildDeps {
+		bins = append(bins, filepath.Join(in.Prefix, "opt", path.Base(d), "bin"))
+	}
+	envVars := stdenv(stdenvParams{
+		Prefix: in.Prefix, Buildpath: bp, Cache: filepath.Dir(in.Fetcher.Dir), SDK: in.SDK, MacVersion: in.MacVersion,
+		Temp: cmp.Or(os.Getenv("HOMEBREW_TEMP"), "/private/tmp"), Jobs: makeJobs(), DepBins: bins,
+	})
+	if err := in.Root.MkdirAll(filepath.Join(bp, ".brew_home"), 0o755); err != nil {
+		return Result{}, err
+	}
 	host := &kegHost{root: in.Root, run: in.Run}
-	env := &rb.InstallEnv{Host: host, Prefix: in.Prefix, Buildpath: bp, Env: map[string]string{"PATH": strings.Join(paths, ":")}}
+	env := &rb.InstallEnv{Host: host, Prefix: in.Prefix, Buildpath: bp, Env: envVars, Tap: f.Tap,
+		Resources: resources, Scratch: scratch,
+		Unpack: func(archive, dir string) error { return in.unpack(archive, files[archive], dir) }}
 	if err := src.Formula.Install(env); err != nil {
 		return Result{}, err
 	}
@@ -207,6 +273,18 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 	}
 	if err := relativizeSymlinks(in.Root, keg, in.Prefix); err != nil {
 		return Result{}, err
+	}
+	if runtime.GOOS == "darwin" {
+		fixed, err := relocate.FixLinkage(in.Root, keg, relocate.Linkage{
+			Prefix: in.Prefix, BuildDirs: []string{envVars["TMPDIR"], top}, PreserveRpath: src.Formula.PreserveRpath(),
+			Warn: func(s string) { in.logf("Warning: %s", s) },
+		})
+		if err != nil {
+			return Result{}, err
+		}
+		if err := relocate.Codesign(in.Root, keg, fixed); err != nil {
+			return Result{}, err
+		}
 	}
 	kept := bottleBlock.ReplaceAll(src.Code, nil)
 	if err := in.Root.MkdirAll(path.Join(keg, ".brew"), 0o755); err != nil {

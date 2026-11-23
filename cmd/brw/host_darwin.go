@@ -19,6 +19,15 @@ var armFamilies = map[uint32]string{
 	0x17d5b93a: "arm_brava", 0x1d5a87e8: "arm_hidra", 0xf76c5b1a: "arm_sotra",
 }
 
+// sdkPath is the macOS SDK builds compile against, as xcrun finds it.
+func sdkPath() string {
+	out, err := exec.Command("/usr/bin/xcrun", "--show-sdk-path").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // buildSystem is brew's DevelopmentTools.build_system_info on this Mac, which
 // a receipt of a formula built here records.
 func buildSystem() cellar.BuiltOn {

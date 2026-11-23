@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -184,6 +186,168 @@ func TestChmodTakesOctalLiterals(t *testing.T) {
 		if fi, err := os.Stat(filepath.Join(keg, file)); err != nil || fi.Mode().Perm() != want {
 			t.Errorf("%s: %v %v, want %o", file, fi.Mode(), err, want)
 		}
+	}
+}
+
+// The std_*_args are brew's, and reach the build's commands.
+func TestStdArgsAreBrews(t *testing.T) {
+	src := toolHead + `    system "sh", "-c", "echo \"$*\" > configure.out", "-", *std_configure_args
+    system "sh", "-c", "echo \"$*\" > cmake.out", "-", *std_cmake_args
+    system "sh", "-c", "echo \"$*\" > go.out", "-", *std_go_args(ldflags: "-X main.v=1")
+    system "sh", "-c", "echo \"$*\" > cargo.out", "-", *std_cargo_args
+    system "sh", "-c", "echo \"$*\" > meson.out", "-", *std_meson_args
+    prefix.install Dir["*.out"]
+  end
+end
+`
+	prefix, keg, _, err := installInto(t, src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for file, want := range map[string]string{
+		"configure.out": "--disable-debug --disable-dependency-tracking --prefix=" + keg + " --libdir=" + keg + "/lib",
+		"cmake.out": "-DCMAKE_INSTALL_PREFIX=" + keg + " -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release " +
+			"-DCMAKE_FIND_FRAMEWORK=LAST -DCMAKE_VERBOSE_MAKEFILE=ON -Wno-author -DBUILD_TESTING=OFF -DCCACHE_FOUND=OFF",
+		"go.out":    "-trimpath -o=" + keg + "/bin/tool -ldflags=-s -w -X main.v=1",
+		"cargo.out": "--jobs " + strconv.Itoa(runtime.NumCPU()) + " --locked --root=" + keg + " --path=.",
+		"meson.out": "--prefix=" + keg + " --libdir=lib --buildtype=release --wrap-mode=nofallback",
+	} {
+		b, err := os.ReadFile(filepath.Join(keg, file))
+		if err != nil || strings.TrimSpace(string(b)) != want {
+			t.Errorf("%s = %q, %v\nwant %q", file, b, err, want)
+		}
+	}
+	_ = prefix
+}
+
+// std_cmake_args traps FetchContent with brew's file when the prefix has it.
+func TestStdCmakeArgsUseBrewsTrapWhenThere(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	f, err := LoadFormula([]byte(toolHead+"    (prefix/\"a\").write std_cmake_args.join(\" \")\n  end\nend\n"), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix, build := t.TempDir(), t.TempDir()
+	trap := filepath.Join(prefix, "Library/Homebrew/cmake/trap_fetchcontent_provider.cmake")
+	if err := os.MkdirAll(filepath.Dir(trap), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(trap, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Install(&InstallEnv{Host: &dirHost{t: t}, Prefix: prefix, Buildpath: build}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(prefix, "Cellar/tool/1.0/a")); !strings.Contains(string(b), "-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="+trap) {
+		t.Errorf("args = %s", b)
+	}
+}
+
+func TestEnvMethodsAndInreplaceBlocks(t *testing.T) {
+	src := toolHead + `    ENV["CFLAGS"] = "-O2"
+    ENV.append "CFLAGS", "-g"
+    ENV.prepend_path "PATH", "/opt/x/bin"
+    ENV.deparallelize
+    inreplace "Makefile" do |s|
+      s.gsub! "@PREFIX@", prefix
+      s.sub!(/^CC=.*$/, "CC=clang")
+      s.change_make_var! "OPT", "-Os"
+    end
+    system "sh", "-c", "echo \"$CFLAGS|$MAKEFLAGS|${PATH%%:*}\" > env.out"
+    prefix.install "Makefile", "env.out"
+  end
+end
+`
+	h := map[string]string{"Makefile": "CC=gcc\nOPT=-O0 -g\nPREFIX=@PREFIX@\nDEST=@PREFIX@/bin\n"}
+	asBrewHost(t, "brewuser")
+	f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix, build := t.TempDir(), t.TempDir()
+	for name, body := range h {
+		if err := os.WriteFile(filepath.Join(build, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := &InstallEnv{Host: &dirHost{t: t}, Prefix: prefix, Buildpath: build, Env: map[string]string{"MAKEFLAGS": "-j8", "PATH": "/usr/bin"}}
+	if err := f.Install(env); err != nil {
+		t.Fatal(err)
+	}
+	keg := filepath.Join(prefix, "Cellar/tool/1.0")
+	if b, _ := os.ReadFile(filepath.Join(keg, "Makefile")); string(b) != "CC=clang\nOPT=-Os\nPREFIX="+keg+"\nDEST="+keg+"/bin\n" {
+		t.Errorf("Makefile = %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(keg, "env.out")); string(b) != "-O2 -g||/opt/x/bin\n" {
+		t.Errorf("env = %q", b)
+	}
+}
+
+func TestPatchesAndResourcesOfAFormula(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	src := `class Tool < Formula
+  url "https://example.com/tool-1.0.tar.gz"
+  sha256 "aa"
+
+  resource "extra" do
+    url "https://example.com/extra-2.0.tar.gz"
+    sha256 "bb"
+  end
+
+  patch do
+    url "https://example.com/fix.patch"
+    sha256 "cc"
+  end
+
+  patch :p0, :DATA
+
+  def install
+    (libexec/"extra").install resource("extra")
+    resource("extra").stage do
+      system "sh", "-c", "pwd > #{prefix}/staged-in"
+    end
+    resources.each { |r| (prefix/"names").write r.name }
+  end
+end
+__END__
+--- a
++++ b
+`
+	f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Resources(); len(got) != 1 || got[0] != (Resource{Name: "extra", URL: "https://example.com/extra-2.0.tar.gz", SHA256: "bb"}) {
+		t.Errorf("resources = %+v", got)
+	}
+	want := []Patch{{Strip: "p1", URL: "https://example.com/fix.patch", SHA256: "cc"}, {Strip: "p0", Data: "--- a\n+++ b\n"}}
+	if got := f.Patches(); len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("patches = %+v", got)
+	}
+
+	prefix, build, scratch := t.TempDir(), t.TempDir(), t.TempDir()
+	h := &dirHost{t: t}
+	env := &InstallEnv{Host: h, Prefix: prefix, Buildpath: build, Scratch: scratch,
+		Resources: map[string]string{"extra": "the archive"},
+		Unpack: func(archive, dir string) error {
+			if archive != "the archive" {
+				t.Errorf("unpacked %s", archive)
+			}
+			return os.WriteFile(filepath.Join(dir, "lib.txt"), []byte("lib"), 0o644)
+		}}
+	if err := f.Install(env); err != nil {
+		t.Fatal(err)
+	}
+	keg := filepath.Join(prefix, "Cellar/tool/1.0")
+	if b, err := os.ReadFile(filepath.Join(keg, "libexec/extra/lib.txt")); err != nil || string(b) != "lib" {
+		t.Errorf("installed resource: %q, %v", b, err)
+	}
+	real, _ := filepath.EvalSymlinks(scratch) // pwd prints /private/var for /var
+	if b, _ := os.ReadFile(filepath.Join(keg, "staged-in")); !strings.HasPrefix(string(b), real) {
+		t.Errorf("staged in %q, want under %s", b, scratch)
+	}
+	if b, _ := os.ReadFile(filepath.Join(keg, "names")); string(b) != "extra" {
+		t.Errorf("names = %q", b)
 	}
 }
 

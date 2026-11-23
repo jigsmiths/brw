@@ -70,6 +70,9 @@ func LoadFormula(src []byte, name, tag string) (*Formula, error) {
 // symbol such as :la is written with its colon.
 func (f *Formula) SkipClean() []string { return f.b.skipClean }
 
+// PreserveRpath is the formula's preserve_rpath: keep @rpath dylib IDs.
+func (f *Formula) PreserveRpath() bool { return f.b.preserveRpath }
+
 // symListKeep flattens skip_clean's arguments, keeping symbols apart from paths.
 func symListKeep(args []value) []string {
 	var out []string
@@ -159,6 +162,7 @@ type formulaB struct {
 	service       *serviceB
 	postSteps     *stepsDSL
 	skipClean     []string
+	preserveRpath bool
 	data          string // after __END__, for patch :DATA
 
 	deprecationDate, deprecationReason, depReplF, depReplC value
@@ -451,8 +455,10 @@ func (b *formulaB) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 		if len(args) != 1 {
 			fail("include")
 		}
+	case "preserve_rpath":
+		b.preserveRpath = true
 	case "livecheck", "test", "no_autobump!", "autobump", "allow_network_access!", "deny_network_access!",
-		"cxxstdlib_check", "fails_with", "needs", "env", "preserve_rpath", "plist_options", "opoo", "pour_bottle":
+		"cxxstdlib_check", "fails_with", "needs", "env", "plist_options", "opoo", "pour_bottle":
 		// These change nothing brw installs.
 	default:
 		return nil, false

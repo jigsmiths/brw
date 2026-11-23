@@ -160,6 +160,8 @@ func str(v value) string {
 		return strconv.FormatBool(bool(x))
 	case tmplV:
 		return "{{version}}"
+	case *buffer:
+		return x.s
 	}
 	fail("%T as a string", v)
 	return ""
@@ -739,7 +741,7 @@ func compile(r *regex) *regexp.Regexp {
 	}
 	src := strings.ReplaceAll(r.src, `\h`, `[0-9a-fA-F]`)
 	src = strings.ReplaceAll(src, `\Z`, `\n?\z`)
-	re, err := regexp.Compile(src)
+	re, err := regexp.Compile("(?m)" + src) // Ruby's ^ and $ always match at lines
 	if err != nil {
 		fail("regex %s", r.src)
 	}
@@ -787,6 +789,12 @@ func (in *interp) method(recv value, name string, args []value, blk *proc) value
 		return strMethod(string(x), name, args)
 	case *arr:
 		return in.arrMethod(x, name, args, blk)
+	case *buffer:
+		return bufferMethod(x, name, args)
+	case resourceRef:
+		if in.build != nil {
+			return in.build.resourceMethod(in, x, name, args, blk)
+		}
 	case special:
 		return in.specialMethod(x, name, args)
 	case formulaRef:

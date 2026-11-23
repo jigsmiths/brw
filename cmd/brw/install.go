@@ -313,6 +313,8 @@ func withBuilds(e *env, prefix string, idx *api.Index, client *api.Client) func(
 		tag, _ := platform.Tag(e.host)
 		in.Version, _ = buildInfo()
 		in.BuiltOn = buildSystem()
+		in.MacVersion = strings.TrimPrefix(in.BuiltOn.OSVersion, "macOS ")
+		in.SDK = sdkPath()
 		in.LoadSource = func(f *api.Formula) (install.Source, error) {
 			file := filepath.Join(tap.Dir(prefix, f.Tap), filepath.FromSlash(f.RubySourcePath))
 			code, err := os.ReadFile(file)

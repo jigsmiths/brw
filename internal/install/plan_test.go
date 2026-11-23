@@ -130,6 +130,30 @@ func TestPlanRecordsTheArchOfTheHost(t *testing.T) {
 	}
 }
 
+// A tap formula built from its download needs its build dependencies first,
+// installed as dependencies, as brew does; a bottle does not need them.
+func TestPlanAddsBuildDependenciesOfAFormulaItBuilds(t *testing.T) {
+	built := with(with(with(f("tool", "lib"), "tap", "u/t"), "bottle", map[string]any{}), "build_dependencies", []string{"go"})
+	built["full_name"] = "u/t/tool"
+	built["urls"] = map[string]any{"stable": map[string]any{"url": "https://example.com/tool-1.0.tar.gz"}}
+	poured := with(f("poured", "lib"), "build_dependencies", []string{"cmake"})
+	plan, err := planner(t, mac, index(t, built, poured, f("lib"), f("go"), f("cmake"))).Plan([]string{"tool", "poured"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(names(plan), " "); got != "lib go tool poured" {
+		t.Errorf("plan = %s", got)
+	}
+	for _, it := range plan.Items {
+		if it.Formula.Name == "go" && it.OnRequest {
+			t.Error("a build dependency was asked for")
+		}
+		if it.Formula.Name == "tool" && !it.Build {
+			t.Error("tool should be built")
+		}
+	}
+}
+
 // Brew writes the runtime dependencies from the formula as it is now, not from the
 // bottle, which can be older.
 func TestPlanListsRuntimeDependenciesLikeBrew(t *testing.T) {
