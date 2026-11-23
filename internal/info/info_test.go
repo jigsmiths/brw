@@ -220,7 +220,10 @@ func TestBuildDependenciesShownOnlyWhenBuilt(t *testing.T) {
 	idx := index(t, base("bottled", build), base("source", build), base("fresh", build),
 		base("nobottle", formula{"build_dependencies": []string{"cmake"}, "bottle": map[string]any{}}),
 		base("linuxonly", formula{"build_dependencies": []string{"cmake"}, "bottle": map[string]any{},
-			"requirements": []map[string]any{{"name": "linux"}}}),
+			"requirements": []map[string]any{{"name": "linux", "specs": []string{"stable"}}}}),
+		base("toonew", formula{"build_dependencies": []string{"cmake"}, "bottle": map[string]any{},
+			"requirements": []map[string]any{{"name": "macos", "version": "99", "specs": []string{"stable"}}}}),
+		base("gone", formula{"build_dependencies": []string{"cmake"}, "bottle": map[string]any{}, "disabled": true}),
 		base("cmake", nil))
 	env := envFor(t, prefix, mac, idx)
 	tests := map[string]bool{
@@ -228,12 +231,54 @@ func TestBuildDependenciesShownOnlyWhenBuilt(t *testing.T) {
 		"source":    true,  // built here
 		"fresh":     false, // not installed, but a bottle exists
 		"nobottle":  true,  // not installed and no bottle
-		"linuxonly": true,  // brew ignores requirements here, as its own listing has none
+		"linuxonly": false, // cannot be built on macOS
+		"toonew":    false, // needs a newer macOS
+		"gone":      false, // disabled
 	}
 	for name, want := range tests {
 		if got := strings.Contains(text(t, name, env), "Build (1): cmake"); got != want {
 			t.Errorf("%s: build line shown = %v, want %v", name, got, want)
 		}
+	}
+}
+
+// brew puts the deprecation notice before aliases and old names.
+func TestDeprecationComesBeforeNames(t *testing.T) {
+	idx := index(t, base("glyph", formula{"aliases": []string{"g"}, "oldnames": []string{"asciigen"},
+		"deprecated": true, "deprecation_reason": "unmaintained", "disable_date": "2099-01-01"}))
+	got := text(t, "glyph", envFor(t, t.TempDir(), mac, idx))
+	want := "Deprecated because it is not maintained upstream! It will be disabled on 2099-01-01.\nAliases: g\nOld Names: asciigen\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("want\n%s\nin\n%s", want, got)
+	}
+}
+
+func TestRequirements(t *testing.T) {
+	req := func(name, version string, contexts ...string) map[string]any {
+		r := map[string]any{"name": name, "contexts": contexts, "specs": []string{"stable"}}
+		if version != "" {
+			r["version"] = version
+		}
+		return r
+	}
+	headOnly := map[string]any{"name": "macos", "contexts": []string{}, "specs": []string{"head"}}
+	idx := index(t,
+		base("arm", formula{"requirements": []map[string]any{req("arch", "arm64"), req("macos", "26")}}),
+		base("mixed", formula{"requirements": []map[string]any{
+			req("xcode", "26.4", "build"), req("linux", ""), req("maximum_macos", "14", "build"),
+			req("linuxkernel", ""), headOnly, req("xcode", "")}}),
+		base("plain", nil))
+	env := envFor(t, t.TempDir(), mac, idx)
+	for name, want := range map[string]string{
+		"arm":   "==> Requirements\nRequired: arm64 architecture, macOS >= 26\n",
+		"mixed": "==> Requirements\nBuild: Xcode >= 26.4 (on macOS), macOS <= 14\nRequired: Linux, Xcode (on macOS)\n",
+	} {
+		if got := text(t, name, env); !strings.Contains(got, want) {
+			t.Errorf("%s: want\n%s\nin\n%s", name, want, got)
+		}
+	}
+	if got := text(t, "plain", env); strings.Contains(got, "Requirements") {
+		t.Errorf("plain has a requirements section:\n%s", got)
 	}
 }
 
@@ -327,6 +372,9 @@ func TestDeprecation(t *testing.T) {
 			"Deprecated because it is not supported upstream! It will be disabled on 2026-12-18.\nReplacement:\n  brew install --cask cli\n"},
 		{"same name as formula and cask", formula{"deprecated": true, "disable_date": "2030-01-01", "deprecation_replacement_formula": "x", "deprecation_replacement_cask": "x"},
 			"Deprecated! It will be disabled on 2030-01-01.\nReplacement:\n  brew install x\n"},
+		{"both: disabled wins, as in brew", formula{"deprecated": true, "deprecation_reason": "does_not_build", "deprecation_date": "2025-09-20",
+			"disabled": true, "disable_reason": "does_not_build", "disable_date": "2026-09-20"},
+			"Disabled because it does not build! It was disabled on 2026-09-20."},
 		{"neither", formula{}, ""},
 	}
 	for _, tt := range tests {

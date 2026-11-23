@@ -314,15 +314,23 @@ func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs)
 		result.PostInstallErr = err
 		return result
 	}
+	tapDefined := f.FromTap() && f.PostInstallDefined
+	if len(f.PostInstallSteps) == 0 && !tapDefined {
+		return result
+	}
+	in.logf("==> Running post_install for %s", f.Name)
+	// brew makes it for every post_install, so steps can link into it.
+	if err := in.Root.MkdirAll("libexec", 0o755); err != nil {
+		result.PostInstallErr = err
+		return result
+	}
 	if len(f.PostInstallSteps) > 0 {
-		in.logf("==> Running post_install for %s", f.Name)
 		result.PostInstallErr = poststep.Run(poststep.Context{
 			Root: in.Root, Prefix: in.Prefix, Name: f.Name, Version: f.Versions.Stable, Keg: keg,
 			OS: cmp.Or(in.OS, runtime.GOOS), User: in.User, Log: in.Log,
 		}, f.PostInstallSteps)
 	}
-	if f.FromTap() && f.PostInstallDefined && result.PostInstallErr == nil {
-		in.logf("==> Running post_install for %s", f.Name)
+	if tapDefined && result.PostInstallErr == nil {
 		result.PostInstallErr = in.tapPostInstall(f)
 	}
 	return result

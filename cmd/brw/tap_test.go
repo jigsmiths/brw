@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/tap"
@@ -252,5 +255,37 @@ func TestUpdateWarnsAboutATapItCannotPull(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "brw: warning: could not update jigsmiths/tap:") {
 		t.Errorf("stderr = %q", stderr)
+	}
+}
+
+func TestUpdateSkipsATapGitHubSaysIsCurrent(t *testing.T) {
+	e, prefix, origin, app := tapStore(t)
+	if _, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", t.TempDir(), "jigsmiths/tap/app"); err != nil {
+		t.Fatal(err)
+	}
+	// The tap says it is on GitHub, but git fetches it from origin.
+	dir := tap.Dir(prefix, "jigsmiths/tap")
+	gitIn(t, dir, "remote", "set-url", "origin", "https://github.com/jigsmiths/homebrew-tap")
+	gitIn(t, dir, "config", "url."+origin+".insteadOf", "https://github.com/jigsmiths/homebrew-tap")
+	publishTapCask(t, origin, app, "2.0")
+
+	var current atomic.Bool
+	current.Store(true)
+	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if current.Load() {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		_, _ = w.Write([]byte("0123abcd"))
+	}))
+	defer github.Close()
+	e.githubAPI = github.URL
+
+	if out, err := runCmd(t, e, "update", "-prefix", prefix); err != nil || strings.Contains(out, "tap") {
+		t.Errorf("update with GitHub saying the tap is current = %q, %v", out, err)
+	}
+	current.Store(false)
+	if out, err := runCmd(t, e, "update", "-prefix", prefix); err != nil || !strings.HasSuffix(out, "Updated 1 tap (jigsmiths/tap).\n") {
+		t.Errorf("update with GitHub ahead = %q, %v", out, err)
 	}
 }

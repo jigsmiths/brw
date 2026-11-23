@@ -124,14 +124,14 @@ func ShadowingText(f *api.Formula, env Env, shadows string) (string, error) {
 	if f.Homepage != "" {
 		b.WriteString(f.Homepage + "\n")
 	}
+	if msg := env.deprecation(f); msg != "" {
+		b.WriteString(strings.TrimSuffix(msg, "\n") + "\n")
+	}
 	if len(f.Aliases) > 0 {
 		b.WriteString("Aliases: " + strings.Join(f.Aliases, ", ") + "\n")
 	}
 	if len(f.OldNames) > 0 {
 		b.WriteString("Old Names: " + strings.Join(f.OldNames, ", ") + "\n")
-	}
-	if msg := env.deprecation(f); msg != "" {
-		b.WriteString(strings.TrimSuffix(msg, "\n") + "\n")
 	}
 	if c := env.conflicts(f); len(c) > 0 {
 		b.WriteString("Conflicts with:\n  " + strings.Join(c, "\n  ") + "\n")
@@ -160,6 +160,7 @@ func ShadowingText(f *api.Formula, env Env, shadows string) (string, error) {
 		return "", err
 	}
 	b.WriteString(dl)
+	b.WriteString(requirements(f))
 
 	if f.Versions.Head != "" {
 		b.WriteString("==> Options\n--HEAD\n\tInstall HEAD version\n")
@@ -207,12 +208,12 @@ func (e Env) deprecation(f *api.Formula) string {
 func Deprecation(f *api.Formula, now time.Time) string {
 	var kind, reason, replacement string
 	switch {
-	case f.Deprecated:
-		kind, reason = "Deprecated", f.DeprecationReason
-		replacement = replacementWithType(f.DeprecationReplacementFormula, f.DeprecationReplacementCask)
 	case f.Disabled:
 		kind, reason = "Disabled", f.DisableReason
 		replacement = replacementWithType(f.DisableReplacementFormula, f.DisableReplacementCask)
+	case f.Deprecated:
+		kind, reason = "Deprecated", f.DeprecationReason
+		replacement = replacementWithType(f.DeprecationReplacementFormula, f.DeprecationReplacementCask)
 	default:
 		return ""
 	}
@@ -486,7 +487,8 @@ func (e Env) dependencies(f *api.Formula, kegs []keg, bottled bool) (string, err
 			}
 		}
 	} else {
-		hideBuild = bottled
+		// brew lists build dependencies only for a formula it would build here.
+		hideBuild = bottled || f.Disabled || incompatible(f, e.Host) || !f.ForOS(e.Host.OS)
 	}
 
 	var lines []string

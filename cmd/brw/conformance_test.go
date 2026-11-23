@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	osexec "os/exec"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -319,7 +320,8 @@ func TestConformanceInfo(t *testing.T) {
 	if !ok {
 		t.Fatal("brew info failed")
 	}
-	brews := infoBlocks(want)
+	// brew shows sizes only for bottles whose manifest its own cache happens to hold.
+	brews := infoBlocks(regexp.MustCompile(`(?m)^(Bottle|Installed) Size: .*\n`).ReplaceAllString(want, ""))
 	got, err := runCmd(t, e, "info", append([]string{"--formula"}, names...)...)
 	if err != nil {
 		t.Fatal(err)

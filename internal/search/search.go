@@ -47,8 +47,8 @@ func simplify(s string) string {
 
 // Names returns the sorted names and aliases matching query. An alias is
 // dropped when the formula it points at matches too. Brew's fuzzy spelling
-// suggestions are not included.
-func Names(idx *api.Index, query string) ([]string, error) {
+// suggestions are not included. Formulae shown rejects are left out; nil keeps all.
+func Names(idx *api.Index, query string, shown func(*api.Formula) bool) ([]string, error) {
 	match, err := newMatcher(query)
 	if err != nil {
 		return nil, err
@@ -56,6 +56,9 @@ func Names(idx *api.Index, query string) ([]string, error) {
 	names := map[string]bool{}
 	canonical := map[string]string{} // alias to formula name
 	for _, f := range idx.Formulae() {
+		if shown != nil && !shown(f) {
+			continue
+		}
 		full, tapPrefix := f.Name, ""
 		if f.Tap != "" && f.Tap != "homebrew/core" {
 			tapPrefix = f.Tap + "/"

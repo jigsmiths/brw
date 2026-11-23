@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/search"
 )
 
@@ -46,7 +48,9 @@ func searchCommand(e *env, args []string) error {
 	if *desc {
 		out, err = searchDescriptions(idx, casks, query)
 	} else {
-		out, err = searchNames(idx, casks, query, e.tty)
+		racks, _ := cellar.Prefix(*prefix).Names() // none installed when unreadable
+		shown := func(f *api.Formula) bool { return f.ForOS(e.host.OS) || slices.Contains(racks, f.Name) }
+		out, err = searchNames(idx, casks, query, shown, e.tty)
 	}
 	if err != nil {
 		return err
@@ -91,11 +95,11 @@ func searchDescriptions(idx *api.Index, casks *api.CaskIndex, query string) (str
 
 // searchNames is search by name, with headings on a terminal. A nil index is
 // a kind not searched.
-func searchNames(idx *api.Index, casks *api.CaskIndex, query string, headings bool) (string, error) {
+func searchNames(idx *api.Index, casks *api.CaskIndex, query string, shown func(*api.Formula) bool, headings bool) (string, error) {
 	var names, tokens []string
 	var err error
 	if idx != nil {
-		if names, err = search.Names(idx, query); err != nil {
+		if names, err = search.Names(idx, query, shown); err != nil {
 			return "", err
 		}
 	}

@@ -4,12 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-
-	"github.com/jigsmiths/brw/internal/install"
 )
 
 func reinstallCommand(e *env, args []string) error {
@@ -49,13 +46,7 @@ func reinstallCommand(e *env, args []string) error {
 	if len(problems) > 0 {
 		return errors.Join(problems...)
 	}
-	planner := &install.Planner{
-		Index: idx, Host: e.host, Prefix: prefix, Bottles: client, Kegs: kegs,
-		Linked: func(name string) bool {
-			fi, err := os.Stat(filepath.Join(prefix, "var/homebrew/linked", name))
-			return err == nil && fi.IsDir()
-		},
-	}
+	planner := e.newPlanner(prefix, idx, client, kegs)
 	plan, planErrs := planner.PlanReinstall(formulae)
 	return applyPlan(e, prefix, *journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "reinstalled", plan, planErrs, nil, withBuilds(e, prefix, idx, client))
 }

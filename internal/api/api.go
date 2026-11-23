@@ -27,18 +27,40 @@ import (
 // DefaultURL is the listing as Homebrew signs it, which brw checks before use.
 const DefaultURL = "https://formulae.brew.sh/api/formula.jws.json"
 
+// Requirement is a formula's depends_on of a platform or tool, such as
+// {"name":"macos","version":"12"}.
+type Requirement struct {
+	Name     string   `json:"name"`
+	Version  string   `json:"version"`
+	Contexts []string `json:"contexts"` // "build" for a build-time requirement
+	Specs    []string `json:"specs"`    // "stable", "head"
+}
+
+// ForOS says whether f is for goos ("darwin" or "linux"): a formula that needs
+// the other OS is left out of brew's name search.
+func (f *Formula) ForOS(goos string) bool {
+	for _, r := range f.Requirements {
+		if slices.Contains(r.Contexts, "build") {
+			continue
+		}
+		if r.Name == "linux" && goos != "linux" || (r.Name == "macos" || r.Name == "maximum_macos") && goos == "linux" {
+			return false
+		}
+	}
+	return true
+}
+
 // Formula is an entry of the formula listing, with the fields brw uses.
 type Formula struct {
-	Name                 string `json:"name"`
-	FullName             string `json:"full_name"`
-	Desc                 string `json:"desc"`
-	Homepage             string `json:"homepage"`
-	License              string `json:"license"`
-	Caveats              string `json:"caveats"`
-	RubySourcePath       string `json:"ruby_source_path"`
-	TapGitHead           string `json:"tap_git_head"`          // a tap formula's tap commit
-	CompatibilityVersion int    `json:"compatibility_version"` // 0 when the formula sets none
-	URLs                 struct {
+	Name           string `json:"name"`
+	FullName       string `json:"full_name"`
+	Desc           string `json:"desc"`
+	Homepage       string `json:"homepage"`
+	License        string `json:"license"`
+	Caveats        string `json:"caveats"`
+	RubySourcePath string `json:"ruby_source_path"`
+	TapGitHead     string `json:"tap_git_head"` // a tap formula's tap commit
+	URLs           struct {
 		Stable struct {
 			URL      string `json:"url"`
 			Checksum string `json:"checksum"`
@@ -58,7 +80,7 @@ type Formula struct {
 	DisableReplacementFormula     string                        `json:"disable_replacement_formula"`
 	DisableReplacementCask        string                        `json:"disable_replacement_cask"`
 	VersionedFormulae             []string                      `json:"versioned_formulae"`
-	Requirements                  []struct{ Name string }       `json:"requirements"`
+	Requirements                  []Requirement                 `json:"requirements"`
 	KegOnlyReason                 KegOnlyReason                 `json:"keg_only_reason"`
 	Tap                           string                        `json:"tap"`
 	Aliases                       []string                      `json:"aliases"`
@@ -66,6 +88,7 @@ type Formula struct {
 	Versions                      struct{ Stable, Head string } `json:"versions"`
 	Revision                      int                           `json:"revision"`
 	VersionScheme                 int                           `json:"version_scheme"`
+	CompatibilityVersion          int                           `json:"compatibility_version"` // 0 when unset
 	Bottle                        struct{ Stable Bottle }       `json:"bottle"`
 	Dependencies                  []string                      `json:"dependencies"`
 	BuildDependencies             []string                      `json:"build_dependencies"`

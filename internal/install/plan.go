@@ -74,13 +74,14 @@ type Plan struct {
 
 // Planner works out an install without changing anything.
 type Planner struct {
-	Index   *api.Index
-	Host    platform.Host
-	Prefix  string
-	Bottles BottleSource
-	Kegs    []cellar.Keg
-	Linked  func(name string) bool
-	Now     time.Time // for deprecation notices; the zero value means now
+	Index     *api.Index
+	Host      platform.Host
+	Prefix    string
+	Bottles   BottleSource
+	Kegs      []cellar.Keg
+	Linked    func(name string) bool
+	Optlinked func(name string) bool
+	Now       time.Time // for deprecation notices; the zero value means now
 
 	upgrading map[string]bool // formulae being upgraded, which count as not installed
 }
@@ -329,9 +330,12 @@ func (p *Planner) markUpgrades(plan *Plan, reinstall bool) {
 		it.Reinstall = reinstall
 		current := cellar.Prefix(p.Prefix).DefaultKeg(old)
 		it.OnRequest = current.Receipt != nil && current.Receipt.InstalledOnRequest
-		// Brew links what it installs unless the formula is keg-only, so an
-		// unlinked keg is linked again by the upgrade.
-		linked := p.Linked(it.Formula.Name) || !it.KegOnly
+		// brew keeps an opt-linked keg linked or unlinked as it was, else links
+		// unless keg-only (upgrade.rb).
+		linked := !it.KegOnly
+		if p.Optlinked(it.Formula.Name) {
+			linked = p.Linked(it.Formula.Name)
+		}
 		it.Linked = &linked
 	}
 }
@@ -365,7 +369,7 @@ func (p *Planner) runtimeDeps(r *deps.Resolver, f *api.Formula) ([]cellar.Depend
 			BottleRebuild: d.Bottle.Stable.Rebuild, PkgVersion: pkgVersion(d),
 			DeclaredDirectly: slices.Contains(direct, d.Name),
 		}
-		if d.CompatibilityVersion != 0 {
+		if d.CompatibilityVersion > 0 { // brew leaves the key out when unset
 			dep.CompatibilityVersion = json.RawMessage(strconv.Itoa(d.CompatibilityVersion))
 		}
 		out = append(out, dep)
