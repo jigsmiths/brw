@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/tap"
 )
 
 const usage = `Example usage:
@@ -51,6 +53,9 @@ type env struct {
 	defaultPrefix string // overrides the host's default prefix, for tests
 	// tapRemote overrides where a tap is cloned from, for tests.
 	tapRemote func(name string) string
+	// pull overrides how update pulls a tap, for tests.
+	pull      func(ctx context.Context, t tap.Tap) (changed bool, err error)
+	githubAPI string // overrides tap.GitHubAPI, for tests
 }
 
 // kegs lists the kegs of a prefix and warns about each receipt it could not read.
