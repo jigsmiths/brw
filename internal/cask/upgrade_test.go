@@ -31,7 +31,6 @@ var appTarball2 = func() []byte {
 		entry{name: "tool", body: "#!/bin/sh\n"})
 }()
 
-// upgradable installs app 1.0 and returns the 2.0 that replaces it.
 func upgradable(t *testing.T, artifacts string) (*testInstall, *fakeExec, api.Cask) {
 	t.Helper()
 	ti, f := installed(t, artifacts)
@@ -209,7 +208,6 @@ func TestUpgradeReopensNothingWhenNothingWasRunning(t *testing.T) {
 	}
 }
 
-// exitCode is an error from a command that exited with the code.
 type exitCode int
 
 func (e exitCode) Error() string { return "exit status " + strconv.Itoa(int(e)) }
@@ -233,11 +231,11 @@ func TestUpgradeQuarantineApproval(t *testing.T) {
 	const designated = "designated => identifier \"com.example.app\" and anchor apple generic\n"
 	tests := []struct {
 		name       string
-		quarantine string  // on the old app; "" for none
-		identity   error   // from codesign -d
-		verify     []error // from each codesign --verify: the old app's, then the new one's
+		quarantine string
+		identity   error
+		verify     []error
 		wantWarn   string
-		wantFlags  string // the new app's quarantine flags
+		wantFlags  string
 	}{
 		{name: "approved and same signer", quarantine: "01c1;5f000000;;OLD", verify: []error{nil, nil}, wantFlags: "01c1"},
 		{name: "not quarantined counts as approved", verify: []error{nil, nil}, wantFlags: "01c1"},

@@ -36,13 +36,11 @@ func write(t *testing.T, path, content string) {
 	}
 }
 
-// publish writes a cask file.
 func publish(t *testing.T, dir, token, version string) {
 	t.Helper()
 	write(t, filepath.Join(dir, "Casks", token+".rb"), fmt.Sprintf("cask %q do\n  version %q\nend\n", token, version))
 }
 
-// origin makes a tap repository to clone from.
 func origin(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

@@ -12,7 +12,6 @@ import (
 	"testing"
 )
 
-// formulaFields are the parts of brew's formula hash a formula file decides.
 var formulaFields = strings.Fields(`name desc license homepage versions urls patches local_patch_checksums revision
 version_scheme compatibility_version autobump no_autobump_message skip_livecheck bottle pour_bottle_only_if keg_only keg_only_reason options build_dependencies dependencies
 test_dependencies recommended_dependencies optional_dependencies no_linkage_dependencies uses_from_macos
@@ -21,8 +20,6 @@ installed linked_keg pinned outdated deprecated deprecation_date deprecation_rea
 deprecate_args disabled disable_date disable_reason disable_replacement_formula disable_replacement_cask
 disable_args post_install_steps post_install_defined service`)
 
-// The corpus has only the defaults; these are the other values brew's
-// to_hash gives autobump, no_autobump_message and skip_livecheck.
 func TestAutobumpAndLivecheckSkip(t *testing.T) {
 	asBrewHost(t, "brewuser")
 	for _, tt := range []struct {
@@ -56,12 +53,9 @@ func TestAutobumpAndLivecheckSkip(t *testing.T) {
 	}
 }
 
-// formulaTags are OnSystem::VALID_OS_ARCH_TAGS, which brew evaluates variations on.
 var formulaTags = strings.Fields(`arm64_golden_gate golden_gate arm64_tahoe tahoe arm64_sequoia sequoia arm64_sonoma
 sonoma arm64_ventura ventura arm64_monterey monterey arm64_big_sur big_sur arm64_linux x86_64_linux`)
 
-// asBrewHost pins the machine the fixtures were made on: an arm64 Mac on
-// macOS 27, whose user is user.
 func asBrewHost(t *testing.T, user string) {
 	t.Helper()
 	asBrew(t)
@@ -71,8 +65,6 @@ func asBrewHost(t *testing.T, user string) {
 	t.Cleanup(func() { hostPlatform, lookupUser = oldHost, oldUser })
 }
 
-// compareFormula evaluates src on every tag and returns how it differs from
-// want, brew's hash with its prefix replaced by the placeholder.
 func compareFormula(t *testing.T, src []byte, name string, want map[string]any) []string {
 	t.Helper()
 	var diffs []string
@@ -106,8 +98,6 @@ func compareFormula(t *testing.T, src []byte, name string, want map[string]any) 
 	return diffs
 }
 
-// readFormulaWant reads brew info --json=v2 --variations output, with the
-// prefix it ran in replaced by the placeholder.
 func readFormulaWant(t *testing.T, path string) (map[string]any, string) {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -131,8 +121,6 @@ func readFormulaWant(t *testing.T, path string) (map[string]any, string) {
 	return f, name
 }
 
-// The fixtures are formula files from taps with brew info --json=v2
-// --variations for them, made on an arm64 Mac running macOS 27.
 func TestFormulaMatchesBrew(t *testing.T) {
 	asBrewHost(t, "brewuser")
 	files, _ := filepath.Glob(filepath.Join("testdata", "formula", "*.json"))
@@ -189,8 +177,6 @@ func TestCaveatsAnswerOnSystemBlocks(t *testing.T) {
 	}
 }
 
-// def caveats runs only when the hash is made; Ruby it cannot run there is
-// refused like any other.
 func TestCaveatsRubyItCannotRunIsRefused(t *testing.T) {
 	asBrewHost(t, "brewuser")
 	src := "class Foo < Formula\n  url \"https://example.com/foo-1.0.tar.gz\"\n  def caveats\n    File.read(\"/etc/x\")\n  end\nend\n"
@@ -214,10 +200,6 @@ func TestLoadFormulaDetectsTheVersionFromTheURL(t *testing.T) {
 	}
 }
 
-// TestConformanceTapFormulae compares every formula in a directory of
-// <name>.rb and <name>.json pairs, made with brew info --json=v2 --variations
-// in the prefix BRW_FORMULA_PREFIX. It reports how many match and why the
-// rest do not.
 func TestConformanceTapFormulae(t *testing.T) {
 	dir := os.Getenv("BRW_FORMULA_GOLDEN")
 	if dir == "" {

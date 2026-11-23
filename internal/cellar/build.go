@@ -12,7 +12,6 @@ type BuiltOn struct {
 	OS, OSVersion, CPUFamily, Xcode, CLT, PreferredPerl string
 }
 
-// Build is what a receipt says about a formula built from its download.
 type Build struct {
 	HomebrewVersion string
 	OnRequest       bool
@@ -21,7 +20,7 @@ type Build struct {
 	Aliases         []string
 	Deps            []Dependency
 	Tap, TapGitHead string // the tap's commit; empty writes null
-	Path            string // the formula file
+	Path            string
 	Stable          string
 	Scheme          int
 	Compatibility   int // 0 when the formula sets none
@@ -46,8 +45,7 @@ func encode(v any) (json.RawMessage, error) {
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
-// NewBuildReceipt is the receipt brew's Tab.create writes for a formula it
-// builds, with the keys in brew's order.
+// NewBuildReceipt mirrors brew's Tab.create.
 func NewBuildReceipt(b Build) (*Receipt, error) {
 	var compat *int
 	if b.Compatibility != 0 {

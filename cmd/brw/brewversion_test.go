@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// A receipt of a keg brw builds records the prefix's Homebrew version, as
-// brew's does, since brew trusts runtime_dependencies only from 1.1.6 on.
 func TestHomebrewVersionIsThePrefixsBrew(t *testing.T) {
 	t.Run("from brew's repository", func(t *testing.T) {
 		prefix := t.TempDir()
@@ -30,8 +28,7 @@ func TestHomebrewVersionIsThePrefixsBrew(t *testing.T) {
 			t.Errorf("after a tag: %q", got)
 		}
 
-		// brew's describe cache wins for a user, even over a dirty tree; a
-		// developer's dirty tree is described again.
+		// The describe cache wins for a user, even over a dirty tree.
 		if err := os.WriteFile(filepath.Join(prefix, "Library", "Homebrew", "brew.sh"), []byte("changed"), 0o644); err != nil {
 			t.Fatal(err)
 		}

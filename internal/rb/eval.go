@@ -13,7 +13,6 @@ import (
 	"sync"
 )
 
-// value is a Ruby value. Ruby's nil is a nil value.
 type value interface{ rubyValue() }
 
 type (
@@ -22,20 +21,20 @@ type (
 	rfloat float64
 	rbool  bool
 	sym    string
-	ver    string // a cask version: a string with version helpers
+	ver    string
 	regex  struct{ src string }
 	hash   struct {
 		keys []value
 		vals []value
 	}
 	arr   struct{ v []value }
-	tmplV struct{} // version inside install steps
+	tmplV struct{}
 	proc  struct {
 		b   *blockN
 		env *scope
-		sym string // &:name, which calls name on its argument
+		sym string
 	}
-	special string // a constant such as MacOS
+	special string
 )
 
 func (rstr) rubyValue()    {}
@@ -55,13 +54,11 @@ func (*rangeV) rubyValue() {}
 func (caskRef) rubyValue() {}
 func (*guardV) rubyValue() {}
 
-// MarshalJSON writes what Ruby's to_json would.
 func (s sym) MarshalJSON() ([]byte, error)    { return json.Marshal(string(s)) }
 func (v ver) MarshalJSON() ([]byte, error)    { return json.Marshal(string(v)) }
 func (r *regex) MarshalJSON() ([]byte, error) { return json.Marshal("(?-mix:" + r.src + ")") }
 func (tmplV) MarshalJSON() ([]byte, error)    { return json.Marshal("{{version}}") }
 
-// MarshalJSON writes an empty array as [], not null.
 func (a *arr) MarshalJSON() ([]byte, error) {
 	if a.v == nil {
 		return []byte("[]"), nil
@@ -138,7 +135,7 @@ func eq(a, b value) bool {
 			return rfloat(x) == y
 		}
 	}
-	return a == b // every value type is comparable
+	return a == b
 }
 
 func str(v value) string {
@@ -184,7 +181,6 @@ func (u unsupported) Error() string { return "unsupported: " + u.what }
 
 func (u unsupported) Unwrap() error { return ErrUnsupported }
 
-// caskRef is @cask in a caveat: the cask being loaded.
 type caskRef struct{ b *caskB }
 
 func fail(f string, a ...any) { panic(unsupported{fmt.Sprintf(f, a...)}) }
@@ -213,7 +209,6 @@ func (s *scope) assign(n string, v value) {
 	s.vars[n] = v
 }
 
-// dsl handles calls with no receiver that aren't local variables.
 type dsl interface {
 	call(in *interp, s *scope, c *callN, args []value, kw *hash) (value, bool)
 }
@@ -221,7 +216,7 @@ type dsl interface {
 type interp struct {
 	plat  *platform
 	ctx   []dsl
-	build *builder // set while a formula's install method runs
+	build *builder
 }
 
 func (in *interp) run(body []node, s *scope) value {
@@ -232,10 +227,8 @@ func (in *interp) run(body []node, s *scope) value {
 	return last
 }
 
-// returned unwinds a method body to its caller with the value of a return.
 type returned struct{ v value }
 
-// callDef runs a method defined in the file.
 func (in *interp) callDef(d *defN, args []value, kw *hash, s *scope) (out value) {
 	ms := &scope{vars: map[string]value{}, parent: s}
 	pos := 0
@@ -339,7 +332,6 @@ func (in *interp) eval(n node, s *scope) value {
 	case *ifN:
 		cond := in.eval(x.cond, s)
 		if g, ok := cond.(*guardV); ok {
-			// File.exist? in a flight block is checked when the step runs
 			f := in.flight()
 			f.guarded(in, s, g, false, x.then)
 			if len(x.els) > 0 {
@@ -415,8 +407,6 @@ func (in *interp) eval(n node, s *scope) value {
 		in.set(x.target, v, s)
 		return v
 	case *rescueN:
-		// Loading has no Ruby exceptions; what would raise is refused instead.
-		// An install's failures are StandardErrors, which rescue catches.
 		if in.build == nil {
 			return in.eval(x.x, s)
 		}
@@ -443,8 +433,6 @@ func (in *interp) eval(n node, s *scope) value {
 	return nil
 }
 
-// rescuing runs body, and fallback instead if body fails the build. Ruby
-// brw cannot run is still refused.
 func (in *interp) rescuing(body, fallback func() value) (v value) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -457,10 +445,8 @@ func (in *interp) rescuing(body, fallback func() value) (v value) {
 	return body()
 }
 
-// definer takes method definitions, as a formula class body does.
 type definer interface{ define(d *defN) }
 
-// setter handles assignments a DSL owns, such as ENV["X"] = v.
 type setter interface {
 	set(in *interp, target node, v value, s *scope) bool
 }
@@ -486,7 +472,6 @@ func (in *interp) set(target node, v value, s *scope) {
 	fail("assignment")
 }
 
-// caseEq is Ruby's ===, as case/when uses it.
 func caseEq(pat, v value) bool {
 	switch p := pat.(type) {
 	case *regex:
@@ -507,13 +492,12 @@ func (in *interp) constant(name string) value {
 		return rstr("$HOMEBREW_PREFIX")
 	case "Language::Python::Virtualenv", "Language::Python::Shebang", "Language::Node", "Language::Perl::Shebang",
 		"Language::Php::Shebang":
-		// only ever included; their methods are refused where a formula calls them
 		return special(name)
 	case "HOMEBREW_TEMP":
 		if t, ok := lookupEnv("HOMEBREW_TEMP"); ok && t != "" {
 			return rstr(t)
 		}
-		return rstr("/private/tmp") // brew's default on macOS
+		return rstr("/private/tmp")
 	}
 	fail("constant %s", name)
 	return nil
@@ -597,7 +581,7 @@ func binop(op string, l, r value) value {
 		switch op {
 		case "+":
 			return rstr(str(a) + str(r))
-		case "/": // Pathname#/
+		case "/":
 			return rstr(path.Join(str(a), str(r)))
 		}
 	case rint:
@@ -646,8 +630,6 @@ func cmpOp(op string, c int) bool {
 	return false
 }
 
-// index is recv[args], which while a formula installs can read the real
-// files and environment.
 func (in *interp) index(recv value, args []value) value {
 	if x, ok := recv.(special); ok && len(args) == 1 {
 		switch {
@@ -676,7 +658,6 @@ func index(recv value, args []value) value {
 	switch x := recv.(type) {
 	case special:
 		if x == "Dir" {
-			// Dir[] globs staged files when brew loads the cask; none exist before install
 			return &arr{}
 		}
 	case *arr:
@@ -754,9 +735,8 @@ func (r *rangeV) bounds(n int) (int, int) {
 	return max(0, lo), min(max(hi, 0), n)
 }
 
-var reCache sync.Map // Ruby source to *regexp.Regexp
+var reCache sync.Map
 
-// compile turns a Ruby regex into Go's; the syntax casks use is common to both.
 func compile(r *regex) *regexp.Regexp {
 	if re, ok := reCache.Load(r.src); ok {
 		return re.(*regexp.Regexp)
@@ -778,7 +758,6 @@ func toRegexOrString(v value) (*regexp.Regexp, string, bool) {
 	return nil, str(v), false
 }
 
-// rubySub converts a Ruby replacement (\1, \0) to Go's ($1).
 func rubySub(s string) string {
 	s = strings.ReplaceAll(s, "$", "$$")
 	return rubyGroupRef.ReplaceAllString(s, "${$1}")
@@ -935,7 +914,7 @@ func strMethod(s string, name string, args []value) value {
 		return rint(len([]rune(s)))
 	case "present?":
 		return rbool(strings.TrimSpace(s) != "")
-	case "dirname": // Pathname#dirname
+	case "dirname":
 		return rstr(path.Dir(s))
 	case "strip":
 		return rstr(strings.Trim(s, " \t\n\v\f\r\x00"))
@@ -1030,7 +1009,7 @@ func strMethod(s string, name string, args []value) value {
 			return rstr(s + fill)
 		}
 		return rstr(fill + s)
-	case "join": // Pathname#join
+	case "join":
 		parts := []string{s}
 		for _, a := range args {
 			parts = append(parts, str(a))
@@ -1131,7 +1110,6 @@ func (in *interp) arrMethod(a *arr, name string, args []value, blk *proc) value 
 	return nil
 }
 
-// macVer is a macOS version for comparisons such as MacOS.version >= :big_sur.
 type macVer struct{ v string }
 
 var macSymbols = map[string]string{
@@ -1215,7 +1193,7 @@ func (in *interp) specialMethod(x special, name string, args []value, blk *proc)
 	case "Dir.home":
 		return rstr("/$HOME")
 	case "Process.uid":
-		return rint(0) // only ever passed to Etc.getpwuid
+		return rint(0)
 	case "Etc.getpwuid":
 		return passwd(lookupUser())
 	case "File.expand_path":

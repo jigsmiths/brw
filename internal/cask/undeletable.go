@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-// undeletableSystem and undeletableHome are brew's MacOS::SYSTEM_DIRS and the
-// home folders of its UNDELETABLE_PATHS: what uninstall never removes.
 var undeletableSystem = []string{
 	"/", "/Applications", "/Applications/Utilities", "/Incompatible Software", "/Library",
 	"/Library/Application Support", "/Library/Audio", "/Library/Caches", "/Library/ColorPickers",
@@ -103,7 +101,6 @@ var undeletableHome = []string{
 	"~/Library/Workflows",
 }
 
-// undeletable is brew's MacOS.undeletable?: a system or home folder.
 func undeletable(path, home string) bool {
 	path = filepath.Clean(path)
 	if slices.Contains(undeletableSystem, path) {

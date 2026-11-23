@@ -22,9 +22,6 @@ const abandoned = time.Hour
 // bottleFile is a cached bottle or its tab: name--version.tag.bottle[.rebuild].ext
 var bottleFile = regexp.MustCompile(`^(.+?)--(.+)\.([a-z0-9_]+)\.bottle(?:\.(\d+))?\.(?:tar\.gz|tab\.json)$`)
 
-// CleanDownloads removes cached bottles that are out of date, for versions that
-// are not installed (with Scrub), or older than PruneDays, and downloads that
-// were never finished. With names, only the bottles of those formulae are looked at.
 func (c *Cleaner) CleanDownloads(names []string) error {
 	if c.Downloads == "" {
 		return nil
@@ -83,7 +80,7 @@ func (c *Cleaner) staleBottle(name, ver string, rebuild int, age time.Duration, 
 		return rebuild != current.Rebuild
 	}
 	if installed && !c.removable(name, ver, kegs, current) {
-		return false // the installed version is being kept
+		return false
 	}
 	have, err1 := version.ParsePkg(ver)
 	want, err2 := version.ParsePkg(current.PkgVersion)
@@ -94,8 +91,6 @@ func (c *Cleaner) staleBottle(name, ver string, rebuild int, age time.Duration, 
 	return latestInstalled || want.Compare(have) > 0
 }
 
-// removable says whether cleanup would remove the keg of this version: it is old,
-// the current version is installed, and nothing keeps it.
 func (c *Cleaner) removable(name, ver string, kegs []cellar.Keg, current Formula) bool {
 	if !slices.ContainsFunc(kegs, func(k cellar.Keg) bool { return k.Version == current.PkgVersion }) {
 		return false

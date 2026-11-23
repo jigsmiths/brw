@@ -49,7 +49,6 @@ func (k Keg) Usage() (files int, size int64, err error) {
 	return files, size, err
 }
 
-// Abv summarises the keg like brew does, for example "1,735 files, 66.3MB".
 func (k Keg) Abv() (string, error) {
 	files, size, err := k.Usage()
 	if err != nil {
@@ -67,7 +66,6 @@ func FormatAbv(files int, size int64) string {
 	return b.String()
 }
 
-// ReadableSize writes a size like brew, such as "66.3MB".
 func ReadableSize(bytes int64) string { return readableSize(bytes) }
 
 func withCommas(n int) string {

@@ -7,10 +7,9 @@ import (
 	"fmt"
 )
 
-// ErrUnknownKeys is returned by Marshal when a receipt has keys we don't model.
 var ErrUnknownKeys = errors.New("receipt has unknown keys")
 
-// Receipt is an INSTALL_RECEIPT.json. Field order matches brew's output.
+// Field order matches brew's output.
 type Receipt struct {
 	HomebrewVersion       string          `json:"homebrew_version"`
 	UsedOptions           []string        `json:"used_options"`
@@ -35,10 +34,9 @@ type Receipt struct {
 	BuiltOn               json.RawMessage `json:"built_on"`
 
 	unknown     error
-	onRequestOK bool // the receipt says whether it was installed on request
+	onRequestOK bool
 }
 
-// Dependency is a runtime dependency as the receipt records it.
 type Dependency struct {
 	FullName             string          `json:"full_name"`
 	Version              string          `json:"version"`
@@ -56,7 +54,6 @@ type Source struct {
 	raw    json.RawMessage
 }
 
-// UnmarshalJSON reads the tap and version scheme and keeps the raw JSON.
 func (s *Source) UnmarshalJSON(b []byte) error {
 	var v struct {
 		Tap      string `json:"tap"`
@@ -80,7 +77,6 @@ func (s Source) MarshalJSON() ([]byte, error) {
 	return s.raw, nil
 }
 
-// VersionScheme is the formula's version scheme when the keg was installed.
 func (r *Receipt) VersionScheme() int { return r.Source.scheme }
 
 func ParseReceipt(b []byte) (*Receipt, error) {

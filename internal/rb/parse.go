@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-// node is a node of the syntax tree.
 type node interface{ node() }
 
 func (*litN) node()     {}
@@ -35,7 +34,7 @@ func (*beginN) node()   {}
 
 type (
 	litN   struct{ v value }
-	strN   struct{ parts []node } // litN strings and expressions
+	strN   struct{ parts []node }
 	symN   struct{ s string }
 	regexN struct{ src string }
 	arrN   struct{ elems []node }
@@ -45,10 +44,10 @@ type (
 	callN  struct {
 		recv  node
 		name  string
-		args  []node // a trailing hashN holds keyword arguments
+		args  []node
 		block *blockN
 		safe  bool
-		bare  bool // a plain identifier: no receiver, arguments or parentheses
+		bare  bool
 	}
 	blockN struct {
 		params []string
@@ -72,9 +71,8 @@ type (
 		name string
 		v    node
 	}
-	// setN assigns to an index or attribute: ENV["X"] = v, obj.attr = v.
 	setN struct {
-		target node // *indexN or *callN
+		target node
 		v      node
 	}
 	classN struct {
@@ -83,26 +81,24 @@ type (
 	}
 	param struct {
 		name string
-		def  node // default, or nil
+		def  node
 		kw   bool
 	}
 	defN struct {
 		name   string
-		self   bool // def self.name
+		self   bool
 		params []param
 		body   []node
 	}
 	when  struct{ pats, body []node }
 	caseN struct {
-		subject node // nil for a bare case
+		subject node
 		whens   []when
 		els     []node
 	}
-	returnN struct{ v node }
-	splatN  struct{ x node }
-	// rescueN is `x rescue fallback`.
-	rescueN struct{ x, fallback node }
-	// symProcN is a block argument such as &:to_s.
+	returnN  struct{ v node }
+	splatN   struct{ x node }
+	rescueN  struct{ x, fallback node }
 	symProcN struct{ name string }
 	beginN   struct {
 		body, rescue, ensure []node
@@ -156,7 +152,6 @@ func (p *parser) expectOp(s string) {
 	p.i++
 }
 
-// stmts parses statements up to one of the given keywords (or "}" for brace blocks).
 func (p *parser) stmts(end ...string) []node {
 	var out []node
 	for {
@@ -193,7 +188,6 @@ func (p *parser) stmt() node {
 	}
 }
 
-// andOr joins expressions with the low-precedence and and or.
 func (p *parser) andOr() node {
 	n := p.notExpr()
 	for p.isKw("and") || p.isKw("or") {
@@ -204,7 +198,6 @@ func (p *parser) andOr() node {
 	return n
 }
 
-// notExpr is an expression that may start with the keyword not.
 func (p *parser) notExpr() node {
 	if p.isKw("not") {
 		p.i++
@@ -253,7 +246,7 @@ func (p *parser) ternary() node {
 		p.skipNL()
 		a := p.ternary()
 		p.skipNL()
-		if p.cur().k == tLabel { // `x ? y : z` lexed y: as a label
+		if p.cur().k == tLabel {
 			p.fail("ternary label")
 		}
 		p.expectOp(":")
@@ -286,7 +279,7 @@ func (p *parser) binary(level int) node {
 	for p.cur().k == tOp && precedence[level][p.cur().s] {
 		op := p.next().s
 		if (op == ".." || op == "...") && (p.isOp("]") || p.isOp(")") || p.cur().k == tNL) {
-			l = &binN{op, l, &litN{rint(-1)}} // endless range
+			l = &binN{op, l, &litN{rint(-1)}}
 			if op == "..." {
 				p.fail("endless exclusive range")
 			}
@@ -317,13 +310,13 @@ func (p *parser) postfix(n node) node {
 			safe := p.next().s == "&."
 			t := p.next()
 			if t.k != tIdent && t.k != tConst && t.k != tKw && t.k != tLabel {
-				if t.k == tOp && t.s == "(" { // .() call
+				if t.k == tOp && t.s == "(" {
 					p.fail("unsupported .()")
 				}
 				p.fail("expected method name, got %q", t.s)
 			}
 			c := &callN{recv: n, name: t.s, safe: safe}
-			if t.k == tLabel { // `foo.bar key: v` lexed bar: as a label
+			if t.k == tLabel {
 				p.i--
 				p.t[p.i] = token{k: tLabel, s: "", line: t.line}
 				p.fail("method label")
@@ -351,7 +344,6 @@ func (p *parser) postfix(n node) node {
 	}
 }
 
-// startsArg reports whether the current token can start a command argument.
 func (p *parser) startsArg() bool {
 	c := p.cur()
 	if !c.spaceBef {
@@ -388,8 +380,6 @@ func (p *parser) callArgs(c *callN, allowCommand bool) {
 	}
 	switch {
 	case p.isKw("do") && c.recv == nil && (c.name == "livecheck" || c.name == "test"):
-		// brw never runs livecheck or test blocks, so their Ruby only has to be
-		// skipped; the formula hash only says whether livecheck calls skip.
 		p.i++
 		c.block = &blockN{}
 		if p.skipBlock() {
@@ -407,9 +397,6 @@ func (p *parser) callArgs(c *callN, allowCommand bool) {
 	}
 }
 
-// skipBlock skips to the end that closes a do block, counting Ruby's openers.
-// skipBlock skips to the block's end, reporting whether a statement of the
-// block itself starts with skip.
 func (p *parser) skipBlock() (skips bool) {
 	depth := 1
 	for depth > 0 {
@@ -466,7 +453,6 @@ func (p *parser) block(end string) *blockN {
 	return b
 }
 
-// argList collects `key: v` and `k => v` pairs into a trailing hash, as Ruby does.
 func (p *parser) argList(close string) []node {
 	var args []node
 	var h *hashN
@@ -486,7 +472,7 @@ func (p *parser) argList(close string) []node {
 			if bracketed {
 				p.skipNL()
 			}
-			if p.isOp(",") || (bracketed && p.isOp(close)) { // shorthand `key:`
+			if p.isOp(",") || (bracketed && p.isOp(close)) {
 				h.pairs = append(h.pairs, pair{&symN{k}, &callN{name: k, bare: true}})
 			} else {
 				h.pairs = append(h.pairs, pair{&symN{k}, p.expr()})
@@ -532,7 +518,6 @@ func (p *parser) primary() node {
 	switch t.k {
 	case tInt:
 		p.i++
-		// base 0 reads Ruby's literals: 0755 and 0o755 octal, 0x hex, 0b binary
 		v, err := strconv.ParseInt(t.s, 0, 64)
 		if err != nil {
 			p.fail("integer %s", t.s)
@@ -548,7 +533,6 @@ func (p *parser) primary() node {
 	case tStr:
 		p.i++
 		n := p.strNode(t.parts)
-		// adjacent string literals concatenate
 		for p.cur().k == tStr && p.cur().spaceBef {
 			n.parts = append(n.parts, p.strNode(p.next().parts).parts...)
 		}
@@ -594,7 +578,6 @@ func (p *parser) primary() node {
 		p.callArgs(c, true)
 		return c
 	case tLabel:
-		// a bare hash in a position where only arguments are expected
 		args := p.argList("")
 		if len(args) == 1 {
 			return args[0]
@@ -708,7 +691,6 @@ func (p *parser) constPath() string {
 	return name.String()
 }
 
-// classDef parses `class Name < Super ... end`.
 func (p *parser) classDef() node {
 	c := &classN{name: p.constPath()}
 	if p.isOp("<") {
@@ -723,7 +705,6 @@ func (p *parser) classDef() node {
 	return c
 }
 
-// methodDef parses `def name(params) ... end`, with or without parentheses.
 func (p *parser) methodDef() node {
 	t := p.next()
 	self := t.k == tKw && t.s == "self" && p.isOp(".")

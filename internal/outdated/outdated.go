@@ -10,9 +10,8 @@ import (
 	"github.com/jigsmiths/brw/internal/version"
 )
 
-// Result is an outdated formula, as brew outdated reports it.
 type Result struct {
-	Name              string // the rack
+	Name              string
 	FullName          string // tap/name for a tap's formula, as brew prints it
 	InstalledVersions []string
 	CurrentVersion    string
@@ -86,8 +85,6 @@ func Formula(idx *api.Index, name string, group []cellar.Keg) (*api.Formula, []c
 	return f, group, len(group) > 0
 }
 
-// OtherTap returns, sorted, the racks Check skips because the index has no
-// formula for the tap their kegs came from.
 func OtherTap(idx *api.Index, kegs []cellar.Keg) []string {
 	var out []string
 	for name, group := range racks(kegs) {
@@ -99,7 +96,7 @@ func OtherTap(idx *api.Index, kegs []cellar.Keg) []string {
 	return out
 }
 
-// FromTap keeps the kegs installed from tap. A receipt without a tap counts as a match.
+// A receipt without a tap counts as a match.
 func FromTap(kegs []cellar.Keg, tap string) []cellar.Keg {
 	var out []cellar.Keg
 	for _, k := range kegs {

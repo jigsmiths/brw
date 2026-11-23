@@ -2,7 +2,6 @@ package version
 
 import "testing"
 
-// The cases are brew's own, from test/version_spec.rb.
 func TestDetect(t *testing.T) {
 	for _, c := range []struct{ url, tag, want string }{
 		{"https://brew.sh/foo.bar.la.1.14.zip", "", "1.14"},

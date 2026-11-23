@@ -12,13 +12,11 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-// Errors for a dependency missing from the listing or from the prefix.
 var (
 	ErrNotFound     = errors.New("no available formula")
 	ErrNotInstalled = errors.New("not installed")
 )
 
-// Resolver reads declared dependencies for one host.
 type Resolver struct {
 	idx      *api.Index
 	tag      string
@@ -59,7 +57,6 @@ func (r *Resolver) formula(name string) (*api.Formula, error) {
 	return f, nil
 }
 
-// names lists f's dependency names as written, for this host.
 func (r *Resolver) names(f *api.Formula) ([]string, error) {
 	g, err := f.ForTag(r.tag)
 	if err != nil {
@@ -129,8 +126,6 @@ func uniq(names []string) []string {
 	return out
 }
 
-// declared returns name's direct dependencies as canonical names, in the order
-// they are declared.
 func (r *Resolver) declared(name string) ([]string, error) {
 	f, err := r.formula(name)
 	if err != nil {
@@ -153,14 +148,12 @@ func (r *Resolver) declared(name string) ([]string, error) {
 	return out, nil
 }
 
-// Direct returns the sorted, canonical names of name's direct dependencies.
 func (r *Resolver) Direct(name string) ([]string, error) {
 	out, err := r.declared(name)
 	slices.Sort(out)
 	return out, err
 }
 
-// Recursive returns every dependency of name, sorted, without name itself.
 func (r *Resolver) Recursive(name string) ([]string, error) {
 	root, err := r.formula(name)
 	if err != nil {
@@ -297,7 +290,6 @@ func (r *Resolver) buildReverse() map[string][]string {
 	return reverse
 }
 
-// Installed returns the runtime dependencies recorded in name's receipt, sorted.
 func Installed(kegs []cellar.Keg, name string) ([]string, error) {
 	var keg *cellar.Keg
 	for i := range kegs {

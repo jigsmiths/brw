@@ -33,15 +33,12 @@ func (e *tapFormula) get() (*Formula, bool) {
 
 func (e *tapFormula) fullName() string { return e.tap + "/" + e.name }
 
-// coreFormulaTap is the tap of the API's formulae.
 const coreFormulaTap = "homebrew/core"
 
-// FromTap says whether the formula is a tap's rather than the API's.
 func (f *Formula) FromTap() bool { return f.Tap != "" && f.Tap != coreFormulaTap }
 
-// AddTap adds the formulae a tap lists, found by tap/name and, when neither
-// the API nor another tap has it, by name. alt maps the tap's aliases and old
-// names to its formula names.
+// AddTap makes names findable by tap/name, and by bare name when neither the API
+// nor another tap has it. alt maps aliases and old names to formula names.
 func (i *Index) AddTap(tap string, names []string, alt map[string]string, load TapLoader) {
 	if i.tapFull == nil {
 		i.tapFull, i.tapBare = map[string]*tapFormula{}, map[string][]*tapFormula{}
@@ -68,8 +65,7 @@ func (i *Index) AddTap(tap string, names []string, alt map[string]string, load T
 	}
 }
 
-// SkipTap records an untrusted tap; onList is told of it whenever every
-// formula is listed, as brew warns only then.
+// SkipTap: onList fires only when every formula is listed, as brew warns only then.
 func (i *Index) SkipTap(tap string, onList func(tap string)) {
 	i.skipped = append(i.skipped, tap)
 	i.onSkip = onList
@@ -81,8 +77,6 @@ func (i *Index) listingTaps() {
 	}
 }
 
-// LookupFrom finds a formula in the given tap, the API's when tap is "" or
-// homebrew/core.
 func (i *Index) LookupFrom(tap, name string) (*Formula, bool) {
 	if tap == "" || tap == coreFormulaTap {
 		f, ok := i.byName[name]
@@ -95,8 +89,7 @@ func (i *Index) LookupFrom(tap, name string) (*Formula, bool) {
 	return e.get()
 }
 
-// lookupTap finds a bare name the API does not have in the one tap that has
-// it. A name in several taps is ambiguous, as brew says.
+// lookupTap: a name in several taps is ambiguous.
 func (i *Index) lookupTap(name string) (*Formula, bool) {
 	es := i.tapBare[name]
 	if len(es) != 1 {
@@ -105,7 +98,6 @@ func (i *Index) lookupTap(name string) (*Formula, bool) {
 	return es[0].get()
 }
 
-// TapsWith lists the full names of the tap formulae a bare name could mean.
 func (i *Index) TapsWith(name string) []string {
 	var out []string
 	for _, e := range i.tapBare[name] {
@@ -115,7 +107,6 @@ func (i *Index) TapsWith(name string) []string {
 	return out
 }
 
-// LoadError says why a tap formula, by full name, could not be evaluated.
 func (i *Index) LoadError(fullName string) error {
 	e, ok := i.tapFull[fullName]
 	if !ok {
@@ -125,7 +116,7 @@ func (i *Index) LoadError(fullName string) error {
 	return e.err
 }
 
-// TapRaw is a tap formula's hash, by full name; core formulae have none.
+// TapRaw: core formulae have none.
 func (i *Index) TapRaw(fullName string) (json.RawMessage, bool) {
 	e, ok := i.tapFull[fullName]
 	if !ok {
@@ -137,7 +128,6 @@ func (i *Index) TapRaw(fullName string) (json.RawMessage, bool) {
 	return e.raw, true
 }
 
-// tapFormulae evaluates every tap formula, leaving out those that fail.
 func (i *Index) tapFormulae() []*Formula {
 	i.listingTaps()
 	var out []*Formula

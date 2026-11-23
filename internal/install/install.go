@@ -27,50 +27,37 @@ import (
 	"github.com/jigsmiths/brw/internal/sbom"
 )
 
-// Installer carries out a Plan in the prefix that Root is open on.
 type Installer struct {
 	Root    *fsx.Root
 	Prefix  string
 	Fetcher *bottle.Fetcher
 	Linker  *link.Linker
-	// Sign signs edited Mach-O files again. Nil means relocate.Codesign on macOS
-	// and nothing elsewhere.
+	// Sign nil means relocate.Codesign on macOS and nothing elsewhere.
 	Sign    func(root *fsx.Root, keg string, files []string) error
 	Now     func() time.Time
-	APIPath string // recorded in each receipt as the API data the formula came from
+	APIPath string
 	Log     io.Writer
-	OS      string // for the post_install guards; runtime.GOOS if empty
-	User    string // for {{user}} in post_install steps
-	// SBOMCreator names the tool in the SBOM of what it pours, for example
-	// "Tool: https://github.com/jigsmiths/brw@abc1234".
+	OS      string // runtime.GOOS if empty
+	User    string
+	// SBOMCreator is such as "Tool: https://github.com/jigsmiths/brw@abc1234".
 	SBOMCreator string
 
-	// KeepGoing records a formula's failure in its Result and carries on, as a multi-formula upgrade does.
+	// KeepGoing records a formula's failure in its Result and carries on.
 	KeepGoing bool
 
-	// LoadSource gives a tap formula's file to build it when it has no bottle for this host.
 	LoadSource func(f *api.Formula) (Source, error)
-	// Version is the prefix's Homebrew version, for the receipt of a formula
-	// it builds.
-	Version string
-	// BuiltOn describes this machine, for the receipt of a formula it builds.
-	BuiltOn cellar.BuiltOn
-	// SDK is the macOS SDK a build compiles against, and MacVersion the
-	// version it targets, such as "27.2".
+	Version    string
+	BuiltOn    cellar.BuiltOn
+	// MacVersion is such as "27.2".
 	SDK, MacVersion string
-	// Run runs a build's commands; nil runs them for real.
-	Run RunFunc
-	// DepInfo gives a runtime dependency's current pkg_version, license and
-	// bottle for this host, for a built formula's SBOM.
+	// Run nil runs commands for real.
+	Run     RunFunc
 	DepInfo func(fullName string) (pkgVersion, license, bottleURL, bottleSHA256 string)
-	// After runs once a formula is installed, for the work that follows each one.
-	After func(Item, Result)
+	After   func(Item, Result)
 }
 
-// standardDirs are the directories every prefix has, which linking relies on.
 var standardDirs = []string{"Cellar", "bin", "etc", "include", "lib", "sbin", "share", "opt", "var/homebrew/linked"}
 
-// MakeStandardDirs creates the prefix's standard directories, as brew does before any install.
 func MakeStandardDirs(root *fsx.Root, goos string) error {
 	dirs := standardDirs
 	if goos == "darwin" {
@@ -84,20 +71,18 @@ func MakeStandardDirs(root *fsx.Root, goos string) error {
 	return nil
 }
 
-// Result is what happened to one formula.
 type Result struct {
 	Name, Version string
 	Size          string // such as "20 files, 1.3MB"
 	Linked        bool
-	LinkErr       error // why it is not linked, which does not fail the install
-	// PostInstallErr is why the post_install steps failed. The keg stays, as in brew.
+	LinkErr       error // does not fail the install
+	// PostInstallErr leaves the keg in place.
 	PostInstallErr error
 
 	Upgraded    bool
 	Reinstalled bool
-	OldVersion  string // the version an upgrade or reinstall replaced
-	// Err is why the formula was not installed, when KeepGoing is set.
-	Err error
+	OldVersion  string
+	Err         error // set only with KeepGoing
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -106,8 +91,7 @@ func (in *Installer) logf(format string, args ...any) {
 	}
 }
 
-// Install locks every formula, fetches all bottles in parallel, then pours each item in order.
-// A failure stops the later items unless KeepGoing is set; a link failure leaves the keg poured.
+// Install stops at the first failure unless KeepGoing is set; a link failure leaves the keg poured.
 func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result, err error) {
 	if len(plan.Items) == 0 {
 		return nil, nil
@@ -172,8 +156,7 @@ func (in *Installer) Install(ctx context.Context, plan *Plan) (results []Result,
 	return results, nil
 }
 
-// lockAll takes the lock of every formula the plan names, in name order, or none
-// of them. A plan without Locks locks its items.
+// lockAll is all or nothing, in name order; a plan without Locks locks its items.
 func (in *Installer) lockAll(plan *Plan) (unlock func() error, err error) {
 	names := slices.Clone(plan.Locks)
 	if len(names) == 0 {
@@ -220,7 +203,7 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	dest := path.Join(fsx.Staging, randomID())
 	defer func() {
 		err = errors.Join(err, in.Root.RemoveAll(dest))
-		_ = in.Root.Remove(fsx.Staging) // only succeeds when empty
+		_ = in.Root.Remove(fsx.Staging)
 	}()
 	if err := bottle.Extract(in.Root, res.Path, dest, f.Name, it.PkgVersion); err != nil {
 		return Result{}, err
@@ -246,7 +229,7 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	}
 	receiptPath := path.Join(staged, "INSTALL_RECEIPT.json")
 	if in.exists(receiptPath) {
-		// a bottle served outside a registry carries its tab; brew writes over it
+		// a bottle outside a registry carries its own tab
 		err = in.Root.Replace(receiptPath, data)
 	} else {
 		err = in.Root.WriteFile(receiptPath, data, 0o644)
@@ -258,8 +241,6 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 		return Result{}, err
 	}
 	if it.RuntimeDeps != nil {
-		// brew rewrites the receipt once the bottle is relocated, with the
-		// dependencies the formula has now.
 		receipt.RuntimeDependencies = it.RuntimeDeps
 		if data, err = receipt.Marshal(); err != nil {
 			return Result{}, err
@@ -288,8 +269,6 @@ func (in *Installer) pour(it Item, res bottle.Result) (result Result, err error)
 	return in.finish(it, keg, receipt.Aliases, old), nil
 }
 
-// finish links a keg that is in its place and runs its post_install steps,
-// as brew does after a pour or a build.
 func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs) Result {
 	f := it.Formula
 	result := Result{Name: f.Name, Version: it.PkgVersion}
@@ -315,7 +294,7 @@ func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs)
 		return result
 	}
 	in.logf("==> Running post_install for %s", f.Name)
-	// brew makes it for every post_install, so steps can link into it.
+	// brew makes libexec before any post_install, so steps can link into it.
 	if err := in.Root.MkdirAll("libexec", 0o755); err != nil {
 		result.PostInstallErr = err
 		return result
@@ -332,16 +311,13 @@ func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs)
 	return result
 }
 
-// oldKegs is what an upgrade or reinstall does with the kegs it replaces.
 type oldKegs struct {
 	version string
-	restore func() // puts things back when the new keg could not be poured
-	commit  func() // finishes with the old keg once the new one is in
+	restore func()
+	commit  func()
 }
 
-// leaveOldKegs says an upgrade or reinstall is starting and unlinks the old
-// kegs, so they cannot get in the way of the new one. A reinstall also sets the
-// keg in use aside, to be deleted once the new one is in and put back if not.
+// leaveOldKegs unlinks the old kegs; a reinstall also sets the keg in use aside.
 func (in *Installer) leaveOldKegs(it Item) (*oldKegs, error) {
 	f := it.Formula
 	current := cellar.Prefix(in.Prefix).DefaultKeg(it.Upgrade)
@@ -379,7 +355,7 @@ func (in *Installer) leaveOldKegs(it Item) (*oldKegs, error) {
 
 	kegPath := path.Join("Cellar", f.Name, current.Version)
 	backup := kegPath + ".reinstall"
-	if in.exists(backup) { // left by an earlier run
+	if in.exists(backup) {
 		if err := in.Root.RemoveKeg(backup); err != nil {
 			relink()
 			return nil, fmt.Errorf("removing the old backup %s: %w", backup, err)
@@ -404,9 +380,7 @@ func (in *Installer) leaveOldKegs(it Item) (*oldKegs, error) {
 	return old, nil
 }
 
-// updateSBOM gives the SBOM in the staged keg the time and tool of this pour and
-// the supplement of the bottle's manifest, as brew does. A bottle without an
-// SBOM, or with one that cannot be read, is left as it is.
+// updateSBOM leaves a bottle without an SBOM, or with an unreadable one, as it is.
 func (in *Installer) updateSBOM(staged string, it Item, res bottle.Result, when time.Time) error {
 	file := path.Join(staged, sbom.File)
 	data, err := in.Root.ReadFile(file)
@@ -438,8 +412,7 @@ func (in *Installer) exists(p string) bool {
 	return err == nil
 }
 
-// relocate fills the placeholders in the staged keg the way brew does: text
-// files always, Mach-O files unless the bottle needs no relocation.
+// relocate edits Mach-O files only when the bottle needs relocation.
 func (in *Installer) relocate(it Item, staged string, r *cellar.Receipt) error {
 	loc := relocate.ForPrefix(in.Prefix)
 	var deps []string
@@ -467,7 +440,7 @@ func (in *Installer) relocate(it Item, staged string, r *cellar.Receipt) error {
 	return sign(in.Root, staged, modified)
 }
 
-// sentence lists the names as brew does: "a", "a and b", "a, b and c".
+// sentence: "a", "a and b", "a, b and c".
 func sentence(names []string) string {
 	if len(names) < 2 {
 		return strings.Join(names, "")

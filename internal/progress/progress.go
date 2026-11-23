@@ -55,18 +55,17 @@ type Display struct {
 
 	mu     sync.Mutex
 	items  []*item
-	drawn  int // lines on screen
+	drawn  int
 	last   time.Time
 	frames int
 	stale  bool // updates not yet on screen
 }
 
-// New returns a Display that writes to w; tty says whether w is a terminal.
 func New(w io.Writer, tty bool) *Display {
 	return &Display{Now: time.Now, w: w, tty: tty}
 }
 
-// Update records that done of total bytes (-1 if unknown) of a download are in.
+// total is -1 if unknown.
 func (d *Display) Update(label string, done, total int64) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -146,7 +145,6 @@ func (it *item) sample(now time.Time) {
 	}
 }
 
-// speed is bytes a second over the window, or false before there is one.
 func (it *item) speed(now time.Time) (int64, bool) {
 	if len(it.samples) == 0 {
 		return 0, false
@@ -240,7 +238,6 @@ func (d *Display) line(it *item, labelW, barW int, withSpeed bool, now time.Time
 	return fmt.Sprintf("%s Bottle %s  %s%-11s %s%s", icon, fit(it.label, labelW), bar, state, size, speed)
 }
 
-// fit pads or cuts the label to w columns, ending a cut one in "…".
 func fit(label string, w int) string {
 	r := []rune(label)
 	if len(r) > w {

@@ -38,7 +38,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// apiServer serves the formula and cask fixtures and returns a client with a fresh cache.
 func apiServer(t *testing.T) *api.Client {
 	t.Helper()
 	formulae := readFile(t, "../../internal/api/testdata/formulae.json")
@@ -54,7 +53,6 @@ func apiServer(t *testing.T) *api.Client {
 	return &api.Client{Key: &apitest.Shared().PublicKey, URL: ts.URL, CaskURL: ts.URL + "/cask", CacheDir: t.TempDir()}
 }
 
-// prefixWith installs keg receipts from the cellar fixtures into a new prefix.
 func prefixWith(t *testing.T, kegs map[string]string) string {
 	t.Helper()
 	prefix := t.TempDir()
@@ -138,7 +136,6 @@ func TestListWithCasks(t *testing.T) {
 func TestListOnlyCasks(t *testing.T) {
 	prefix := t.TempDir()
 	writeFile(t, filepath.Join(prefix, "Caskroom/slack/.metadata/1.0/20261117083153.956/Casks/slack.json"), "{}")
-	// No formulae means no formula heading and no blank line.
 	if got, err := runCmd(t, &env{host: linux, tty: true}, "list", "-prefix", prefix); err != nil || got != "==> Casks\nslack\n" {
 		t.Errorf("list = %q, %v", got, err)
 	}
@@ -201,7 +198,7 @@ func TestSearchCasks(t *testing.T) {
 
 func TestSearchFormulaeSkipsTheCaskListing(t *testing.T) {
 	c := apiServer(t)
-	c.CaskURL = "http://127.0.0.1:1" // a request for it would fail
+	c.CaskURL = "http://127.0.0.1:1"
 	if got, err := runCmd(t, &env{host: linux, client: c}, "search", "--formula", "json"); err != nil || got != "json-c\n" {
 		t.Errorf("search --formula = %q, %v", got, err)
 	}
@@ -212,15 +209,12 @@ func TestDeps(t *testing.T) {
 	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq"})
 	flags := []string{"-prefix", prefix}
 
-	// An installed formula reports the receipt's runtime dependencies.
 	if got, err := runCmd(t, e, "deps", append([]string{"jq"}, flags...)...); err != nil || got != "oniguruma\n" {
 		t.Errorf("deps jq = %q, %v", got, err)
 	}
-	// An uninstalled one is resolved from the API.
 	if got, err := runCmd(t, e, "deps", append([]string{"--1", "openssl@3"}, flags...)...); err != nil || got != "ca-certificates\n" {
 		t.Errorf("deps --1 openssl@3 = %q, %v", got, err)
 	}
-	// Flags may follow the name, and a tree ends with a blank line.
 	got, err := runCmd(t, e, "deps", append([]string{"openssl@3", "--tree"}, flags...)...)
 	if err != nil || got != "openssl@3\n└── ca-certificates\n\n" {
 		t.Errorf("deps openssl@3 --tree = %q, %v", got, err)
@@ -299,7 +293,6 @@ func TestOutdated(t *testing.T) {
 	}
 }
 
-// installCask records a cask install the way brew does.
 func installCask(t *testing.T, prefix, token, version, tap string) {
 	t.Helper()
 	meta := filepath.Join(prefix, "Caskroom", token, ".metadata")
@@ -312,7 +305,7 @@ func TestOutdatedCasks(t *testing.T) {
 	t.Setenv("HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS", "")
 	prefix := prefixWith(t, map[string]string{"jq@1.0": "jq"})
 	installCask(t, prefix, "1password-cli", "2.40.0", "homebrew/cask")
-	installCask(t, prefix, "gcloud-cli", "575.0.0", "homebrew/cask") // updates itself
+	installCask(t, prefix, "gcloud-cli", "575.0.0", "homebrew/cask")
 	installCask(t, prefix, "brw", "0.4.0", "jigsmiths/tap")
 	e := &env{host: linux, client: apiServer(t)}
 	run := func(args ...string) string {
@@ -378,7 +371,6 @@ func TestOutdatedCasks(t *testing.T) {
 }
 
 func TestOutdatedSkipsTheCaskListingWithoutCasks(t *testing.T) {
-	// No cask listing to fetch: a request for it would fail.
 	e := &env{host: linux, client: &api.Client{Key: &apitest.Shared().PublicKey, CaskURL: "http://127.0.0.1:1", CacheDir: t.TempDir()}}
 	if got, err := runCmd(t, e, "outdated", "--cask", "-prefix", t.TempDir()); err != nil || got != "" {
 		t.Errorf("outdated --cask = %q, %v", got, err)
@@ -414,7 +406,6 @@ func TestOfflineWarnsOnStderr(t *testing.T) {
 	}
 }
 
-// linkKeg points opt/NAME at the keg, so it counts as linked.
 func linkKeg(t *testing.T, prefix, name, version string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(prefix, "opt"), 0o755); err != nil {
@@ -447,7 +438,6 @@ func TestInfo(t *testing.T) {
 		}
 	}
 
-	// Several formulae are separated by a blank line.
 	got, err = runCmd(t, e, "info", append([]string{"zsh-lovers", "xz"}, flags...)...)
 	if err != nil || !strings.Contains(got, "\n\n==> xz: ") {
 		t.Errorf("info of two = %q, %v", got, err)
@@ -471,7 +461,6 @@ func TestInfoCasks(t *testing.T) {
 		return runCmd(t, e, "info", append([]string{"-prefix", prefix}, args...)...)
 	}
 
-	// A name that is no formula is a cask, and both kinds mix.
 	got, err := info("jq", "slack")
 	if err != nil {
 		t.Fatal(err)
@@ -506,7 +495,7 @@ func TestInfoCasks(t *testing.T) {
 func TestInfoFormulaeSkipsTheCaskListing(t *testing.T) {
 	prefix := prefixWith(t, map[string]string{"jq@1.8.2": "jq"})
 	c := apiServer(t)
-	c.CaskURL = "http://127.0.0.1:1" // a request for it would fail
+	c.CaskURL = "http://127.0.0.1:1"
 	if _, err := runCmd(t, &env{host: linux, client: c}, "info", "-prefix", prefix, "jq"); err != nil {
 		t.Errorf("info jq: %v", err)
 	}

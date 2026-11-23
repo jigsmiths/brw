@@ -6,15 +6,13 @@ import (
 	"time"
 )
 
-// File is the name of the SBOM in a keg.
 const File = "sbom.spdx.json"
 
-// Params is what Update fills into the SBOM.
 type Params struct {
-	Created    time.Time // when the bottle was poured
-	Creator    string    // who poured it, such as "Tool: https://github.com/jigsmiths/brw@abc1234"
-	Supplement []byte    // the sh.brew.sbom.supplement annotation of the bottle's manifest, if any
-	Tag        string    // the bottle tag, which picks the part of a per-tag supplement
+	Created    time.Time
+	Creator    string // who poured it, such as "Tool: https://github.com/jigsmiths/brw@abc1234"
+	Supplement []byte // the sh.brew.sbom.supplement annotation of the bottle's manifest, if any
+	Tag        string // the bottle tag, which picks the part of a per-tag supplement
 }
 
 // Update gives the SBOM of a bottle the creation time and creator of the pour and

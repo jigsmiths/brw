@@ -97,23 +97,19 @@ func infoCommand(e *env, args []string) error {
 	return err
 }
 
-// infoItem is a name given to info: a formula or a cask.
 type infoItem struct {
 	formula *api.Formula
-	shadows string // the tap of the formula the name would otherwise mean
+	shadows string
 	cask    *api.Cask
 }
 
-// infoLookup is what info found for its names, and the listings it loaded.
 type infoLookup struct {
 	items  []infoItem
 	idx    *api.Index
 	client *api.Client
-	casks  *api.CaskIndex // nil unless a name was looked up as a cask
+	casks  *api.CaskIndex
 }
 
-// lookupInfoItems finds each name, as brew does: a formula if there is one,
-// else a cask. It stops at the first name that is neither.
 func (e *env) lookupInfoItems(ctx context.Context, prefix string, kegs []cellar.Keg, names []string, formulaOnly, caskOnly bool) (infoLookup, error) {
 	var l infoLookup
 	var err error
@@ -178,7 +174,6 @@ func (e *env) lookupInfoItems(ctx context.Context, prefix string, kegs []cellar.
 	return l, nil
 }
 
-// writeInfoJSON is info --json, in brew's shape, for formulae only.
 func writeInfoJSON(w io.Writer, client *api.Client, formulae []*api.Formula, env info.Env) error {
 	entries := []json.RawMessage{}
 	for _, f := range formulae {
@@ -204,7 +199,6 @@ func writeInfoJSON(w io.Writer, client *api.Client, formulae []*api.Formula, env
 	}{entries, []struct{}{}})
 }
 
-// caskInfoEnv is what info needs to describe casks on this machine.
 func (e *env) caskInfoEnv(prefix string, casks *api.CaskIndex, kegs []cellar.Keg) (info.CaskEnv, error) {
 	installed, err := caskroom.Installed(prefix)
 	if err != nil {
@@ -218,5 +212,4 @@ func (e *env) caskInfoEnv(prefix string, casks *api.CaskIndex, kegs []cellar.Keg
 	return env, nil
 }
 
-// rosettaRuntime is there when Rosetta 2 is installed, as brew checks.
 const rosettaRuntime = "/Library/Apple/usr/libexec/oah/libRosettaRuntime"

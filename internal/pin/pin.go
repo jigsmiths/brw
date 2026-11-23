@@ -25,7 +25,6 @@ func Pin(root *fsx.Root, kegs []cellar.Keg) error {
 	return root.Symlink(filepath.Join("../../../Cellar", k.Name, k.Version), filepath.Join(dir, k.Name))
 }
 
-// Unpin removes the record of name, and the directory when that was its last.
 func Unpin(root *fsx.Root, name string) error {
 	if err := root.Remove(filepath.Join(dir, name)); err != nil {
 		return err

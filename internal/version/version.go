@@ -61,7 +61,6 @@ func newToken(s string) token {
 
 func trimZeros(s string) string { return strings.TrimLeft(s, "0") }
 
-// cmpNum compares non-negative integers given as digit strings.
 func cmpNum(a, b string) int {
 	a, b = trimZeros(a), trimZeros(b)
 	if len(a) != len(b) {
@@ -80,7 +79,6 @@ func sign(n int) int {
 	return 0
 }
 
-// rev is the number inside a composite token such as "rc2".
 func (t token) rev() string { return digits.FindString(t.val) }
 
 func (t token) stringLike() bool { return t.kind >= str }
@@ -154,13 +152,12 @@ func cmpString(a, b token) int {
 	return -cmpToken(b, a)
 }
 
-// Version is a Homebrew version such as "1.2.3" or "2.0rc1".
 type Version struct {
 	s      string
 	tokens []token
 }
 
-// Parse splits s into tokens as brew does; it fails only on an empty version.
+// Parse fails only on an empty version.
 func Parse(s string) (Version, error) {
 	if strings.TrimSpace(s) == "" {
 		return Version{}, errors.New("version must not be empty")
@@ -174,10 +171,8 @@ func Parse(s string) (Version, error) {
 
 func (v Version) String() string { return v.s }
 
-// IsHead reports whether v is a HEAD build, such as "HEAD-abc1234".
 func (v Version) IsHead() bool { return head.MatchString(v.s) }
 
-// Compare returns -1, 0 or 1 as v is older than, equal to or newer than o.
 // HEAD is newer than any other version.
 func (v Version) Compare(o Version) int {
 	if v.s == o.s {
@@ -225,7 +220,6 @@ func (v Version) Compare(o Version) int {
 	return 0
 }
 
-// PkgVersion is a version plus a formula revision, written "1.2_3".
 type PkgVersion struct {
 	Version  Version
 	Revision int
@@ -238,7 +232,7 @@ func NewPkg(version string, revision int) (PkgVersion, error) {
 	return PkgVersion{v, revision}, err
 }
 
-// ParsePkg parses "1.2_3"; without a _N suffix the revision is 0.
+// Without a _N suffix the revision is 0.
 func ParsePkg(s string) (PkgVersion, error) {
 	m := pkgPattern.FindStringSubmatch(s)
 	if m == nil {
@@ -262,7 +256,6 @@ func (p PkgVersion) String() string {
 	return p.Version.String()
 }
 
-// Compare orders by version, then by revision.
 func (p PkgVersion) Compare(o PkgVersion) int {
 	if c := p.Version.Compare(o.Version); c != 0 {
 		return c

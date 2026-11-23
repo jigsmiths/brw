@@ -8,21 +8,19 @@ import (
 	"path/filepath"
 )
 
-// Prefix is the absolute path of a Homebrew prefix.
 type Prefix string
 
-// Keg is an installed version of a formula, under Cellar/<name>/<version>.
 type Keg struct {
 	Name    string
 	Version string
 	Path    string
 	Receipt *Receipt // nil if the keg has no receipt or it could not be read
 
-	ReceiptErr error // why the receipt could not be read
+	ReceiptErr error
 }
 
-// Kegs lists installed kegs. Formula directories with no version are skipped. A
-// keg whose receipt cannot be read is listed with no receipt and the reason.
+// Formula directories with no version are skipped. A keg whose receipt cannot
+// be read is listed with no receipt and the reason.
 func (p Prefix) Kegs() ([]Keg, error) {
 	cellar := p.cellarDir()
 	names, err := os.ReadDir(cellar)
@@ -82,7 +80,6 @@ func readReceipt(kegPath string) (*Receipt, error) {
 	return ParseReceipt(b)
 }
 
-// OptVersion is the version of the keg that opt/<name> points at, if any.
 func (p Prefix) OptVersion(name string) (string, bool) {
 	path, ok := p.resolveKeg(filepath.Join(string(p), "opt", name))
 	if !ok {
@@ -91,7 +88,6 @@ func (p Prefix) OptVersion(name string) (string, bool) {
 	return filepath.Base(path), true
 }
 
-// Pinned returns the version a pin record for name points at.
 func (p Prefix) Pinned(name string) (string, bool) {
 	record := filepath.Join(string(p), "var", "homebrew", "pinned", name)
 	if fi, err := os.Lstat(record); err != nil || fi.Mode()&os.ModeSymlink == 0 {
@@ -118,7 +114,6 @@ func (p Prefix) cellarDir() string {
 	return filepath.Join(string(p), "Cellar")
 }
 
-// resolveKeg returns the absolute target of a symlink to an existing directory.
 func (p Prefix) resolveKeg(link string) (string, bool) {
 	target, err := os.Readlink(link)
 	if err != nil {

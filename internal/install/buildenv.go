@@ -13,12 +13,11 @@ import (
 	"time"
 )
 
-// stdenvParams are what a build's environment depends on.
 type stdenvParams struct {
 	Prefix, Buildpath, Cache, SDK, MacVersion, Temp string
 	Jobs                                            int
-	DepBins                                         []string // the dependencies' opt bin directories
-	Keg                                             string   // absolute
+	DepBins                                         []string // opt bin directories
+	Keg                                             string
 	SourceModified                                  time.Time
 }
 
@@ -31,13 +30,10 @@ var packageCaches = map[string]string{
 	"UV_CACHE_DIR": "uv_cache", "YARN_CACHE_FOLDER": "yarn_cache", "ZIG_GLOBAL_CACHE_DIR": "zig_cache",
 }
 
-// stdenv is the environment of a build: brew's Stdenv on macOS, which needs
-// no compiler shims, and the sandbox Formula#brew sets up around install.
-// brew's default superenv routes compilers through Ruby shims brw cannot run.
+// stdenv is brew's Stdenv, not the default superenv, whose compiler shims are Ruby.
 func stdenv(p stdenvParams) map[string]string {
 	flags := "-Os -w -pipe -mmacosx-version-min=" + p.MacVersion + " -isysroot" + p.SDK
 	home := filepath.Join(p.Buildpath, ".brew_home")
-	// Stdenv adds the prefix's Frameworks before macosxsdk adds the SDK.
 	fwFlag, fwPath := "", ""
 	if fi, err := os.Stat(filepath.Join(p.Prefix, "Frameworks")); err == nil && fi.IsDir() {
 		fwFlag, fwPath = " -F"+filepath.Join(p.Prefix, "Frameworks"), filepath.Join(p.Prefix, "Frameworks")+":"
@@ -57,7 +53,6 @@ func stdenv(p stdenvParams) map[string]string {
 		"CMAKE_FRAMEWORK_PATH": fwPath + p.SDK + "/System/Library/Frameworks",
 	}
 	maps.Copy(env, sandboxEnv(home, p.Cache, p.Temp))
-	// what build.rb sets around the install method
 	env["HOMEBREW_FORMULA_PREFIX"] = p.Keg
 	env["HOMEBREW_FORMULA_BUILDPATH"] = p.Buildpath
 	env["SOURCE_DATE_EPOCH"] = strconv.FormatInt(p.SourceModified.Unix(), 10)
@@ -107,8 +102,7 @@ func tarCommit(file string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// sandboxEnv is brew's common_sandbox_env, which keeps a build or
-// post_install away from the user's home and configuration.
+// sandboxEnv is brew's common_sandbox_env.
 func sandboxEnv(home, cache, temp string) map[string]string {
 	env := map[string]string{
 		"HOME": home, "TMPDIR": temp, "TEMP": temp, "TMP": temp,

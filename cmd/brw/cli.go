@@ -13,7 +13,6 @@ func newFlagSet(name string) *flag.FlagSet {
 	return fs
 }
 
-// parse reads flags that may come before or after the positional arguments.
 func parse(fs *flag.FlagSet, args []string) ([]string, error) {
 	var pos []string
 	for {
@@ -32,8 +31,6 @@ func prefixFlag(e *env, fs *flag.FlagSet) *string {
 	return fs.String("prefix", defaultPrefix(e.host), "Homebrew prefix")
 }
 
-// changeFlags adds the flags of a command that changes the prefix: --prefix,
-// --journal and, when dryRun is not nil, --dry-run and -n.
 func changeFlags(e *env, fs *flag.FlagSet, dryRun *bool) (prefix, journal *string) {
 	prefix = prefixFlag(e, fs)
 	journal = fs.String("journal", "", "append changes to this file")
@@ -43,10 +40,8 @@ func changeFlags(e *env, fs *flag.FlagSet, dryRun *bool) (prefix, journal *strin
 	}
 	return prefix, journal
 }
-
-// kindFlags adds --formula and --cask, with their plurals. Call the result
-// after parsing to read them; it refuses both at once.
 func kindFlags(fs *flag.FlagSet) func() (formulaOnly, caskOnly bool, err error) {
+
 	var formula, cask bool
 	for _, n := range []string{"formula", "formulae"} {
 		fs.BoolVar(&formula, n, false, "only formulae")
@@ -69,7 +64,6 @@ func plural(n int, one, many string) string {
 	return many
 }
 
-// lines joins names one per line, with a final newline unless there are none.
 func lines(names []string) string {
 	if len(names) == 0 {
 		return ""

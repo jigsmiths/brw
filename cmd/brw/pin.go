@@ -19,9 +19,7 @@ func pinCommand(e *env, args []string) error { return pinOrUnpin(e, "pin", args)
 
 func unpinCommand(e *env, args []string) error { return pinOrUnpin(e, "unpin", args) }
 
-// pinOrUnpin acts on installed formulae as brew does: an unknown name fails
-// before anything changes, one that is known but not installed is reported and
-// skipped (and fails pin, not unpin), and one in the wanted state gets a warning.
+// An unknown name fails before anything changes; a known but uninstalled one is skipped (failing pin, not unpin).
 func pinOrUnpin(e *env, verb string, args []string) error {
 	fs := newFlagSet(verb)
 	prefixArg, journal := changeFlags(e, fs, nil)
@@ -53,7 +51,7 @@ func pinOrUnpin(e *env, verb string, args []string) error {
 		return f.Name, true
 	}}
 
-	type target struct{ name, rack string } // rack is empty when nothing is installed
+	type target struct{ name, rack string }
 	var targets []target
 	var unknown []error
 	for _, n := range names {
@@ -98,8 +96,6 @@ func pinOrUnpin(e *env, verb string, args []string) error {
 	})
 }
 
-// pinnedList is what list --pinned prints: each pinned formula, with the
-// version its record names when asked.
 func pinnedList(prefix string, versions bool) (string, error) {
 	names, err := cellar.Prefix(prefix).Names()
 	if err != nil {

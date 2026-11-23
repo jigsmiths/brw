@@ -14,8 +14,6 @@ import (
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// goreleaserTool is a GoReleaser-style formula: a release archive holding
-// the program, which it installs and asks for its completions.
 func goreleaserTool(t *testing.T, reg *installtest.Registry, version string) string {
 	t.Helper()
 	dir := "tool-" + version + "/"
@@ -75,7 +73,7 @@ func TestInstallATapFormulaFromItsDownload(t *testing.T) {
 	}
 	if r["poured_from_bottle"] != false || r["built_as_bottle"] != false || r["changed_files"] != nil ||
 		src["path"] != filepath.Join(tap.Dir(prefix, "u/t"), "Formula", "tool.rb") || src["tap"] != "u/t" ||
-		r["source_modified_time"] != float64(1791806400) { // the archive's newest file
+		r["source_modified_time"] != float64(1791806400) {
 
 		t.Errorf("receipt: %s", b)
 	}
@@ -120,8 +118,6 @@ func TestABuildStagesResourcesAndAppliesPatches(t *testing.T) {
 	}
 }
 
-// A real compile: make and clang build a library and a program that links it
-// by a relative name, which the installed keg must still find.
 func TestABuildCompilesAndFixesLinkage(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("brw builds from source on macOS only")
@@ -181,8 +177,7 @@ func TestABuildWritesServiceFiles(t *testing.T) {
 	}
 }
 
-// As brew does, a build runs in HOMEBREW_TEMP, where it cannot see the
-// prefix's git repository, which /opt/homebrew is.
+// A build runs in HOMEBREW_TEMP, where it cannot see /opt/homebrew's git repository.
 func TestABuildRunsOutsideThePrefix(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	temp := os.Getenv("HOMEBREW_TEMP")
@@ -230,8 +225,7 @@ func TestUpgradeATapFormulaFromItsDownload(t *testing.T) {
 	}
 }
 
-// As brew's fix_dynamic_linkage does, an absolute symlink into the prefix
-// becomes relative, so the keg keeps working wherever it is.
+// As brew's fix_dynamic_linkage does, an absolute symlink into the prefix becomes relative.
 func TestABuildMakesAbsoluteSymlinksRelative(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	writeTapFormula(t, origin, "tool", strings.Replace(goreleaserTool(t, reg, "1.0"), `bin.install "tool"`,
@@ -246,7 +240,6 @@ func TestABuildMakesAbsoluteSymlinksRelative(t *testing.T) {
 	}
 }
 
-// skip_clean keeps what the cleaner would change: an empty directory here.
 func TestSkipCleanKeepsWhatItNames(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	writeTapFormula(t, origin, "tool", strings.Replace(strings.Replace(goreleaserTool(t, reg, "1.0"),
@@ -260,7 +253,6 @@ func TestSkipCleanKeepsWhatItNames(t *testing.T) {
 	}
 }
 
-// A build that fails leaves no keg behind and says why.
 func TestAFailedBuildLeavesNothing(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	writeTapFormula(t, origin, "tool", strings.Replace(goreleaserTool(t, reg, "1.0"), `bin.install "tool"`, `bin.install "missing"`, 1))

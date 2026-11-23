@@ -20,13 +20,11 @@ import (
 	"github.com/jigsmiths/brw/internal/racks"
 )
 
-// Errors racks.Finder reports, aliased so callers need not import racks.
 type (
 	NoSuchKegError   = racks.NoSuchKegError
 	UnavailableError = racks.UnavailableError
 )
 
-// DependentsError says which installed formulae need the kegs.
 type DependentsError struct {
 	Kegs, Dependents, Named []string
 }
@@ -59,18 +57,16 @@ func sentence(words []string) string {
 	return strings.Join(words[:len(words)-1], ", ") + ", and " + words[len(words)-1]
 }
 
-// Options are the flags of brw uninstall.
 type Options struct {
 	Force, IgnoreDependencies bool
 	Autoremove                bool // afterwards, remove dependencies nothing needs any more
 }
 
-// Remover uninstalls kegs and the dependencies nothing needs any more.
 type Remover struct {
 	Root   *fsx.Root
 	Prefix string // absolute path of Root
 	Linker *link.Linker
-	Kegs   []cellar.Keg // every installed keg
+	Kegs   []cellar.Keg
 
 	// Resolve turns an alias into a formula name and says whether the formula
 	// exists. It may be nil, as may FormulaNames, when no listing is at hand.
@@ -228,7 +224,6 @@ func (r *Remover) removeRack(x rack, o Options) (err error) {
 	return nil
 }
 
-// forget drops removed kegs from the list of installed ones.
 func (r *Remover) forget(kegs []cellar.Keg) {
 	r.Kegs = slices.DeleteFunc(r.Kegs, func(k cellar.Keg) bool {
 		return slices.ContainsFunc(kegs, func(x cellar.Keg) bool { return x.Path == k.Path })
@@ -264,7 +259,6 @@ func (r *Remover) versionsLeft(name string) []string {
 	return out
 }
 
-// unpin removes the pin record, if any, and the pin directory once it is empty.
 func (r *Remover) unpin(name string) error {
 	record := path.Join("var/homebrew/pinned", name)
 	if fi, err := r.Root.Lstat(record); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
@@ -276,8 +270,7 @@ func (r *Remover) unpin(name string) error {
 	return nil
 }
 
-// dropDanglingRacks removes Cellar entries that are links to nothing, which a
-// renamed formula leaves behind.
+// A renamed formula leaves dangling rack links behind.
 func (r *Remover) dropDanglingRacks() error {
 	entries, err := r.Root.ReadDir("Cellar")
 	if err != nil {
@@ -296,7 +289,6 @@ func (r *Remover) dropDanglingRacks() error {
 	return errors.Join(errs...)
 }
 
-// configNotices lists the configuration files that uninstalling leaves in etc.
 func (r *Remover) configNotices(name string) {
 	pkgetc := path.Join("etc", name)
 	var paths []string
@@ -384,8 +376,6 @@ func (r *Remover) checkDependents(kegs []cellar.Keg, named []string) error {
 	return &DependentsError{Kegs: paths, Dependents: dependents, Named: named}
 }
 
-// dependentsOf finds which of the kegs are needed by installed formulae or casks
-// that are not themselves going, and by whom.
 func (r *Remover) dependentsOf(kegs []cellar.Keg) (required []cellar.Keg, dependents []string, err error) {
 	p := r.cellar()
 	removed := map[string][]cellar.Keg{}

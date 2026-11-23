@@ -18,7 +18,6 @@ func kegOnly(reason string) map[string]any {
 	return map[string]any{"keg_only": true, "keg_only_reason": map[string]any{"reason": reason, "explanation": ""}}
 }
 
-// linkStore has app (linked), plain (keg-only for a reason brew accepts a link for) and vault (keg-only and not versioned).
 func linkStore(t *testing.T) (*env, string) {
 	t.Helper()
 	s := newStore(t)
@@ -110,7 +109,7 @@ func TestLinkAllowsAVersionedKegOnlyFormulaWithoutForce(t *testing.T) {
 
 func TestLinkNeedsAListingToKnowAboutKegOnly(t *testing.T) {
 	e, prefix := linkStore(t)
-	e.client = &api.Client{URL: "http://127.0.0.1:1", CacheDir: t.TempDir()} // offline, nothing cached
+	e.client = &api.Client{URL: "http://127.0.0.1:1", CacheDir: t.TempDir()}
 	_, err := runCmd(t, e, "link", "-prefix", prefix, "vault")
 	if err == nil || !strings.Contains(err.Error(), "--force") || exists(t, prefix, "bin/vault") {
 		t.Fatalf("err = %v", err)
@@ -138,14 +137,12 @@ func TestLinkRefusesMacOSSoftwareOnTheDefaultPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.err.(*bytes.Buffer).Reset()
-	// On another prefix --force links it.
 	if _, err := runCmd(t, e, "link", "-prefix", prefix, "--force", "zlib"); err != nil || !exists(t, prefix, "lib/libz.a") {
 		t.Fatalf("--force on a non-default prefix: %v", err)
 	}
 	if _, err := runCmd(t, e, "unlink", "-prefix", prefix, "zlib"); err != nil {
 		t.Fatal(err)
 	}
-	// On the default prefix not even --force does.
 	e.defaultPrefix = prefix
 	if _, err := runCmd(t, e, "link", "-prefix", prefix, "--force", "zlib"); err != nil || exists(t, prefix, "lib/libz.a") {
 		t.Errorf("macOS software was linked: %v", err)
@@ -252,7 +249,6 @@ func TestUnlinkWorksOnAnUnlinkedKegAndUsesTheOptKeg(t *testing.T) {
 	}
 }
 
-// addVersion copies the keg of a formula to a newer version, which nothing links.
 func addVersion(t *testing.T, prefix, name, from, to string) {
 	t.Helper()
 	if err := os.CopyFS(filepath.Join(prefix, "Cellar", name, to), os.DirFS(filepath.Join(prefix, "Cellar", name, from))); err != nil {

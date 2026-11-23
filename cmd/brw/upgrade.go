@@ -67,10 +67,6 @@ func upgradeCommand(e *env, args []string) error {
 	return errors.Join(failures...)
 }
 
-// splitUpgradeNames sorts the names into formulae and casks: a name is a
-// formula when the listing or the Cellar has one, else a cask when the cask
-// listing has one. A name that is neither goes with the formulae, which say
-// what is wrong with it.
 func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (formulae, casks []string, err error) {
 	if caskOnly {
 		return nil, names, nil
@@ -114,8 +110,6 @@ func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (f
 	return formulae, casks, nil
 }
 
-// upgradeFormulae upgrades the named formulae, or every outdated one. found
-// says whether any was out of date.
 func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string) (found bool, err error) {
 	idx, client, err := e.indexAndClient(context.Background(), prefix)
 	if err != nil {
@@ -198,8 +192,6 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun bool, names []string
 	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures, withBuilds(e, prefix, idx, client))
 }
 
-// applyPlan shows or carries out the plan, cleaning up old kegs after each
-// formula. what ends the "cannot be ..." message, for example "upgraded".
 func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error, builds func(*install.Installer)) error {
 	for _, err := range planErrs {
 		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
@@ -235,7 +227,6 @@ func pkgVersionOf(stable string, revision int) string {
 	return v.String()
 }
 
-// printPlan says what an upgrade or reinstall would do.
 func printPlan(e *env, prefix string, plan *install.Plan) error {
 	var upgrades, reinstalls, installs []string
 	for _, it := range plan.Items {
@@ -270,8 +261,6 @@ func printPlan(e *env, prefix string, plan *install.Plan) error {
 	return err
 }
 
-// cleanAfterUpgrade removes the old kegs of a formula that was just upgraded,
-// unless HOMEBREW_NO_INSTALL_CLEANUP asks for them to be kept.
 func cleanAfterUpgrade(e *env, root *fsx.Root, prefix string, it install.Item) {
 	if len(it.Upgrade) == 0 || os.Getenv("HOMEBREW_NO_INSTALL_CLEANUP") != "" || skipCleanup()(it.Formula.Name) {
 		return

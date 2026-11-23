@@ -11,16 +11,13 @@ import (
 	"strings"
 )
 
-// CaskDependencies maps each formula an installed cask needs to the casks that
-// need it, going by the runtime dependencies in the cask receipts. A cask whose
-// receipt cannot be read is an error, so nothing is removed on a guess.
+// A cask whose receipt cannot be read is an error, so nothing is removed on a guess.
 func CaskDependencies(prefix string) (map[string][]string, error) {
 	return caskDependencies(prefix, false)
 }
 
-// CaskDirectDependencies is CaskDependencies for the formulae each cask names
-// itself, as brew leaves counts them. A dependency the receipt does not mark
-// either way counts.
+// CaskDirectDependencies counts only formulae the cask names itself; a dependency
+// the receipt does not mark either way counts.
 func CaskDirectDependencies(prefix string) (map[string][]string, error) {
 	return caskDependencies(prefix, true)
 }

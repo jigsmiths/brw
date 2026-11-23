@@ -38,7 +38,7 @@ func list(e *env, args []string) error {
 		return err
 	}
 
-	// Like brew, a terminal gets a heading over each kind unless one was asked for.
+	// brew headings each kind on a terminal unless one kind was asked for.
 	headings := e.tty && !formulaOnly && !caskOnly
 	var out string
 	if !caskOnly {
@@ -59,7 +59,6 @@ func list(e *env, args []string) error {
 	return err
 }
 
-// listFormulae is list's formula section: names, or names and versions.
 func (e *env) listFormulae(prefix string, versions, heading bool) (string, error) {
 	if versions {
 		kegs, err := e.kegs(prefix)
@@ -78,7 +77,6 @@ func (e *env) listFormulae(prefix string, versions, heading bool) (string, error
 	return lines(names), nil
 }
 
-// listCasks is list's cask section, warning about broken Caskroom links.
 func (e *env) listCasks(prefix string, versions, heading bool) (string, error) {
 	if versions {
 		casks, err := caskroom.Installed(prefix)
@@ -104,7 +102,6 @@ func (e *env) listCasks(prefix string, versions, heading bool) (string, error) {
 	return lines(names), nil
 }
 
-// formatVersions matches the output of brew list --versions.
 func formatVersions(kegs []cellar.Keg) string {
 	var b strings.Builder
 	for i, k := range kegs {

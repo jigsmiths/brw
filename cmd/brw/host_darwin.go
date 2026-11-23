@@ -10,7 +10,6 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 )
 
-// armFamilies are Hardware::CPU.arm_family's names for hw.cpufamily.
 var armFamilies = map[uint32]string{
 	0x2c91a47e: "arm_typhoon", 0x92fb37c8: "arm_twister", 0x67ceee93: "arm_hurricane_zephyr",
 	0xe81e7ef6: "arm_monsoon_mistral", 0x07d34b9f: "arm_vortex_tempest", 0x462504d2: "arm_lightning_thunder",
@@ -19,7 +18,6 @@ var armFamilies = map[uint32]string{
 	0x17d5b93a: "arm_brava", 0x1d5a87e8: "arm_hidra", 0xf76c5b1a: "arm_sotra",
 }
 
-// sdkPath is the macOS SDK builds compile against, as xcrun finds it.
 func sdkPath() string {
 	out, err := exec.Command("/usr/bin/xcrun", "--show-sdk-path").Output()
 	if err != nil {
@@ -28,8 +26,6 @@ func sdkPath() string {
 	return strings.TrimSpace(string(out))
 }
 
-// buildSystem is brew's DevelopmentTools.build_system_info on this Mac, which
-// a receipt of a formula built here records.
 func buildSystem() cellar.BuiltOn {
 	v := macVersion()
 	if i := strings.LastIndex(v, "."); strings.Count(v, ".") == 2 && i > 0 {
@@ -62,8 +58,7 @@ func buildSystem() cellar.BuiltOn {
 	return on
 }
 
-// macVersion is the macOS product version, such as "27.0.1". Reading it from
-// the kernel avoids running sw_vers, which costs about 16ms.
+// Reading the kernel avoids running sw_vers, which costs about 16ms.
 func macVersion() string {
 	v, err := syscall.Sysctl("kern.osproductversion")
 	if err != nil {

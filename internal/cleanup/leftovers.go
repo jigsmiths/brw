@@ -31,8 +31,6 @@ func (c *Cleaner) dirs(withCellar bool) []string {
 	return out
 }
 
-// Leftovers removes staging directories that an interrupted install abandoned
-// and the kegs a reinstall left behind.
 func (c *Cleaner) Leftovers() error {
 	var failed []error
 	if entries, err := c.Root.ReadDir(fsx.Staging); err == nil {
@@ -72,8 +70,7 @@ func (c *Cleaner) Leftovers() error {
 	return errors.Join(failed...)
 }
 
-// LockFiles removes lock files that nobody holds, for the named formulae or all.
-// Like brew it does nothing in a dry run.
+// Does nothing in a dry run, like brew.
 func (c *Cleaner) LockFiles(names []string) error {
 	if c.DryRun {
 		return nil
@@ -106,8 +103,7 @@ func (c *Cleaner) LockFiles(names []string) error {
 	return nil
 }
 
-// DSStore removes .DS_Store files from the standard directories, or from the
-// racks of the named formulae. Like brew it does nothing in a dry run.
+// Does nothing in a dry run, like brew.
 func (c *Cleaner) DSStore(names []string) error {
 	if c.DryRun {
 		return nil
@@ -141,8 +137,6 @@ func (c *Cleaner) sweep(dir string) {
 	}
 }
 
-// PrunePrefix removes broken symlinks from the standard directories and then the
-// directories that are left empty, as brew cleanup --prune-prefix does.
 func (c *Cleaner) PrunePrefix() error {
 	w := &pruneWalk{c: c, children: map[string]int{}}
 	for _, r := range c.dirs(false) {
@@ -159,14 +153,12 @@ func (c *Cleaner) PrunePrefix() error {
 	return nil
 }
 
-// pruneWalk removes broken links below a folder and collects the folders it
-// passes, parents first. children counts what each folder still holds, which
-// a dry run uses in place of looking.
+// children counts what each folder still holds, which a dry run uses in place of looking.
 type pruneWalk struct {
 	c        *Cleaner
 	dirs     []string
 	children map[string]int
-	links    int // removed
+	links    int
 }
 
 func (w *pruneWalk) visit(p string, e fs.DirEntry) {
@@ -187,8 +179,7 @@ func (w *pruneWalk) visit(p string, e fs.DirEntry) {
 	w.children[path.Dir(p)]++
 }
 
-// removeEmptyDirs removes the folders that are empty, children first, and
-// says how many went. A dry run only reports them, using children.
+// A dry run only reports the folders, using children.
 func (c *Cleaner) removeEmptyDirs(dirs []string, children map[string]int) int {
 	removed := 0
 	for _, d := range slices.Backward(dirs) {
@@ -208,7 +199,6 @@ func (c *Cleaner) removeEmptyDirs(dirs []string, children map[string]int) int {
 	return removed
 }
 
-// rmdirIfPossible removes an empty directory, or one that holds only a .DS_Store.
 func (c *Cleaner) rmdirIfPossible(dir string) bool {
 	if c.Root.Remove(dir) == nil {
 		return true

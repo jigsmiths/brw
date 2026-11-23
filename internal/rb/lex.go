@@ -13,11 +13,11 @@ const (
 	tNL
 	tIdent
 	tConst
-	tLabel // key: in a hash or keyword arguments
+	tLabel
 	tSym
 	tStr
 	tWords
-	tWordsI // %W[...]
+	tWordsI
 	tSyms
 	tInt
 	tFloat
@@ -28,7 +28,7 @@ const (
 
 type strPart struct {
 	lit    string
-	interp []token // tokens of #{...}
+	interp []token
 	isExpr bool
 }
 
@@ -37,7 +37,7 @@ type token struct {
 	s         string
 	parts     []strPart
 	words     []string
-	wordParts [][]strPart // %W words, which may interpolate
+	wordParts [][]strPart
 	spaceBef  bool
 	line      int
 }
@@ -55,7 +55,7 @@ type lexer struct {
 	i        int
 	line     int
 	toks     []token
-	heredocs []*heredoc // pending, read at the next newline
+	heredocs []*heredoc
 }
 
 type heredoc struct {
@@ -63,7 +63,7 @@ type heredoc struct {
 	squig  bool
 	dash   bool
 	interp bool
-	tok    int // index of the token to fill in
+	tok    int
 }
 
 func lex(src string) ([]token, error) {
@@ -90,7 +90,6 @@ func (l *lexer) last() *token {
 	return &l.toks[len(l.toks)-1]
 }
 
-// continues reports whether a newline after the last token continues the expression.
 func (l *lexer) continues() bool {
 	t := l.last()
 	if t == nil {
@@ -141,7 +140,6 @@ func (l *lexer) run() error {
 				l.emit(token{k: tNL})
 			}
 		case c == '.' && l.peek(1) != '.' && l.last() != nil && l.last().k == tNL:
-			// a leading-dot method chain continues the previous line
 			l.toks = l.toks[:len(l.toks)-1]
 			l.i++
 			l.emit(token{k: tOp, s: ".", spaceBef: space})
@@ -154,7 +152,6 @@ func (l *lexer) run() error {
 		case unicode.IsDigit(c):
 			l.number(space)
 		case c == '@' && isIdentStart(l.peek(1)):
-			// instance variables only appear in livecheck blocks, which are skipped
 			l.i++
 			if err := l.ident(space); err != nil {
 				return err
@@ -333,7 +330,6 @@ func (l *lexer) regexAllowed(space bool) bool {
 func (l *lexer) number(space bool) {
 	st := l.i
 	if l.peek(0) == '0' && strings.ContainsRune("xXoObB", l.peek(1)) {
-		// 0x1f, 0o755, 0b101: the parser reads the prefix
 		l.i += 2
 		for l.i < len(l.src) && (isIdent(l.src[l.i])) {
 			l.i++
@@ -369,7 +365,6 @@ func (l *lexer) ident(space bool) error {
 		l.i = len(l.src)
 		return nil
 	}
-	// label: `key: value` but not `a ? b : c` or `Foo::Bar`
 	if l.peek(0) == ':' && l.peek(1) != ':' {
 		last := l.last()
 		if last == nil || last.k != tOp || last.s != "?" {
@@ -389,7 +384,6 @@ func (l *lexer) ident(space bool) error {
 	return nil
 }
 
-// splitWords splits a %W literal at its unescaped whitespace.
 func splitWords(parts []strPart) [][]strPart {
 	var words [][]strPart
 	var cur []strPart
@@ -432,7 +426,6 @@ func joinLit(parts []strPart) string {
 	return b.String()
 }
 
-// str reads a string body up to close, after the opening delimiter.
 func (l *lexer) str(open, close rune, interp bool) ([]strPart, error) {
 	var parts []strPart
 	var b strings.Builder
@@ -447,7 +440,6 @@ func (l *lexer) str(open, close rune, interp bool) ([]strPart, error) {
 		}
 		switch {
 		case !interp && (open == '/' || close == '}') && c == '#' && l.peek(1) == '{':
-			// a regex's interpolation, kept as text
 			d := 0
 			for l.i < len(l.src) {
 				r := l.src[l.i]
@@ -466,7 +458,6 @@ func (l *lexer) str(open, close rune, interp bool) ([]strPart, error) {
 			n := l.peek(1)
 			l.i += 2
 			if !interp {
-				// single quotes keep everything but \\ and \'; regexes keep it all
 				if (n == close || n == '\\') && open != '/' && close != '/' {
 					b.WriteRune(n)
 				} else if n == close && (open == '/' || close == '/') {
@@ -479,7 +470,6 @@ func (l *lexer) str(open, close rune, interp bool) ([]strPart, error) {
 			}
 			switch {
 			case n >= '0' && n <= '7':
-				// octal byte escape, up to three digits
 				v := int(n - '0')
 				for k := 0; k < 2 && l.peek(0) >= '0' && l.peek(0) <= '7'; k++ {
 					v = v*8 + int(l.peek(0)-'0')
@@ -593,8 +583,7 @@ func hexVal(r rune) int {
 	return 0
 }
 
-// dedent removes a <<~ heredoc's common indentation as Ruby does: a tab reaches
-// the next multiple of 8 columns, and one that would cross the indentation stays.
+// dedent removes a <<~ heredoc's common indentation as Ruby does: a tab reaches the next multiple of 8.
 func dedent(lines []string) {
 	width := func(ln string) (int, bool) {
 		col := 0

@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// Unneeded lists the formulae Autoremove would remove, in the order it removes them.
 func (r *Remover) Unneeded() ([]string, error) {
 	kegs, err := r.unneeded()
 	names := make([]string, len(kegs))

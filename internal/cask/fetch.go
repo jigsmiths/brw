@@ -19,23 +19,16 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 )
 
-// ErrUnsupported marks a cask, or a download, that brw cannot handle yet.
 var ErrUnsupported = errors.New("not supported by brw yet")
 
-// noCheck is the sha256 of a cask whose download is not checked.
 const noCheck = "no_check"
 
-// Fetcher downloads casks into Dir and keeps them for the next install.
 type Fetcher struct {
-	HTTP *http.Client
-	Dir  string
-	// Progress, if set, is told how much of a download has arrived, and how
-	// much there is in all (-1 if unknown).
+	HTTP     *http.Client
+	Dir      string
 	Progress func(name string, done, total int64)
 }
 
-// Fetch returns the cask's download, from the cache when it is there and has
-// the checksum. A cask without a checksum is downloaded each time.
 func (f *Fetcher) Fetch(ctx context.Context, c api.Cask) (string, error) {
 	if len(c.URLSpecs) > 0 {
 		return "", fmt.Errorf("%s: downloads with url options: %w", c.Token, ErrUnsupported)
@@ -66,8 +59,7 @@ func (f *Fetcher) Fetch(ctx context.Context, c api.Cask) (string, error) {
 	return path, quarantine(ctx, path)
 }
 
-// DownloadName is the download's own name, as it is in the cache after the
-// key, which is how brew names a file it copies out unchanged.
+// DownloadName is the download's own name in the cache after the key.
 func DownloadName(path string) string {
 	base := filepath.Base(path)
 	if key, name, ok := strings.Cut(base, "--"); ok && len(key) == 64 {
@@ -122,8 +114,6 @@ func (f *Fetcher) download(ctx context.Context, c api.Cask, key string) (string,
 
 var unsafeName = regexp.MustCompile(`[\x00-\x1f\x7f/]`)
 
-// downloadName is the name the server gives the file, or else the last part of
-// the URL after redirects.
 func downloadName(resp *http.Response) string {
 	name := ""
 	if _, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition")); err == nil {

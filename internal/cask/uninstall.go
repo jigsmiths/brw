@@ -21,8 +21,6 @@ import (
 	"github.com/jigsmiths/brw/internal/poststep"
 )
 
-// Exec runs a command and returns its standard output. Installer.Exec
-// replaces it in tests.
 type Exec func(ctx context.Context, name string, args ...string) ([]byte, error)
 
 func execCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -43,25 +41,19 @@ func (in *Installer) exec(ctx context.Context, name string, args ...string) ([]b
 	return execCommand(ctx, name, args...)
 }
 
-// NotInstalled is brew's error for a cask that is not installed.
 func NotInstalled(token string) error {
 	return brewError("Cask '%s' is not installed.", token)
 }
 
-// IsPinned is brew's error for a pinned cask.
 func IsPinned(token string) error {
 	return brewError("%s is pinned. You must unpin it to uninstall.", token)
 }
 
-// uninstallStep is one artifact from the receipt, in the order brew undoes
-// them: the uninstall stanza, then apps, then binaries.
 type uninstallStep struct {
-	kind       string
-	directives map[string][]string // for "uninstall"
-	move       move                // for "app" and "binary"
-	generator  generator           // for "generate_completions_from_executable"
-	// For "preflight_steps" and "postflight_steps": the steps, and the
-	// version's folder they ran in.
+	kind          string
+	directives    map[string][]string
+	move          move
+	generator     generator
 	steps         []json.RawMessage
 	version       string
 	stagedVersion string
@@ -70,10 +62,7 @@ type uninstallStep struct {
 var stepOrder = map[string]int{"uninstall": 0, "app": 1, "binary": 2, "generate_completions_from_executable": 3,
 	"preflight_steps": 4, "postflight_steps": 4}
 
-// Uninstall removes an installed version of a cask as brew does, from the
-// artifacts its receipt recorded. It refuses, before changing anything, a
-// cask that needs something brw cannot undo yet. force also removes every
-// other version and does not stop at an app in the way.
+// Uninstall refuses, before changing anything, a cask that needs something brw cannot undo yet. force also removes every other version.
 func (in *Installer) Uninstall(ctx context.Context, token, version string, force bool) error {
 	steps, err := in.readUninstall(token, version)
 	if err != nil {
@@ -99,7 +88,6 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 	return nil
 }
 
-// removeArtifacts carries out the steps: brew's uninstall_artifacts.
 func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []uninstallStep, force bool) error {
 	for _, s := range steps {
 		switch s.kind {
@@ -126,8 +114,6 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 	return nil
 }
 
-// readUninstall reads the receipt's uninstall_artifacts, filled in when the
-// cask was installed, and checks that brw can undo every one.
 func (in *Installer) readUninstall(token, version string) ([]uninstallStep, error) {
 	artifacts, err := in.readReceipt(token)
 	if err != nil {
@@ -154,8 +140,6 @@ func unsupported(token, what string) error {
 	return fmt.Errorf("%s: %s: %w", token, what, ErrUnsupported)
 }
 
-// readReceipt reads the uninstall artifacts from the cask's install receipt,
-// refusing a receipt brw cannot uninstall from.
 func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, error) {
 	b, err := in.Root.ReadFile(filepath.Join("Caskroom", token, ".metadata", "INSTALL_RECEIPT.json"))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -180,8 +164,6 @@ func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, er
 	return receipt.UninstallArtifacts, nil
 }
 
-// readStep reads one uninstall artifact of the given kind, checking that brw
-// can undo it.
 func (in *Installer) readStep(token, version, kind string, args json.RawMessage) (uninstallStep, error) {
 	s := uninstallStep{kind: kind}
 	var err error
@@ -228,8 +210,6 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 	return s, nil
 }
 
-// readDirectives reads an uninstall stanza: a list of objects whose values
-// are a string or a list of strings.
 func readDirectives(args json.RawMessage) (map[string][]string, error) {
 	var list []map[string]json.RawMessage
 	if err := json.Unmarshal(args, &list); err != nil {
@@ -253,8 +233,6 @@ func readDirectives(args json.RawMessage) (map[string][]string, error) {
 	return out, nil
 }
 
-// runDirectives carries out the uninstall stanza in brew's order. rmdir is
-// brew's post-uninstall phase, which follows straight after.
 func (in *Installer) runDirectives(ctx context.Context, d map[string][]string) error {
 	if s := d["launchctl"]; len(s) > 0 {
 		in.launchctl(ctx, s)
@@ -276,9 +254,7 @@ func (in *Installer) runDirectives(ctx context.Context, d map[string][]string) e
 	return nil
 }
 
-// launchctl removes services as brew does: from the user's domain, then from
-// the system's with sudo, with their plists. brw looks a system service up
-// without sudo, so it asks for a password only when there is one to remove.
+// launchctl looks a system service up without sudo, unlike brew, so a password is asked for only when there is one to remove.
 func (in *Installer) launchctl(ctx context.Context, services []string) {
 	var all []string
 	for _, s := range services {
@@ -337,8 +313,6 @@ func (in *Installer) sleep(d time.Duration) {
 	time.Sleep(d)
 }
 
-// runningServices are the running launchd services that match a pattern
-// with * in it.
 func (in *Installer) runningServices(ctx context.Context, pattern string) []string {
 	out, err := in.exec(ctx, "/bin/launchctl", "list")
 	if err != nil {
@@ -388,8 +362,6 @@ const automationAccess = `Enable Automation access for "Terminal → System Even
   System Settings → Privacy & Security → Automation
 if you haven't already.`
 
-// quit asks running apps to quit, giving each ten seconds, as brew does. It
-// leaves alone the app brw runs in, such as the terminal.
 func (in *Installer) quit(ctx context.Context, ids []string) {
 	for _, id := range ids {
 		if strings.Contains(id, "*") {
@@ -428,8 +400,6 @@ func (in *Installer) running(ctx context.Context, id string) bool {
 	return err == nil
 }
 
-// resolvePaths expands ~ and globs a directive's paths, skipping, with
-// brew's warnings, relative paths and system and home folders.
 func (in *Installer) resolvePaths(action string, paths []string, each func(path string, resolved []string)) {
 	for _, p := range paths {
 		r := p
@@ -463,8 +433,7 @@ func writable(dir string) bool {
 	return syscall.Access(dir, accessWrite) == nil
 }
 
-// deletePaths is brew's delete directive. brew always uses sudo; brw tries
-// without first, so most casks need no password.
+// deletePaths tries without sudo first, unlike brew, so most casks need no password.
 func (in *Installer) deletePaths(ctx context.Context, paths []string) error {
 	in.logf("==> Removing files:")
 	var err error
@@ -483,7 +452,6 @@ func (in *Installer) deletePaths(ctx context.Context, paths []string) error {
 	return err
 }
 
-// trash moves paths to the user's Trash with macOS's trash command.
 func (in *Installer) trash(ctx context.Context, paths []string) {
 	var shown, all []string
 	in.resolvePaths("trash", paths, func(p string, resolved []string) {
@@ -508,8 +476,6 @@ func (in *Installer) trash(ctx context.Context, paths []string) {
 	}
 }
 
-// rmdirs removes directories that hold nothing but empty directories and
-// .DS_Store files.
 func (in *Installer) rmdirs(ctx context.Context, dirs []string) {
 	in.logf("==> Removing directories if empty:")
 	in.resolvePaths("rmdir", dirs, func(_ string, resolved []string) {
@@ -556,7 +522,6 @@ func (in *Installer) rmdirAll(ctx context.Context, dirs []string) bool {
 	return true
 }
 
-// tildeHome is Ruby's sub: the first occurrence of home becomes ~.
 func tildeHome(path, home string) string {
 	if home == "" {
 		return path
@@ -564,8 +529,7 @@ func tildeHome(path, home string) string {
 	return strings.Replace(path, home, "~", 1)
 }
 
-// moveBack is brew's move_back: the app goes back to the Caskroom, which the
-// purge then removes. brew copies and deletes; brw moves, to the same end.
+// moveBack moves the app back to the Caskroom where brew copies and deletes, to the same end.
 func (in *Installer) moveBack(ctx context.Context, m move, force bool) error {
 	rel, err := in.appRel(m.target)
 	if err != nil {
@@ -594,7 +558,7 @@ func (in *Installer) moveBack(ctx context.Context, m move, force bool) error {
 		}
 	}
 	if _, err := os.Lstat(m.target); err != nil {
-		return nil // brew skips an app that is gone
+		return nil
 	}
 	in.logf("==> Backing up App '%s' to '%s'", filepath.Base(m.target), abs)
 	if err := in.Root.MkdirAll(filepath.Dir(staged), 0o755); err != nil {
@@ -604,7 +568,6 @@ func (in *Installer) moveBack(ctx context.Context, m move, force bool) error {
 		in.logf("==> Removing App '%s'", m.target)
 		return in.Apps.MoveTo(in.Root, rel, staged)
 	}
-	// A folder only sudo can write: brew's copy, then its delete.
 	if err := in.sudoIfNeeded(ctx, "/bin/cp", in.backupArgs(m.target, abs)...); err != nil {
 		return err
 	}
@@ -612,7 +575,6 @@ func (in *Installer) moveBack(ctx context.Context, m move, force bool) error {
 	return in.removePath(ctx, in.Apps, rel)
 }
 
-// backupArgs are brew's: on Sonoma and later, cp clones within a volume.
 func (in *Installer) backupArgs(target, dest string) []string {
 	args := []string{"-pR", target, dest}
 	if runtime.GOOS != "darwin" {
@@ -634,7 +596,6 @@ func (in *Installer) backupArgs(target, dest string) []string {
 	return append([]string{"-c"}, args...)
 }
 
-// unlinkBinary removes the binary's link, leaving one a formula linked.
 func (in *Installer) unlinkBinary(m move) error {
 	fi, err := os.Lstat(m.target)
 	if err != nil || fi.Mode()&fs.ModeSymlink == 0 {

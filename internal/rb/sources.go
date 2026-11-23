@@ -7,20 +7,17 @@ import (
 	"sync/atomic"
 )
 
-// Resource is a download a formula's install method stages, besides its own.
 type Resource struct {
 	Name, URL, SHA256 string
 }
 
-// Patch is a change applied to the staged source before install: from its
-// URL, or Data, the text after the formula's __END__.
+// Data is the text after the formula's __END__.
 type Patch struct {
-	Strip       string // p0, p1 or p2
+	Strip       string
 	URL, SHA256 string
 	Data        string
 }
 
-// Resources are the stable spec's resources.
 func (f *Formula) Resources() []Resource {
 	if f.b.stable == nil {
 		return nil
@@ -32,7 +29,6 @@ func (f *Formula) Resources() []Resource {
 	return out
 }
 
-// Patches are the stable spec's patches, in the order brew applies them.
 func (f *Formula) Patches() []Patch {
 	if f.b.stable == nil {
 		return nil
@@ -59,15 +55,12 @@ func (f *Formula) Patches() []Patch {
 	return out
 }
 
-// resourceRef is resource("name") in an install method.
 type resourceRef struct{ r *spec }
 
 func (resourceRef) rubyValue() {}
 
 var stageCount atomic.Int64
 
-// stage unpacks a resource into a fresh directory under the scratch space,
-// entering its only directory as brew does, and returns where it is.
 func (b *builder) stage(r resourceRef) string {
 	archive, ok := b.env.Resources[r.r.name]
 	if !ok || b.env.Unpack == nil {
@@ -84,8 +77,6 @@ func (b *builder) stage(r resourceRef) string {
 	return dir
 }
 
-// installResource is Pathname#install of a resource: its staged files move
-// into dir.
 func (b *builder) installResource(dir string, r resourceRef) {
 	staged := b.stage(r)
 	entries, err := b.env.Host.ReadDir(staged)

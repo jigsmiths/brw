@@ -14,7 +14,6 @@ import (
 	"testing"
 )
 
-// dirHost runs an install body against real files under a temp dir.
 type dirHost struct {
 	t   *testing.T
 	ran [][]string
@@ -43,8 +42,6 @@ func (h *dirHost) Run(dir string, env map[string]string, argv []string) ([]byte,
 	return cmd.Output()
 }
 
-// installInto runs src's install body with a buildpath holding files, and
-// returns the prefix.
 func installInto(t *testing.T, src string, files map[string]string) (string, string, *dirHost, error) {
 	t.Helper()
 	asBrewHost(t, "brewuser")
@@ -118,7 +115,6 @@ end
 	}
 }
 
-// The completions come from running the installed program, as brew runs it.
 func TestGenerateCompletionsRunsTheProgram(t *testing.T) {
 	src := toolHead + `    bin.install "tool"
     generate_completions_from_executable(bin/"tool", "completion")
@@ -176,7 +172,6 @@ end
 	}
 }
 
-// Ruby reads 0555 as octal, as a formula's chmod means it.
 func TestChmodTakesOctalLiterals(t *testing.T) {
 	src := toolHead + "    bin.install \"tool\"\n    chmod 0555, bin/\"tool\"\n    (bin/\"x\").write \"\"\n    chmod 0o700, bin/\"x\"\n  end\nend\n"
 	_, keg, _, err := installInto(t, src, map[string]string{"tool": "plain"})
@@ -190,7 +185,6 @@ func TestChmodTakesOctalLiterals(t *testing.T) {
 	}
 }
 
-// The std_*_args are brew's, and reach the build's commands.
 func TestStdArgsAreBrews(t *testing.T) {
 	src := toolHead + `    system "sh", "-c", "echo \"$*\" > configure.out", "-", *std_configure_args
     system "sh", "-c", "echo \"$*\" > cmake.out", "-", *std_cmake_args
@@ -221,8 +215,6 @@ end
 	_ = prefix
 }
 
-// std_go_args(ldflags: :goreleaser) is GoReleaser's ldflags: the commit is the
-// spec's revision, else the tarball's, else the tap's owner.
 func TestGoreleaserLdflags(t *testing.T) {
 	asBrewHost(t, "brewuser")
 	for _, tt := range []struct{ url, commit, want string }{
@@ -237,7 +229,6 @@ func TestGoreleaserLdflags(t *testing.T) {
 			t.Fatal(err)
 		}
 		prefix := t.TempDir()
-		// Formula#time is the build's SOURCE_DATE_EPOCH, which brew sets.
 		env := &InstallEnv{Host: &dirHost{t: t}, Prefix: prefix, Buildpath: t.TempDir(), Tap: "acme/tools", TarCommit: tt.commit,
 			Env: map[string]string{"SOURCE_DATE_EPOCH": "1795425211"}}
 		if err := f.Install(env); err != nil {
@@ -252,7 +243,6 @@ func TestGoreleaserLdflags(t *testing.T) {
 	}
 }
 
-// std_cmake_args traps FetchContent with brew's file when the prefix has it.
 func TestStdCmakeArgsUseBrewsTrapWhenThere(t *testing.T) {
 	asBrewHost(t, "brewuser")
 	f, err := LoadFormula([]byte(toolHead+"    (prefix/\"a\").write std_cmake_args.join(\" \")\n  end\nend\n"), "tool", "arm64_golden_gate")
@@ -275,7 +265,6 @@ func TestStdCmakeArgsUseBrewsTrapWhenThere(t *testing.T) {
 	}
 }
 
-// shellParameter is Utils::ShellCompletion.completion_shell_parameter.
 func TestShellParameterIsBrews(t *testing.T) {
 	for _, tt := range []struct {
 		format     value
@@ -301,7 +290,6 @@ func TestShellParameterIsBrews(t *testing.T) {
 	}
 }
 
-// The ENV methods are brew's SharedEnvExtension and Stdenv ones.
 func TestEnvMethodsAreBrews(t *testing.T) {
 	src := toolHead + `    ENV["A"] = "x"
     ENV.append ["A", "B"], "y"
@@ -504,7 +492,6 @@ end
 		t.Errorf("output = %q, want %q", out.String(), want)
 	}
 
-	// A second run keeps the user's configuration.
 	if err := os.WriteFile(filepath.Join(prefix, "etc/tool.conf"), []byte("mine"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -516,8 +503,6 @@ end
 	}
 }
 
-// The FileUtils, Pathname, File and Dir methods install bodies use, on real
-// files. Each case writes what it found to prefix/"out".
 func TestFileMethodsOnRealFiles(t *testing.T) {
 	files := map[string]string{"a.txt": "a\n", "dir/b.txt": "b\n", "dir/sub/c.txt": "c\n", "tool": "#!/bin/sh\necho t\n"}
 	for _, tt := range []struct{ name, body, out string }{
@@ -614,8 +599,6 @@ func TestFileMethodsOnRealFiles(t *testing.T) {
 	}
 }
 
-// inreplace is brew's StringInreplaceExtension: each edit that matches
-// nothing is an error, and the make variable helpers rewrite whole lines.
 func TestInreplaceIsBrews(t *testing.T) {
 	makefile := "CC=gcc\nOPT += -O0 \\\n  -g\nDEBUG:=1\nKEEP=1\nPREFIX=/usr/local\nNAME=a a\n"
 	for _, tt := range []struct {
@@ -685,8 +668,6 @@ func TestExpandPathUsesTheInstallHome(t *testing.T) {
 	}
 }
 
-// brw takes no install options, so build answers as brew's BuildOptions does
-// when none were given: only a without- option counts as with.
 func TestBuildOptionsWithoutAnyGiven(t *testing.T) {
 	src := toolHead + `    got = []
     got << build.with?("test-commands")

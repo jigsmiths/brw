@@ -19,33 +19,30 @@ import (
 	"github.com/jigsmiths/brw/internal/platform"
 )
 
-// Config is what brew records in a cask's config.json. brw does not read
-// HOMEBREW_CASK_OPTS, so the env part stays empty.
+// Config is what brew records in config.json; env stays empty because brw does not read HOMEBREW_CASK_OPTS.
 type Config struct {
 	Languages      []string
-	ExplicitAppDir string // --appdir on the command line
+	ExplicitAppDir string
 }
 
-// Installer installs casks as brew does, into a prefix whose Caskroom brew
-// and brw share.
 type Installer struct {
-	Root    *fsx.Root // the prefix
-	Apps    *fsx.Root // the applications folder
+	Root    *fsx.Root
+	Apps    *fsx.Root
 	Where   Where
 	Host    platform.Host
 	Fetcher *Fetcher
 	Log     io.Writer
-	Warn    io.Writer // brew's warnings
+	Warn    io.Writer
 	Now     func() time.Time
-	Sleep   func(time.Duration) // brew's pauses; nil is time.Sleep
-	Version string              // brw's, for the receipt
-	APIPath string              // brew's cask listing, which the receipt names as the source
+	Sleep   func(time.Duration)
+	Version string
+	APIPath string
 	Config  Config
-	Exec    Exec // nil runs commands; uninstall's commands go through it
-	Adopt   bool // take over an app already at the target, as brew's --adopt
+	Exec    Exec
+	Adopt   bool
 
-	upgrading     bool     // quit records what it quit, to reopen
-	reopen        []string // bundle IDs quit during this upgrade
+	upgrading     bool
+	reopen        []string
 	warnedSandbox bool
 }
 
@@ -55,7 +52,6 @@ func (in *Installer) logf(format string, args ...any) {
 	}
 }
 
-// brewMessage is one of brew's errors, which are sentences.
 type brewMessage string
 
 func (m brewMessage) Error() string { return string(m) }
@@ -64,15 +60,12 @@ func brewError(format string, args ...any) error {
 	return brewMessage(fmt.Sprintf(format, args...))
 }
 
-// warnf writes one of brew's warnings, which go to stderr.
 func (in *Installer) warnf(format string, args ...any) {
 	if in.Warn != nil {
 		_, _ = fmt.Fprintf(in.Warn, "Warning: "+format+"\n", args...)
 	}
 }
 
-// Install downloads the cask, stages it in the Caskroom, moves its apps and
-// links its binaries. A failure undoes what was done.
 func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 	p, links, file, err := in.prepare(ctx, c, nil)
 	if err != nil {
@@ -99,8 +92,6 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 	return nil
 }
 
-// prepare checks that the cask can be installed here and downloads it. owned
-// are the targets of the version being upgraded, which it will clear first.
 func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]bool) (installPlan, []linkAction, string, error) {
 	if msg := deprecation(c, in.Now()); c.Disabled {
 		return installPlan{}, nil, "", brewError("Cask '%s' has been %s", c.Token, msg)
@@ -125,8 +116,6 @@ func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]b
 	return p, links, file, nil
 }
 
-// installArtifacts stages the download in the Caskroom, moves the apps, links
-// the binaries and writes the config, adding to undo what reverses each step.
 func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p installPlan, links []linkAction, file string, undo *[]func() error) error {
 	version := filepath.Join("Caskroom", c.Token, c.Version)
 	if err := in.Root.MkdirAll(version, 0o755); err != nil {
@@ -162,7 +151,7 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 		case alreadyLinked:
 			in.logf("==> Binary '%s' is already linked to '%s'", filepath.Base(m.source), m.target)
 			continue
-		case skipLink: // a formula linked it since checkTargets
+		case skipLink:
 			continue
 		}
 		if err := in.linkBinary(ctx, staged, m, action, undo); err != nil {
@@ -180,8 +169,6 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 	return in.writeConfig(c)
 }
 
-// discard reverses a failed install of c and removes its files, as brew's
-// purge_versioned_files.
 func (in *Installer) discard(ctx context.Context, c api.Cask, undo []func() error) error {
 	in.logf("==> Purging files for version %s of Cask %s", c.Version, c.Token)
 	var err error
@@ -191,7 +178,6 @@ func (in *Installer) discard(ctx context.Context, c api.Cask, undo []func() erro
 	return errors.Join(err, in.purge(context.WithoutCancel(ctx), c))
 }
 
-// badge is brew's install badge with its two spaces, or nothing.
 func badge() string {
 	if os.Getenv("HOMEBREW_NO_EMOJI") != "" {
 		return ""
@@ -202,19 +188,15 @@ func badge() string {
 	return "🍺  "
 }
 
-// linkAction is what linking does to a binary's target, as brew's link_action.
 type linkAction int
 
 const (
-	newLink       linkAction = iota // nothing there, or a broken link
-	overwrite                       // adopting a link of this cask's
-	alreadyLinked                   // a link to the source
-	skipLink                        // a formula's link
+	newLink linkAction = iota
+	overwrite
+	alreadyLinked
+	skipLink
 )
 
-// checkTargets fails before any download when a target is taken by something
-// other than the replaced version. A binary whose target a formula links is
-// skipped with brew's warning.
 func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bool) ([]linkAction, error) {
 	for _, m := range p.apps {
 		if _, err := in.appRel(m.target); err != nil {
@@ -236,7 +218,7 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bo
 			return nil, fmt.Errorf("%s: binary source %s: outside %s and %s: %w", c.Token, m.source, in.Where.AppDir, in.Where.Prefix, ErrUnsupported)
 		}
 		if owned[m.target] {
-			continue // newLink: linking looks again once the old link is gone
+			continue
 		}
 		action, formula, err := in.binaryAction(c, m)
 		if err != nil {
@@ -250,9 +232,6 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bo
 	return links, nil
 }
 
-// binaryAction is brew's link_action for a binary's target, and the formula
-// whose link it is when skipped. It changes once the cask is staged, since
-// links into the Caskroom resolve again.
 func (in *Installer) binaryAction(c api.Cask, m move) (linkAction, string, error) {
 	fi, err := os.Lstat(m.target)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -263,7 +242,7 @@ func (in *Installer) binaryAction(c api.Cask, m move) (linkAction, string, error
 	}
 	if fi.Mode()&fs.ModeSymlink != 0 {
 		real, err := filepath.EvalSymlinks(m.target)
-		if err != nil { // brew's ln --force replaces a broken link
+		if err != nil {
 			return newLink, "", nil
 		}
 		caskroom := resolved(filepath.Join(in.Where.Prefix, "Caskroom", c.Token))
@@ -281,8 +260,6 @@ func (in *Installer) binaryAction(c api.Cask, m move) (linkAction, string, error
 	return 0, "", brewError("%s: It seems there is already a Binary at '%s'.", c.Token, m.target)
 }
 
-// linksToSource is brew's target_links_to_source?, for the link at the
-// binary's target resolved to real.
 func (in *Installer) linksToSource(c api.Cask, m move, real string) bool {
 	source := m.source
 	if !filepath.IsAbs(source) {
@@ -295,7 +272,6 @@ func (in *Installer) linksToSource(c api.Cask, m move, real string) bool {
 	return err == nil && resolved == real
 }
 
-// formulaLink names the formula whose keg the link at path resolves into.
 func (in *Installer) formulaLink(path string) (string, bool) {
 	real, err := filepath.EvalSymlinks(path)
 	if err != nil {
@@ -310,8 +286,6 @@ func (in *Installer) formulaLink(path string) (string, bool) {
 	return formula, true
 }
 
-// resolved is dir with its links resolved, to compare with resolved paths;
-// dir itself when it cannot be resolved.
 func resolved(dir string) string {
 	if r, err := filepath.EvalSymlinks(dir); err == nil {
 		return r
@@ -338,9 +312,7 @@ func (in *Installer) prefixRel(target string) (string, error) {
 	return filepath.Rel(in.Where.Prefix, target)
 }
 
-// moveApp moves the staged app to its target, leaves a link to it in its
-// place, as brew does, and sets brew's permissions. When adopting, an app
-// already at the target is kept, and kept on rollback too, unlike brew.
+// moveApp keeps an adopted app at the target on rollback too, unlike brew.
 func (in *Installer) moveApp(ctx context.Context, version string, m move, autoUpdates bool, undo *[]func() error) error {
 	staged := filepath.Join(version, m.source)
 	if _, err := in.Root.Lstat(staged); err != nil {
@@ -377,7 +349,6 @@ func (in *Installer) moveApp(ctx context.Context, version string, m move, autoUp
 		}
 		*undo = append(*undo, func() error { return in.Apps.MoveTo(in.Root, rel, staged) })
 	} else {
-		// brew copies into a folder only sudo can write, then drops the staged app.
 		abs, err := in.Root.Abs(staged)
 		if err != nil {
 			return err
@@ -385,7 +356,6 @@ func (in *Installer) moveApp(ctx context.Context, version string, m move, autoUp
 		if err := in.sudoIfNeeded(ctx, "/bin/cp", "-pR", abs, m.target); err != nil {
 			return err
 		}
-		// Undo runs after a failure, which may be the context's cancellation.
 		*undo = append(*undo, func() error { return in.removePath(context.WithoutCancel(ctx), in.Apps, rel) })
 		if err := in.removePath(ctx, in.Root, staged); err != nil {
 			return err
@@ -394,8 +364,6 @@ func (in *Installer) moveApp(ctx context.Context, version string, m move, autoUp
 	return in.linkApp(ctx, staged, m, undo)
 }
 
-// linkApp is brew's post_move and app permissions: a link to the app in
-// the Caskroom, and the app readable by all.
 func (in *Installer) linkApp(ctx context.Context, staged string, m move, undo *[]func() error) error {
 	if err := in.Root.SymlinkTo(in.Apps, m.target, staged); err != nil {
 		return err
@@ -404,16 +372,12 @@ func (in *Installer) linkApp(ctx context.Context, staged string, m move, undo *[
 	if err := run(ctx, "chmod", "-R", "a+rX,go-w", m.target); err != nil {
 		return err
 	}
-	// brew needs this to succeed in /Applications and lets it fail elsewhere;
-	// without sudo, brw lets it fail everywhere.
 	if group := caskroomGroup(); group != "" {
 		_ = run(ctx, "chgrp", "-hR", group, m.target)
 	}
 	return nil
 }
 
-// caskroomGroup is the group brew gives apps: admin when the user is in it,
-// else the user's own group.
 func caskroomGroup() string {
 	u, err := user.Current()
 	if err != nil {
@@ -430,8 +394,6 @@ func caskroomGroup() string {
 	return ""
 }
 
-// linkBinary links the binary from the prefix's bin, as brew does: through
-// the staged version for a relative source, and makes it executable.
 func (in *Installer) linkBinary(ctx context.Context, staged string, m move, action linkAction, undo *[]func() error) error {
 	source := m.source
 	if !filepath.IsAbs(source) {
@@ -455,7 +417,7 @@ func (in *Installer) linkBinary(ctx context.Context, staged string, m move, acti
 	if err := in.Root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		return err
 	}
-	if err := removeIfThere(in.Root, rel); err != nil { // a broken link, as ln --force
+	if err := removeIfThere(in.Root, rel); err != nil {
 		return err
 	}
 	if in.inside(in.Where.AppDir, source) {
@@ -470,14 +432,12 @@ func (in *Installer) linkBinary(ctx context.Context, staged string, m move, acti
 	return in.makeExecutable(real)
 }
 
-// makeExecutable is brew's chmod +x, through whichever root holds the file.
 func (in *Installer) makeExecutable(path string) error {
 	fi, err := os.Stat(path)
 	if err != nil || fi.Mode().Perm()&0o111 == 0o111 {
 		return err
 	}
 	perm := fi.Mode().Perm() | 0o111
-	// path is resolved, so compare it with the resolved folders.
 	for _, r := range []struct {
 		dir  string
 		root *fsx.Root
@@ -494,8 +454,6 @@ func (in *Installer) makeExecutable(path string) error {
 	return fmt.Errorf("binary %s: outside %s and %s", path, in.Where.AppDir, in.Where.Prefix)
 }
 
-// purge removes what the cask left in the Caskroom, as brew's
-// purge_versioned_files does, keeping other versions.
 func (in *Installer) purge(ctx context.Context, c api.Cask) error {
 	dir := filepath.Join("Caskroom", c.Token)
 	err := errors.Join(
@@ -522,7 +480,6 @@ func (in *Installer) writeCaskfile(c api.Cask) error {
 	return in.Root.WriteFile(filepath.Join("Caskroom", c.Token, ".metadata", c.Version, stamp, "Casks", c.Token+".json"), []byte("{}"), 0o644)
 }
 
-// writeMetadata writes a file of .metadata, replacing one an earlier install left.
 func (in *Installer) writeMetadata(c api.Cask, name string, data []byte) error {
 	path := filepath.Join("Caskroom", c.Token, ".metadata", name)
 	if err := removeIfThere(in.Root, path); err != nil {
@@ -531,8 +488,6 @@ func (in *Installer) writeMetadata(c api.Cask, name string, data []byte) error {
 	return in.Root.WriteFile(path, data, 0o644)
 }
 
-// writeConfig writes config.json as brew does: compact, with the default
-// folders in brew's order.
 func (in *Installer) writeConfig(c api.Cask) error {
 	home := in.Where.Home
 	lib := func(p string) string { return filepath.Join(home, "Library", p) }
@@ -584,7 +539,6 @@ func (in *Installer) writeConfig(c api.Cask) error {
 	return in.writeMetadata(c, "config.json", b)
 }
 
-// writeReceipt writes INSTALL_RECEIPT.json with brew's keys, in brew's order.
 func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) error {
 	type source struct {
 		Tap        string  `json:"tap"`

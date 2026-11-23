@@ -49,7 +49,6 @@ func outdatedCommand(e *env, args []string) error {
 		return err
 	}
 
-	// The two listings are separate files, so they load at the same time.
 	shared := *e
 	shared.err = &lockedWriter{w: e.err}
 	e = &shared
@@ -116,7 +115,7 @@ func outdatedEntries(results []outdated.Result) []outdatedJSON {
 	for _, r := range results {
 		name := r.FullName
 		if name == "" {
-			name = r.Name // a cask's
+			name = r.Name
 		}
 		j := outdatedJSON{name, r.InstalledVersions, r.CurrentVersion, r.Pinned, nil}
 		if r.Pinned {
@@ -127,7 +126,6 @@ func outdatedEntries(results []outdated.Result) []outdatedJSON {
 	return out
 }
 
-// lockedWriter lets goroutines share a writer for warnings.
 type lockedWriter struct {
 	mu sync.Mutex
 	w  io.Writer
@@ -139,7 +137,6 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	return l.w.Write(p)
 }
 
-// outdatedFormulae checks the installed kegs against the formula listing.
 func (e *env) outdatedFormulae(prefix string) ([]outdated.Result, error) {
 	kegs, err := e.kegs(prefix)
 	if err != nil {
@@ -153,8 +150,6 @@ func (e *env) outdatedFormulae(prefix string) ([]outdated.Result, error) {
 	return outdated.Check(idx, cellar.Prefix(prefix), kegs)
 }
 
-// warnOtherTap says which formulae were left out: those of a tap brw has
-// not got or does not trust, and on their own lines, those it cannot read.
 func (e *env) warnOtherTap(idx *api.Index, kegs []cellar.Keg, names []string) {
 	var missing []string
 	for _, name := range names {
@@ -169,8 +164,6 @@ func (e *env) warnOtherTap(idx *api.Index, kegs []cellar.Keg, names []string) {
 	}
 }
 
-// tapFormulaError is why the formula a rack came from could not be read,
-// or nil when its tap is not there or not trusted.
 func tapFormulaError(idx *api.Index, kegs []cellar.Keg, rack string) error {
 	var group []cellar.Keg
 	for _, k := range kegs {
@@ -181,8 +174,6 @@ func tapFormulaError(idx *api.Index, kegs []cellar.Keg, rack string) error {
 	return idx.LoadError(outdated.KegTap(group) + "/" + rack)
 }
 
-// outdatedCasks checks the installed casks against the cask listing, which is
-// only fetched when there are casks to check.
 func (e *env) outdatedCasks(prefix string, o outdated.CaskOptions) ([]outdated.Result, error) {
 	installed, err := caskroom.Installed(prefix)
 	if err != nil || len(installed) == 0 {
@@ -199,8 +190,6 @@ func (e *env) outdatedCasks(prefix string, o outdated.CaskOptions) ([]outdated.R
 	return outdated.CheckCasks(idx, prefix, installed, o)
 }
 
-// setCaskMachine fills in what the cask outdated check reads from this
-// machine and its environment.
 func setCaskMachine(o *outdated.CaskOptions, prefix string) {
 	o.GreedyTokens = strings.Fields(os.Getenv("HOMEBREW_UPGRADE_GREEDY_CASKS"))
 	o.NoAutoUpdates = os.Getenv("HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS") != ""

@@ -13,8 +13,6 @@ import (
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// bottledTool is a tap formula for tool at version whose bottle the
-// registry serves from a plain URL, as a GitHub release would.
 func bottledTool(t *testing.T, reg *installtest.Registry, version string) string {
 	t.Helper()
 	file := reg.AddPlain(installtest.Bottle{Name: "tool", Version: version, Deps: []string{"app"},
@@ -24,8 +22,6 @@ func bottledTool(t *testing.T, reg *installtest.Registry, version string) string
 		"    sha256 cellar: :any_skip_relocation, arm64_tahoe: \"" + file.SHA256 + "\"\n  end\n\n  depends_on \"app\"\nend\n"
 }
 
-// tapBottleStore serves the API's app and a tap, u/t from origin, whose tool
-// 1.0 has a bottle. Nothing is installed or tapped.
 func tapBottleStore(t *testing.T) (e *env, prefix, origin string, reg *installtest.Registry) {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -60,8 +56,7 @@ func readJSON(t *testing.T, path string) map[string]any {
 	return m
 }
 
-// Naming a tap's formula taps the tap and trusts the formula, as brew does,
-// and its bottle is poured with a receipt that says it came from the tap.
+// Naming a tap's formula taps the tap and trusts the formula; the receipt records the tap.
 func TestInstallABottledFormulaByFullName(t *testing.T) {
 	e, prefix, _, _ := tapBottleStore(t)
 	out, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/tool")
@@ -93,8 +88,7 @@ func TestInstallABottledFormulaByFullName(t *testing.T) {
 	}
 }
 
-// A tap formula's post_install is its own Ruby, which brew runs after linking,
-// in a temporary home, and whose failure leaves the keg installed.
+// brew runs post_install after linking, in a temporary home; its failure leaves the keg installed.
 func TestInstallRunsATapFormulasPostInstall(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	code := strings.Replace(bottledTool(t, reg, "1.0"), "  depends_on \"app\"\n",
@@ -136,8 +130,7 @@ func TestInstallRunsATapFormulasPostInstall(t *testing.T) {
 	}
 }
 
-// As brew's load_formula_or_cask does, a bare name that finds a formula only
-// in another tap is a cask when a cask has that name.
+// As brew's load_formula_or_cask does, a same-named cask beats a formula found only in another tap.
 func TestABareNameIsACaskOverAnotherTapsFormula(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOMEBREW_NO_REQUIRE_TAP_TRUST", "")
@@ -215,9 +208,7 @@ func TestInstallOfAFormulaInAnUntrustedTapByBareNameIsRefused(t *testing.T) {
 	}
 }
 
-// A dependency in a tap that is not tapped yet gets its tap cloned, as brew
-// does. Only the named formula is trusted by naming it, so the dependency's
-// tap must be trusted too.
+// A dependency's untapped tap is cloned; naming the formula does not trust the dependency's tap.
 func TestInstallTapsTheTapOfADependency(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	helper := reg.AddPlain(installtest.Bottle{Name: "helper", Version: "1.0",

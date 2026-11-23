@@ -43,8 +43,7 @@ func (r *runner) setPermissions(s step) error {
 	return nil
 }
 
-// run executes a command. Brew runs these steps in a sandbox; here they run with
-// the user's own rights, so the command is trusted as much as the bottle is.
+// run has no sandbox: the command gets the user's rights, so it is as trusted as the bottle.
 func (r *runner) run(s step) error {
 	if s.Command == nil {
 		return errors.New("the step has no command")

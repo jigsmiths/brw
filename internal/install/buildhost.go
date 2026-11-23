@@ -15,18 +15,13 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 )
 
-// RunFunc runs a command for a build: argv in dir, with env added to the
-// environment, returning what it prints.
 type RunFunc func(dir string, env map[string]string, argv []string) ([]byte, error)
 
-// passedVars are what bin/brew keeps of the user's environment, besides
-// HOMEBREW_*; everything else is gone before a formula runs.
+// passedVars is what bin/brew keeps of the environment besides HOMEBREW_*.
 var passedVars = []string{"BAT_CONFIG_PATH", "BAT_THEME", "HOME", "SHELL", "PATH", "TERM", "TERMINFO", "TERMINFO_DIRS",
 	"COLUMNS", "DISPLAY", "LOGNAME", "USER", "CI", "SSH_AUTH_SOCK", "SUDO_ASKPASS", "http_proxy", "https_proxy",
 	"ftp_proxy", "no_proxy", "all_proxy", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY"}
 
-// buildEnv is the environment of a build's commands: the user's, filtered as
-// bin/brew does, with env set over it.
 func buildEnv(env map[string]string) []string {
 	var out []string
 	for _, kv := range os.Environ() {
@@ -45,7 +40,6 @@ func buildEnv(env map[string]string) []string {
 	return out
 }
 
-// runCommand is how a build runs commands unless the installer says otherwise.
 func runCommand(dir string, env map[string]string, argv []string) ([]byte, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
@@ -53,15 +47,12 @@ func runCommand(dir string, env map[string]string, argv []string) ([]byte, error
 	return cmd.Output() // a failure's stderr is in its *exec.ExitError
 }
 
-// kegHost is an install body's view of the machine: files only inside the
-// prefix and the build directory, through fsx, and commands.
 type kegHost struct {
 	root  *fsx.Root
-	build *fsx.Root // the build directory, outside the prefix; nil for none
+	build *fsx.Root // outside the prefix; nil for none
 	run   RunFunc
 }
 
-// on is the root a path is in: the build directory's, else the prefix's.
 func (h *kegHost) on(p string) *fsx.Root {
 	if h.build != nil && filepath.IsAbs(p) {
 		if _, err := h.build.Abs(p); err == nil {
@@ -86,8 +77,6 @@ func (h *kegHost) Remove(p string) error                   { return h.on(p).Remo
 func (h *kegHost) RemoveAll(p string) error                { return h.on(p).RemoveAll(p) }
 func (h *kegHost) Chmod(p string, m fs.FileMode) error     { return h.on(p).Chmod(p, m) }
 
-// Rename moves within a root, or from one into the other, as installing
-// from the build directory into the keg does.
 func (h *kegHost) Rename(o, n string) error {
 	from, to := h.on(o), h.on(n)
 	if from == to {
@@ -108,7 +97,6 @@ func (h *kegHost) WriteFile(p string, data []byte, perm fs.FileMode) error {
 	return h.on(p).WriteFile(p, data, perm)
 }
 
-// Glob matches only inside the prefix or the build directory.
 func (h *kegHost) Glob(pattern string) ([]string, error) {
 	if _, err := h.on(pattern).Abs(pattern); err != nil {
 		return nil, err
@@ -147,8 +135,7 @@ func executable(root *fsx.Root, name string) bool {
 	return false
 }
 
-// skipped is Formula#skip_clean?: a skip_clean path, or what is under it,
-// relative to the keg, and .la files when :la is listed.
+// skipped is Formula#skip_clean?.
 func skipped(keg, name string, skip []string) bool {
 	rel := strings.TrimPrefix(strings.TrimPrefix(name, keg), "/")
 	if path.Ext(name) == ".la" && slices.Contains(skip, ":la") {
@@ -157,10 +144,8 @@ func skipped(keg, name string, skip []string) bool {
 	return slices.ContainsFunc(skip, func(s string) bool { return rel == s || strings.HasPrefix(rel, s+"/") })
 }
 
-// clean is brew's Cleaner: in bin, sbin and lib, libtool and perl leftovers
-// go, and files become 0555 when executable and 0444 otherwise; info's dir
-// files go; then empty directories and broken symlinks are pruned. Paths the
-// formula's skip_clean names are left alone.
+// clean is brew's Cleaner: removes libtool, perl and info dir leftovers, sets 0555 or
+// 0444, prunes; skip_clean paths are left alone.
 func clean(root *fsx.Root, keg string, skip []string) error {
 	_ = root.Remove(path.Join(keg, "lib", "charset.alias"))
 	for _, dir := range []string{"bin", "sbin", "lib"} {
@@ -210,8 +195,7 @@ func clean(root *fsx.Root, keg string, skip []string) error {
 	return prune(root, keg, skip)
 }
 
-// prune is Cleaner#prune: empty directories, deepest first, and symlinks
-// that point nowhere, leaving libexec and skip_clean paths alone.
+// prune is Cleaner#prune; it leaves libexec and skip_clean paths alone.
 func prune(root *fsx.Root, keg string, skip []string) error {
 	var dirs, links []string
 	libexec := path.Join(keg, "libexec")
@@ -245,8 +229,7 @@ func prune(root *fsx.Root, keg string, skip []string) error {
 	return nil
 }
 
-// relativizeSymlinks is Keg#relativize_prefix_symlinks!: an absolute symlink
-// into the prefix becomes relative, as relocation never rewrites them.
+// relativizeSymlinks is Keg#relativize_prefix_symlinks!.
 func relativizeSymlinks(root *fsx.Root, keg, prefix string) error {
 	var links []string
 	if err := root.WalkDir(keg, func(name string, e fs.DirEntry) {

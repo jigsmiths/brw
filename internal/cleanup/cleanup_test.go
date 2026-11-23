@@ -43,7 +43,6 @@ func newFixture(t *testing.T) *fixture {
 	return &fixture{t: t, dir: dir, root: root, current: map[string]Formula{}}
 }
 
-// keg installs Cellar/name/version with one file, and links it if asked.
 func (f *fixture) keg(name, version string, linked bool) { f.schemeKeg(name, version, 0, linked) }
 
 func (f *fixture) schemeKeg(name, version string, scheme int, linked bool) {
@@ -167,7 +166,7 @@ func TestOldKegsAreKeptWhenTheCurrentVersionIsNotInstalled(t *testing.T) {
 
 func TestOldKegsKeepsLinkedPinnedAndNeededOnes(t *testing.T) {
 	f := newFixture(t)
-	f.keg("linked", "1.0", true) // the old one is the linked one
+	f.keg("linked", "1.0", true)
 	f.keg("linked", "2.0", false)
 	f.keg("pinned", "1.0", false)
 	f.keg("pinned", "2.0", false)
@@ -343,7 +342,6 @@ func TestOldKegsStaysQuietAboutAPinnedFormulaWhoseCurrentVersionIsMissing(t *tes
 	}
 }
 
-// download writes a cached bottle file with an age in days.
 func (f *fixture) download(dir, name string, ageDays int) string {
 	f.t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -457,7 +455,7 @@ func TestScrubRemovesDownloadsOfWhatIsNotInstalled(t *testing.T) {
 
 func TestDownloadsOfInstalledVersionsStayEvenWhenOld(t *testing.T) {
 	f := newFixture(t)
-	f.keg("pinned", "1.0", true) // pinned or otherwise kept at an older version
+	f.keg("pinned", "1.0", true)
 	f.current["pinned"] = Formula{PkgVersion: "2.0"}
 	c, dir := f.downloadsCleaner()
 	old := f.download(dir, "pinned--1.0.arm64_tahoe.bottle.tar.gz", 1)
@@ -778,7 +776,7 @@ func TestDownloadsNewerThanTheListingAreKeptUnlessTheCurrentVersionIsInstalled(t
 	if !has(t, newer) {
 		t.Error("a download newer than the listing says is not out of date")
 	}
-	f.keg("tool", "1.0", true) // now the current version is installed
+	f.keg("tool", "1.0", true)
 	c = f.cleaner()
 	c.Downloads = dir
 	if err := c.CleanDownloads(nil); err != nil {

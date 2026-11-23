@@ -16,7 +16,6 @@ import (
 	"github.com/jigsmiths/brw/internal/machoedit"
 )
 
-// Linkage is what fixing a built keg's linkage needs to know.
 type Linkage struct {
 	Prefix string
 	// BuildDirs are where the formula was built, whose paths a keg must not
@@ -32,12 +31,9 @@ var (
 	frameworkRx = regexp.MustCompile(`(?:^|/)(([^/]+)\.framework/(?:Versions/[^/]+/)?([^/]+))$`)
 )
 
-// FixLinkage is brew's fix_dynamic_linkage for a keg built from source: dylib
-// IDs become opt paths, libraries the build linked by a relative or
-// build-directory name are found in the keg, rpaths into other kegs go
-// through opt, and build-directory or repeated rpaths are dropped. It returns
-// the files it changed, keg-relative, which must be signed again (Codesign).
-// Universal and 32 bit files are left alone.
+// FixLinkage is brew's fix_dynamic_linkage. It returns the keg-relative files
+// it changed, which must be signed again (Codesign). Universal and 32 bit files
+// are left alone.
 func FixLinkage(root *fsx.Root, keg string, l Linkage) ([]string, error) {
 	kegAbs, err := root.Abs(keg)
 	if err != nil {
@@ -168,8 +164,7 @@ func (x *fixer) fix(f *machoedit.File, file string) (changed bool, err error) {
 	return changed, nil
 }
 
-// dylibID is brew's dylib_id_for: the opt path of the file's directory with
-// the old ID's base name.
+// dylibID is brew's dylib_id_for.
 func (x *fixer) dylibID(id, file string) string {
 	if strings.HasPrefix(id, "/usr/lib/swift/libswift") || (strings.HasPrefix(id, "@rpath") && x.l.PreserveRpath) {
 		return id
@@ -178,9 +173,8 @@ func (x *fixer) dylibID(id, file string) string {
 	return filepath.Join(x.opt, rel, path.Base(id))
 }
 
-// fixedName is brew's fixed_name, which finds a library the build linked by
-// a name that won't work once installed. Absolute names are build-directory
-// paths that brew no longer has by now, so only the search can find them.
+// fixedName is brew's fixed_name. Absolute names are build-directory paths that
+// no longer exist, so only the search can find them.
 func (x *fixer) fixedName(f *machoedit.File, file, bad string) string {
 	if name, ok := (Locations{Prefix: x.l.Prefix, Cellar: filepath.Join(x.l.Prefix, "Cellar")}).relocatedName(bad); ok {
 		return name
@@ -205,8 +199,7 @@ func (x *fixer) fixedName(f *machoedit.File, file, bad string) string {
 	return bad
 }
 
-// findDylib is brew's find_dylib: the first file under lib ending in the
-// library's name, or its framework path.
+// findDylib is brew's find_dylib.
 func findDylib(lib, bad string) string {
 	suffix := "/" + path.Base(bad)
 	if m := frameworkRx.FindStringSubmatch(bad); m != nil && m[2] == m[3] {

@@ -43,23 +43,19 @@ Further help:
   brw help
   brw COMMAND -h`
 
-// env is everything a command needs from the outside world.
 type env struct {
 	out, err io.Writer
-	tty      bool // out is a terminal
+	tty      bool
 	host     platform.Host
 	client   *api.Client
 
-	defaultPrefix string // overrides the host's default prefix, for tests
-	// tapRemote overrides where a tap is cloned from, for tests.
-	tapRemote func(name string) string
-	warned    *warnings
-	// pull overrides how update pulls a tap, for tests.
-	pull      func(ctx context.Context, t tap.Tap) (changed bool, err error)
-	githubAPI string // overrides tap.GitHubAPI, for tests
+	defaultPrefix string
+	tapRemote     func(name string) string
+	warned        *warnings
+	pull          func(ctx context.Context, t tap.Tap) (changed bool, err error)
+	githubAPI     string
 }
 
-// kegs lists the kegs of a prefix and warns about each receipt it could not read.
 func (e *env) kegs(prefix string) ([]cellar.Keg, error) {
 	kegs, err := cellar.Prefix(prefix).Kegs()
 	for _, k := range kegs {
@@ -83,7 +79,6 @@ func main() {
 	}
 }
 
-// newEnv is the environment of the real brw.
 func newEnv(host platform.Host) *env {
 	return &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host}
 }
@@ -170,7 +165,6 @@ func isTerminal(f *os.File) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// defaultPrefix is where Homebrew installs on this host.
 func defaultPrefix(h platform.Host) string {
 	switch {
 	case h.OS == "linux":

@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// install records an install of a cask the way brew does, storing its
-// definition with the given extension, or none when ext is empty.
 func install(t *testing.T, prefix, token, version, stamp, ext string) {
 	t.Helper()
 	casks := filepath.Join(prefix, "Caskroom", token, ".metadata", version, stamp, "Casks")
@@ -23,7 +21,6 @@ func install(t *testing.T, prefix, token, version, stamp, ext string) {
 			t.Fatal(err)
 		}
 	}
-	// Files beside the version directories, as brew writes them.
 	for _, name := range []string{"INSTALL_RECEIPT.json", "config.json"} {
 		if err := os.WriteFile(filepath.Join(prefix, "Caskroom", token, ".metadata", name), []byte("{}"), 0o644); err != nil {
 			t.Fatal(err)
@@ -58,11 +55,9 @@ func TestInstalled(t *testing.T) {
 	room := filepath.Join(prefix, "Caskroom")
 	install(t, prefix, "slack", "4.53.292", "20261117083153.956", ".json")
 	install(t, prefix, "old", "1.0", "20200101000000.000", ".rb")
-	// Upgraded: the latest timestamp wins, whatever the versions say.
 	install(t, prefix, "gcloud-cli", "594.0.0", "20261101000000.000", ".json")
 	install(t, prefix, "gcloud-cli", "575.0.0", "20260706085220.622", ".json")
 	symlink(t, filepath.Join(room, "gcloud-cli/594.0.0"), filepath.Join(room, "gcloud-cli/latest"))
-	// The latest install stored no definition, so brew does not count the cask.
 	install(t, prefix, "half", "1.0", "20200101000000.000", ".json")
 	install(t, prefix, "half", "2.0", "20210101000000.000", "")
 	mkdir(t, filepath.Join(room, "nometadata/1.0"))

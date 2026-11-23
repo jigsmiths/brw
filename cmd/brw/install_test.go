@@ -24,8 +24,6 @@ import (
 
 var mac = platform.Host{OS: "darwin", MacVersion: "26.0", Arch: "arm64"}
 
-// store is a formula API and a registry with the bottles it lists, and a cask
-// API with the downloads it lists.
 type store struct {
 	t        *testing.T
 	reg      *installtest.Registry
@@ -33,8 +31,6 @@ type store struct {
 	casks    []map[string]any
 }
 
-// appCask adds a cask whose download, a tar.gz served here, holds App.app and
-// a tool it links.
 func (s *store) appCask(token string) {
 	s.t.Helper()
 	var buf bytes.Buffer
@@ -58,7 +54,6 @@ func (s *store) appCask(token string) {
 	})
 }
 
-// formula adds a formula with a bottle for the Mac tag. extra overrides API keys.
 func (s *store) formula(b installtest.Bottle, deps []string, extra map[string]any) {
 	s.t.Helper()
 	file := s.reg.Add(b, ":any")
@@ -73,7 +68,6 @@ func (s *store) formula(b installtest.Bottle, deps []string, extra map[string]an
 	s.formulae = append(s.formulae, m)
 }
 
-// env serves the formulae and returns an env with an empty prefix.
 func (s *store) env() (*env, string) {
 	s.t.Helper()
 	body, err := json.Marshal(s.formulae)
@@ -139,7 +133,6 @@ func TestInstall(t *testing.T) {
 		t.Errorf("kegs = %+v, %v", kegs, err)
 	}
 
-	// Installing it again changes nothing and says why.
 	out, err = runCmd(t, e, "install", "-prefix", prefix, "jq")
 	if err != nil || strings.Contains(out, "Pouring") {
 		t.Errorf("second install: %q, %v", out, err)
@@ -241,7 +234,6 @@ func TestInstallFormulaAndCaskTogether(t *testing.T) {
 		t.Errorf("Caskroom link -> %q", got)
 	}
 
-	// Again: brew leaves an installed cask that is up to date alone, and says so.
 	e.err = &bytes.Buffer{}
 	out, err = runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "app")
 	if err != nil || strings.Contains(out, "Installing") {
@@ -326,7 +318,6 @@ func TestInstallCaskFlagPicksTheCask(t *testing.T) {
 	if exists(t, prefix, "Cellar/jq") || !exists(t, prefix, "Caskroom/jq/1.0") {
 		t.Error("--cask should install the cask, not the formula")
 	}
-	// brew makes the prefix's standard folders before any install.
 	for _, d := range []string{"Cellar", "Frameworks", "include", "lib", "opt", "sbin", "share", "var/homebrew/linked"} {
 		if !exists(t, prefix, d) {
 			t.Errorf("%s is missing", d)
