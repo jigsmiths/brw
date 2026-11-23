@@ -108,6 +108,17 @@ func TestPlanOrdersDependenciesFirst(t *testing.T) {
 	}
 }
 
+func TestPlanStopsAtADependencyCycle(t *testing.T) {
+	idx := index(t, f("a", "b"), f("b", "a"))
+	plan, err := planner(t, mac, idx).Plan([]string{"a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := names(plan); len(got) != 2 {
+		t.Errorf("plan = %v, want each formula once", got)
+	}
+}
+
 func TestPlanRecordsTheTagOfTheHost(t *testing.T) {
 	plan, err := planner(t, mac, index(t, f("app"))).Plan([]string{"app"})
 	if err != nil {
