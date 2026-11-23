@@ -320,6 +320,10 @@ func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs)
 			OS: cmp.Or(in.OS, runtime.GOOS), User: in.User, Log: in.Log,
 		}, f.PostInstallSteps)
 	}
+	if f.FromTap() && f.PostInstallDefined && result.PostInstallErr == nil {
+		in.logf("==> Running post_install for %s", f.Name)
+		result.PostInstallErr = in.tapPostInstall(f)
+	}
 	return result
 }
 

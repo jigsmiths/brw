@@ -351,6 +351,109 @@ __END__
 	}
 }
 
+func TestPostInstallRunsTheFormulasMethod(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	src := `class Tool < Formula
+  url "https://example.com/tool-1.0.tar.gz"
+  sha256 "aa"
+
+  def install
+    bin.mkpath
+  end
+
+  def post_install
+    (var/"tool").mkpath
+    (var/"log/tool").mkpath
+    if !(File.exist?((etc/"tool.conf"))) then
+      (etc/"tool.conf").write tool_conf
+    end
+    ohai "To finish, open Tool.app."
+    puts "It is in: #{prefix}"
+  end
+
+  def tool_conf
+    <<~EOS
+      dbpath = #{var}/tool
+    EOS
+  end
+end
+`
+	f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix, home := t.TempDir(), t.TempDir()
+	var out strings.Builder
+	env := &InstallEnv{Host: &dirHost{t: t}, Prefix: prefix, Buildpath: home, Out: &out}
+	if err := f.PostInstall(env); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(prefix, "etc/tool.conf")); err != nil || string(b) != "dbpath = "+prefix+"/var/tool\n" {
+		t.Errorf("tool.conf = %q, %v", b, err)
+	}
+	for _, d := range []string{"var/tool", "var/log/tool"} {
+		if fi, err := os.Stat(filepath.Join(prefix, d)); err != nil || !fi.IsDir() {
+			t.Errorf("%s: %v", d, err)
+		}
+	}
+	if want := "==> To finish, open Tool.app.\nIt is in: " + prefix + "/Cellar/tool/1.0\n"; out.String() != want {
+		t.Errorf("output = %q, want %q", out.String(), want)
+	}
+
+	// A second run keeps the user's configuration.
+	if err := os.WriteFile(filepath.Join(prefix, "etc/tool.conf"), []byte("mine"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.PostInstall(env); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(prefix, "etc/tool.conf")); string(b) != "mine" {
+		t.Errorf("tool.conf was overwritten: %q", b)
+	}
+}
+
+func TestExpandPathUsesTheInstallHome(t *testing.T) {
+	asBrewHost(t, "brewuser")
+	f, err := LoadFormula([]byte(toolHead+"    (prefix/\"p\").write [File.expand_path(\"~/Library/a.plist\"), File.expand_path(\"~\"), File.expand_path(\"x\")].join(\",\")\n  end\nend\n"), "tool", "arm64_golden_gate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix, build := t.TempDir(), t.TempDir()
+	if err := f.Install(&InstallEnv{Host: &dirHost{t: t}, Prefix: prefix, Buildpath: build, Env: map[string]string{"HOME": "/h"}}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(prefix, "Cellar/tool/1.0/p")); string(b) != "/h/Library/a.plist,/h,"+build+"/x" {
+		t.Errorf("got %s", b)
+	}
+}
+
+// brw takes no install options, so build answers as brew's BuildOptions does
+// when none were given: only a without- option counts as with.
+func TestBuildOptionsWithoutAnyGiven(t *testing.T) {
+	src := toolHead + `    got = []
+    got << build.with?("test-commands")
+    got << build.with?("extra")
+    got << build.without?("extra")
+    got << build.with?("undefined")
+    got << build.head?
+    got << build.stable?
+    got << build.bottle?
+    (prefix/"got").write got.join(",")
+  end
+
+  option "with-test-commands", "Enable test commands"
+  depends_on "extra" => :recommended
+end
+`
+	_, keg, _, err := installInto(t, src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(keg, "got")); string(b) != "false,true,false,false,false,true,false" {
+		t.Errorf("got %s", b)
+	}
+}
+
 func TestInstallFailures(t *testing.T) {
 	for name, body := range map[string]string{
 		"a missing file":   `    bin.install "nope"`,

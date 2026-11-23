@@ -153,11 +153,17 @@ func (b *bottleB) hash(name, pkgVersion string) *hash {
 type instanceDSL struct {
 	f    *formulaB
 	root string // the Homebrew prefix: PrefixPlaceholder, or the real one while installing
+	// linked makes prefix the opt prefix, as Formula#prefix is once the keg
+	// is opt-linked and not installing.
+	linked bool
 }
 
 func (b *formulaB) instance() *instanceDSL { return &instanceDSL{f: b, root: PrefixPlaceholder} }
 
 func (d *instanceDSL) prefix() string {
+	if d.linked {
+		return d.root + "/opt/" + d.f.name
+	}
 	return d.root + "/Cellar/" + d.f.name + "/" + d.f.pkgVersion()
 }
 

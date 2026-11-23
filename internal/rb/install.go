@@ -2,6 +2,7 @@ package rb
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"path/filepath"
@@ -43,6 +44,7 @@ type InstallEnv struct {
 	Resources map[string]string
 	Unpack    func(archive, dir string) error
 	Scratch   string
+	Out       io.Writer // where ohai, opoo and puts write; nil drops them
 }
 
 // buildFailure is an install body failing as brew's would, such as a command
@@ -53,28 +55,21 @@ func failBuild(f string, a ...any) { panic(buildFailure{fmt.Errorf(f, a...)}) }
 
 // Install runs the formula's install method, as brew does once the download
 // is staged: in buildpath, with prefix the keg it fills.
-func (f *Formula) Install(env *InstallEnv) (err error) {
-	d, ok := f.b.defs["install"]
+func (f *Formula) Install(env *InstallEnv) error { return f.run("install", env) }
+
+// PostInstall runs the formula's post_install method after its keg is linked,
+// with Buildpath as its working directory.
+func (f *Formula) PostInstall(env *InstallEnv) error { return f.run("post_install", env) }
+
+func (f *Formula) run(method string, env *InstallEnv) (err error) {
+	d, ok := f.b.defs[method]
 	if !ok {
-		return fmt.Errorf("%s: %w: no install method", f.b.name, ErrUnsupported)
+		return fmt.Errorf("%s: %w: no %s method", f.b.name, ErrUnsupported, method)
 	}
 	if env.Env == nil {
 		env.Env = map[string]string{}
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			switch x := r.(type) {
-			case unsupported:
-				err = fmt.Errorf("%s: %w", f.b.name, x)
-			case buildFailure:
-				err = fmt.Errorf("%s: %w", f.b.name, x.err)
-			case parseErr:
-				err = fmt.Errorf("%s: %w: %s", f.b.name, ErrUnsupported, x.msg)
-			default:
-				panic(r)
-			}
-		}
-	}()
+	defer catch(f.b.name, &err)
 	b := &builder{f: f.b, env: env, cwd: env.Buildpath}
 	in := &interp{plat: f.b.plat, ctx: []dsl{&instanceDSL{f: f.b, root: env.Prefix}, b}, build: b}
 	in.callDef(d, nil, nil, &scope{vars: map[string]value{}})
@@ -583,6 +578,8 @@ func (b *builder) call(in *interp, s *scope, c *callN, args []value, kw *hash) (
 		return b.stdArgs(c.name, kw), true
 	case c.name == "time":
 		return rstr(buildTime().Format(time.RFC3339)), true
+	case c.name == "build" && len(args) == 0:
+		return buildOptions{b.f}, true
 	case c.name == "resource" && len(args) == 1:
 		return b.resource(str(args[0])), true
 	case c.name == "resources":
@@ -595,7 +592,14 @@ func (b *builder) call(in *interp, s *scope, c *callN, args []value, kw *hash) (
 		return out, true
 	case fileUtils[c.name]:
 		b.fileUtil(c.name, args)
-	case c.name == "ohai" || c.name == "opoo" || c.name == "odebug":
+	case c.name == "ohai" || c.name == "opoo" || c.name == "puts":
+		if b.env.Out != nil {
+			lead := map[string]string{"ohai": "==> ", "opoo": "Warning: "}[c.name]
+			for _, a := range args {
+				_, _ = fmt.Fprintf(b.env.Out, "%s%s\n", lead, str(a))
+			}
+		}
+	case c.name == "odebug":
 	default:
 		return nil, false
 	}
@@ -667,6 +671,9 @@ func (b *builder) classMethod(x special, name string, args []value) (value, bool
 	case "File.dirname":
 		return rstr(filepath.Dir(arg(0))), true
 	case "File.expand_path":
+		if p := arg(0); p == "~" || strings.HasPrefix(p, "~/") {
+			return rstr(filepath.Clean(b.env.Env["HOME"] + p[1:])), true
+		}
 		return rstr(b.abs(arg(0))), true
 	case "Dir.glob":
 		return b.glob(arg(0)), true
@@ -696,6 +703,45 @@ func (b *builder) classMethod(x special, name string, args []value) (value, bool
 		return nil, true
 	}
 	return nil, false
+}
+
+// buildOptions is Formula#build, brew's BuildOptions for an install given no
+// options, which is the only kind brw does.
+type buildOptions struct{ f *formulaB }
+
+func (buildOptions) rubyValue() {}
+
+func (o buildOptions) defined(flag string) bool {
+	for _, opt := range o.f.options {
+		if v, _ := opt.get(rstr("option")); str(v) == flag {
+			return true
+		}
+	}
+	return false
+}
+
+func (o buildOptions) method(name string, args []value) value {
+	with := func() bool {
+		if len(args) != 1 {
+			fail("build.%s", name)
+		}
+		n := strings.TrimPrefix(str(args[0]), "--")
+		return !o.defined("--with-"+n) && o.defined("--without-"+n)
+	}
+	switch name {
+	case "with?":
+		return rbool(with())
+	case "without?":
+		return rbool(!with())
+	case "head?", "bottle?", "include?", "any_args_or_options?":
+		return rbool(false)
+	case "stable?":
+		return rbool(true)
+	case "used_options", "unused_options", "args":
+		return &arr{}
+	}
+	fail("build.%s", name)
+	return nil
 }
 
 // buildTime is Formula#time: SOURCE_DATE_EPOCH when set, else now.

@@ -791,6 +791,8 @@ func (in *interp) method(recv value, name string, args []value, blk *proc) value
 		return in.arrMethod(x, name, args, blk)
 	case *buffer:
 		return bufferMethod(x, name, args)
+	case buildOptions:
+		return x.method(name, args)
 	case resourceRef:
 		if in.build != nil {
 			return in.build.resourceMethod(in, x, name, args, blk)

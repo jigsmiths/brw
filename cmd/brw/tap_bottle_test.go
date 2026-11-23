@@ -92,6 +92,49 @@ func TestInstallABottledFormulaByFullName(t *testing.T) {
 	}
 }
 
+// A tap formula's post_install is its own Ruby, which brew runs after linking,
+// in a temporary home, and whose failure leaves the keg installed.
+func TestInstallRunsATapFormulasPostInstall(t *testing.T) {
+	e, prefix, origin, reg := tapBottleStore(t)
+	code := strings.Replace(bottledTool(t, reg, "1.0"), "  depends_on \"app\"\n",
+		"  depends_on \"app\"\n\n  def post_install\n    (var/\"tool\").mkpath\n"+
+			"    (etc/\"tool.conf\").write \"home=#{ENV[\"HOME\"]}\\n\" unless (etc/\"tool.conf\").exist?\n"+
+			"    ohai \"Open Tool.app to finish\"\n  end\n", 1)
+	writeTapFormula(t, origin, "tool", code)
+	out, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/tool")
+	if err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	conf, err := os.ReadFile(filepath.Join(prefix, "etc/tool.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := strings.TrimSuffix(strings.TrimPrefix(string(conf), "home="), "\n")
+	if !strings.Contains(filepath.Base(home), "tool-postinstall-") {
+		t.Errorf("post_install ran with HOME=%q, want a temporary home", home)
+	}
+	if _, err := os.Stat(home); err == nil {
+		t.Error("the temporary home was left behind")
+	}
+	if fi, err := os.Stat(filepath.Join(prefix, "var/tool")); err != nil || !fi.IsDir() {
+		t.Errorf("var/tool: %v", err)
+	}
+	if want := "==> Running post_install for tool\n==> Open Tool.app to finish\n"; !strings.Contains(out, want) {
+		t.Errorf("output lacks %q:\n%s", want, out)
+	}
+
+	writeTapFormula(t, origin, "tool", strings.Replace(code, "(var/\"tool\").mkpath", "raise \"no\"", 1))
+	if _, err := tap.Pull(t.Context(), tap.Tap{Name: "u/t", Dir: tap.Dir(prefix, "u/t")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runCmd(t, e, "reinstall", "-prefix", prefix, "u/t/tool"); err == nil {
+		t.Error("a failed post_install should fail the command")
+	}
+	if !exists(t, prefix, "Cellar/tool/1.0/bin/tool") {
+		t.Error("a failed post_install removed the keg")
+	}
+}
+
 func TestUpgradeABottledTapFormula(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	if _, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/tool"); err != nil {

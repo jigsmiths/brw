@@ -163,7 +163,10 @@ type formulaB struct {
 	postSteps     *stepsDSL
 	skipClean     []string
 	preserveRpath bool
-	data          string // after __END__, for patch :DATA
+	// the service block, run again for its files once the keg is linked
+	serviceBlk   *blockN
+	serviceScope *scope
+	data         string // after __END__, for patch :DATA
 
 	deprecationDate, deprecationReason, depReplF, depReplC value
 	disableDate, disableReason, disReplF, disReplC         value
@@ -436,6 +439,7 @@ func (b *formulaB) call(in *interp, s *scope, c *callN, args []value, kw *hash) 
 			fail("service without a block")
 		}
 		b.service = &serviceB{f: b}
+		b.serviceBlk, b.serviceScope = c.block, s
 		in.ctx = append(in.ctx, b.instance(), b.service)
 		in.run(c.block.body, &scope{vars: map[string]value{}, parent: s})
 		in.ctx = in.ctx[:len(in.ctx)-2]

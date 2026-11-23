@@ -153,6 +153,31 @@ func TestABuildCompilesAndFixesLinkage(t *testing.T) {
 	}
 }
 
+func TestABuildWritesServiceFiles(t *testing.T) {
+	e, prefix, origin, reg := tapBottleStore(t)
+	writeTapFormula(t, origin, "tool", strings.Replace(goreleaserTool(t, reg, "1.0"), "  def install",
+		"  service do\n    run [opt_bin/\"tool\", \"serve\"]\n    log_path var/\"log/tool.log\"\n  end\n\n  def install", 1))
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "u/t/tool"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	keg := filepath.Join(prefix, "Cellar/tool/1.0")
+	for _, name := range []string{"sh.brew.tool.plist", "sh.brew.tool.service"} {
+		fi, err := os.Stat(filepath.Join(keg, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != 0o644 {
+			t.Errorf("%s mode = %v", name, fi.Mode().Perm())
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(keg, "sh.brew.tool.plist")); !strings.Contains(string(b), "<string>"+prefix+"/opt/tool/bin/tool</string>") {
+		t.Errorf("plist:\n%s", b)
+	}
+	if fi, err := os.Stat(filepath.Join(prefix, "var/log")); err != nil || !fi.IsDir() {
+		t.Errorf("var/log: %v", err)
+	}
+}
+
 func TestUpgradeATapFormulaFromItsDownload(t *testing.T) {
 	e, prefix, origin, reg := tapBottleStore(t)
 	writeTapFormula(t, origin, "tool", goreleaserTool(t, reg, "1.0"))

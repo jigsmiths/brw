@@ -91,6 +91,29 @@ func buildpath(dir string) (string, error) {
 	return dir, nil
 }
 
+// tapPostInstall runs a tap formula's post_install method as brew's
+// run_post_install does: with the user's PATH and a temporary home.
+func (in *Installer) tapPostInstall(f *api.Formula) error {
+	if in.LoadSource == nil {
+		return ErrNoSource
+	}
+	src, err := in.LoadSource(f)
+	if err != nil {
+		return err
+	}
+	temp := cmp.Or(os.Getenv("HOMEBREW_TEMP"), "/private/tmp")
+	home, err := os.MkdirTemp(temp, f.Name+"-postinstall-") //fsx:allow a temporary home outside the prefix
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(home) }() //fsx:allow the temporary home
+	env := sandboxEnv(home, filepath.Dir(in.Fetcher.Dir), temp)
+	env["PATH"] = os.Getenv("PATH")
+	return src.Formula.PostInstall(&rb.InstallEnv{
+		Host: &kegHost{root: in.Root, run: in.Run}, Prefix: in.Prefix, Buildpath: home, Env: env, Tap: f.Tap, Out: in.Log,
+	})
+}
+
 // applyPatches applies a formula's patches to its staged source in order, as
 // brew's Patch.apply does. An external patch must be a single patch file.
 func (in *Installer) applyPatches(ctx context.Context, name string, patches []rb.Patch, dir string) error {
@@ -284,6 +307,21 @@ func (in *Installer) build(ctx context.Context, it Item, download string) (resul
 		}
 		if err := relocate.Codesign(in.Root, keg, fixed); err != nil {
 			return Result{}, err
+		}
+	}
+	// A bottle has these already; brew's install_service writes them for a build.
+	services, err := src.Formula.ServiceFiles(in.Prefix)
+	if err != nil {
+		return Result{}, err
+	}
+	for name, body := range services {
+		if err := in.Root.WriteFile(path.Join(keg, name), []byte(body), 0o644); err != nil {
+			return Result{}, err
+		}
+		if strings.Contains(body, filepath.Join(in.Prefix, "var", "log")) {
+			if err := in.Root.MkdirAll(path.Join("var", "log"), 0o755); err != nil {
+				return Result{}, err
+			}
 		}
 	}
 	kept := bottleBlock.ReplaceAll(src.Code, nil)
