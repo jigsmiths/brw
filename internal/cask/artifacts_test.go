@@ -32,11 +32,11 @@ func TestPlanVSCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []move{{"Visual Studio Code.app", "/Applications/Visual Studio Code.app"}}; !slices.Equal(p.apps, want) {
+	if want := []move{{"Visual Studio Code.app", "/Applications/Visual Studio Code.app", "app"}}; !slices.Equal(p.apps, want) {
 		t.Errorf("apps = %+v", p.apps)
 	}
-	if want := []move{{"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "/opt/homebrew/bin/code"}}; !slices.Equal(p.binaries, want) {
-		t.Errorf("binaries = %+v", p.binaries)
+	if want := []move{{"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "/opt/homebrew/bin/code", "binary"}}; !slices.Equal(p.links, want) {
+		t.Errorf("links = %+v", p.links)
 	}
 	want := `[{"uninstall":[{"launchctl":"com.microsoft.VSCode.ShipIt","quit":"com.microsoft.VSCode"}]},` +
 		`{"app":["Visual Studio Code.app"]},` +
@@ -59,16 +59,16 @@ func TestPlanTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantApps := []move{
-		{"Foo.app", "/Applications/Foo Beta.app"},
-		{"Bar.app", "/Users/me/Applications/Bar.app"},
-		{"Baz.app", "/Users/Shared/Baz.app"},
+		{"Foo.app", "/Applications/Foo Beta.app", "app"},
+		{"Bar.app", "/Users/me/Applications/Bar.app", "app"},
+		{"Baz.app", "/Users/Shared/Baz.app", "app"},
 	}
 	if !slices.Equal(p.apps, wantApps) {
 		t.Errorf("apps = %+v", p.apps)
 	}
-	wantBins := []move{{"foo-cli", "/opt/homebrew/bin/foo-cli"}, {"bin/tool.sh", "/opt/homebrew/bin/tool"}}
-	if !slices.Equal(p.binaries, wantBins) {
-		t.Errorf("binaries = %+v", p.binaries)
+	wantBins := []move{{"foo-cli", "/opt/homebrew/bin/foo-cli", "binary"}, {"bin/tool.sh", "/opt/homebrew/bin/tool", "binary"}}
+	if !slices.Equal(p.links, wantBins) {
+		t.Errorf("links = %+v", p.links)
 	}
 	if got, _ := json.Marshal(p.uninstall); !strings.Contains(string(got), `{"binary":["bin/tool.sh",{"target":"tool"}]}`) {
 		t.Errorf("a binary's own options should stay in the receipt: %s", got)
@@ -78,7 +78,7 @@ func TestPlanTargets(t *testing.T) {
 func TestPlanRefusesWhatBrwCannotInstall(t *testing.T) {
 	for name, c := range map[string]api.Cask{
 		"pkg":          {Token: "a", Artifacts: raws(t, `[{"pkg":["a.pkg"]}]`)},
-		"manpage":      {Token: "b", Artifacts: raws(t, `[{"app":["B.app"]},{"manpage":["b.1"]}]`)},
+		"suite":        {Token: "b", Artifacts: raws(t, `[{"app":["B.app"]},{"suite":["b"]}]`)},
 		"pkgutil":      {Token: "c", Artifacts: raws(t, `[{"uninstall":[{"pkgutil":"com.c"}]},{"app":["C.app"]}]`)},
 		"rename":       {Token: "d", Artifacts: raws(t, `[{"app":["D.app"]}]`), Rename: raws(t, `[{"from":"a","to":"b"}]`)},
 		"formula deps": {Token: "e", Artifacts: raws(t, `[{"app":["E.app"]}]`), DependsOn: api.CaskDependsOn{Formula: []string{"jq"}}},
