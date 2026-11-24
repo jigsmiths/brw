@@ -50,22 +50,87 @@ func upgradeCommand(e *env, args []string) error {
 			return err
 		}
 	}
-	var failures []error
-	found := false
+	var steps []*upgradeStep
 	if !caskOnly && (len(names) == 0 || len(formulae) > 0) {
-		f, err := upgradeFormulae(e, prefix, *journal, dryRun, *fetchHead, formulae)
-		found = found || f
-		failures = append(failures, err)
+		steps = append(steps, resolveFormulae(e, prefix, *journal, dryRun, *fetchHead, formulae))
 	}
 	if !formulaOnly && (len(names) == 0 || len(casks) > 0) {
-		f, err := upgradeCasks(e, prefix, *journal, dryRun, casks, o)
-		found = found || f
-		failures = append(failures, err)
+		steps = append(steps, resolveCasks(e, prefix, *journal, dryRun, casks, o))
+	}
+	if !dryRun {
+		announceUpgrades(e, steps)
+	}
+	var failures []error
+	found := false
+	var done []string
+	for _, s := range steps {
+		failures = append(failures, s.failures...)
+		if len(s.upgrade) > 0 {
+			found = true
+			names, err := s.run()
+			done = append(done, names...)
+			failures = append(failures, err)
+		}
+	}
+	if !dryRun {
+		summarizeUpgrades(e, steps, done)
 	}
 	if !found && len(names) == 0 {
 		_, _ = fmt.Fprintln(e.out, "Nothing to upgrade.")
 	}
 	return errors.Join(failures...)
+}
+
+type upgradeStep struct {
+	upgrade  []outdated.Result
+	pinned   []outdated.Result
+	failures []error
+	run      func() (upgraded []string, err error)
+}
+
+func failedStep(err error) *upgradeStep { return &upgradeStep{failures: []error{err}} }
+
+// Unlike brew, this also lists what failed, by name, for formulae and casks alike.
+func summarizeUpgrades(e *env, steps []*upgradeStep, done []string) {
+	var upgraded, failed []outdated.Result
+	for _, s := range steps {
+		for _, r := range s.upgrade {
+			if slices.Contains(done, r.Name) {
+				upgraded = append(upgraded, r)
+			} else {
+				failed = append(failed, r)
+			}
+		}
+	}
+	// brew sums up only when more than one package changed.
+	if len(upgraded) > 1 {
+		_, _ = fmt.Fprintf(e.out, "==> Upgraded %d outdated packages\n%s\n", len(upgraded), strings.Join(versionChanges(upgraded), "\n"))
+	}
+	if len(failed) > 0 {
+		_, _ = fmt.Fprintf(e.out, "==> Failed to upgrade %d %s:\n%s\n", len(failed),
+			plural(len(failed), "package", "packages"), strings.Join(versionChanges(failed), "\n"))
+	}
+}
+
+// Unlike brew, this also lists pinned packages and untrusted taps it leaves out.
+func announceUpgrades(e *env, steps []*upgradeStep) {
+	var upgrade, pinned []outdated.Result
+	for _, s := range steps {
+		upgrade = append(upgrade, s.upgrade...)
+		pinned = append(pinned, s.pinned...)
+	}
+	if len(upgrade) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(e.out, "==> Upgrading %d outdated %s:\n%s\n", len(upgrade),
+		plural(len(upgrade), "package", "packages"), strings.Join(versionChanges(upgrade), "\n"))
+	if len(pinned) > 0 {
+		_, _ = fmt.Fprintf(e.out, "==> Pinned, not upgrading %d %s:\n%s\n", len(pinned),
+			plural(len(pinned), "package", "packages"), strings.Join(versionChanges(pinned), "\n"))
+	}
+	if taps := e.warned.untrustedTaps(); len(taps) > 0 {
+		_, _ = fmt.Fprintf(e.out, "==> Skipping %s because %s not trusted\n", strings.Join(taps, ", "), plural(len(taps), "it is", "they are"))
+	}
 }
 
 func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (formulae, casks []string, err error) {
@@ -111,27 +176,28 @@ func (e *env) splitUpgradeNames(prefix string, names []string, caskOnly bool) (f
 	return formulae, casks, nil
 }
 
-func upgradeFormulae(e *env, prefix, journal string, dryRun, fetchHead bool, names []string) (found bool, err error) {
+func resolveFormulae(e *env, prefix, journal string, dryRun, fetchHead bool, names []string) *upgradeStep {
 	idx, client, err := e.indexAndClient(context.Background(), prefix)
 	if err != nil {
-		return false, err
+		return failedStep(err)
 	}
 	kegs, err := e.kegs(prefix)
 	if err != nil {
-		return false, err
+		return failedStep(err)
 	}
 	stale, err := outdated.CheckWith(idx, cellar.Prefix(prefix), kegs, e.headOptions(client, fetchHead))
 	if err != nil {
-		return false, err
+		return failedStep(err)
 	}
 
 	otherTap := outdated.OtherTap(idx, kegs)
-	var upgrade, pinned []outdated.Result
+	var upgrade, pinned, left []outdated.Result
 	if len(names) == 0 {
 		e.warnOtherTap(idx, kegs, otherTap)
 		for _, r := range stale {
 			if r.Pinned {
-				continue // brew leaves pinned formulae alone without a word
+				left = append(left, r)
+				continue
 			}
 			upgrade = append(upgrade, r)
 		}
@@ -172,7 +238,7 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun, fetchHead bool, nam
 			}
 		}
 		if len(problems) > 0 {
-			return false, errors.Join(problems...)
+			return failedStep(errors.Join(problems...))
 		}
 	}
 	var failures []error
@@ -184,23 +250,24 @@ func upgradeFormulae(e *env, prefix, journal string, dryRun, fetchHead bool, nam
 		}
 		failures = append(failures, errors.New(msg.String()))
 	}
-	if len(upgrade) == 0 {
-		return false, errors.Join(failures...)
-	}
-
-	planner := e.newPlanner(prefix, idx, client, kegs)
-	upgradeNames := make([]string, len(upgrade))
-	for i, r := range upgrade {
-		upgradeNames[i] = r.FullName
-		if r.Head {
-			planner.HeadNames = append(planner.HeadNames, r.FullName)
+	return &upgradeStep{upgrade: upgrade, pinned: left, failures: failures, run: func() ([]string, error) {
+		var done []string
+		planner := e.newPlanner(prefix, idx, client, kegs)
+		upgradeNames := make([]string, len(upgrade))
+		for i, r := range upgrade {
+			upgradeNames[i] = r.FullName
+			if r.Head {
+				planner.HeadNames = append(planner.HeadNames, r.FullName)
+			}
 		}
-	}
-	plan, planErrs := planner.PlanUpgrade(upgradeNames)
-	return true, applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, failures, withBuilds(e, prefix, idx, client))
+		plan, planErrs := planner.PlanUpgrade(upgradeNames)
+		err := applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "upgraded", plan, planErrs, nil,
+			withBuilds(e, prefix, idx, client), func(name string) { done = append(done, name) })
+		return done, err
+	}}
 }
 
-func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error, builds func(*install.Installer)) error {
+func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what string, plan *install.Plan, planErrs, failures []error, builds func(*install.Installer), onDone func(name string)) error {
 	for _, err := range planErrs {
 		_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 	}
@@ -221,7 +288,12 @@ func applyPlan(e *env, prefix, journal, downloads string, dryRun bool, what stri
 	err := withRoot(prefix, journal, func(root *fsx.Root) error {
 		return runInstall(e, root, prefix, downloads, plan, builds, func(in *install.Installer) {
 			in.KeepGoing = true
-			in.After = func(it install.Item, _ install.Result) { cleanAfterUpgrade(e, root, prefix, it) }
+			in.After = func(it install.Item, _ install.Result) {
+				cleanAfterUpgrade(e, root, prefix, it)
+				if onDone != nil {
+					onDone(it.Formula.Name)
+				}
+			}
 		})
 	})
 	return errors.Join(append(failures, err)...)

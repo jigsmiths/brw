@@ -93,7 +93,7 @@ func (e *env) addTapFormulae(idx *api.Index, prefix string) error {
 			if !store.TapTrusted(t.Name, remote) {
 				trusted = func(n string) bool { return store.FormulaTrusted(t.Name, remote, n) }
 				if !store.PartlyTrusted(t.Name, remote) {
-					idx.SkipTap(t.Name, func(tap string) { e.warnOnce(untrustedTapWarning(tap)) })
+					idx.SkipTap(t.Name, e.warnUntrusted)
 				}
 			}
 		}
@@ -184,8 +184,29 @@ func untrustedTapWarning(name string) string {
 }
 
 type warnings struct {
-	mu   sync.Mutex
-	seen map[string]bool
+	mu        sync.Mutex
+	seen      map[string]bool
+	untrusted []string
+}
+
+func (w *warnings) untrustedTaps() []string {
+	if w == nil {
+		return nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Clone(w.untrusted)
+}
+
+func (e *env) warnUntrusted(tap string) {
+	e.warnOnce(untrustedTapWarning(tap))
+	if w := e.warned; w != nil {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if !slices.Contains(w.untrusted, tap) {
+			w.untrusted = append(w.untrusted, tap)
+		}
+	}
 }
 
 func (e *env) warnOnce(msg string) {
@@ -251,7 +272,7 @@ func (e *env) addTapCasks(idx *api.CaskIndex, t tap.Tap, store *trust.Store) {
 		return
 	}
 	if !store.PartlyTrusted(t.Name, remote) {
-		e.warnOnce(untrustedTapWarning(t.Name))
+		e.warnUntrusted(t.Name)
 		return
 	}
 	idx.AddTap(slices.DeleteFunc(casks, func(c api.Cask) bool { return !store.CaskTrusted(t.Name, remote, c.Token) }))

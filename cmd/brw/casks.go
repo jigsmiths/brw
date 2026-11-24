@@ -121,18 +121,18 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 	})
 }
 
-func upgradeCasks(e *env, prefix, journal string, dryRun bool, tokens []string, o outdated.CaskOptions) (found bool, err error) {
+func resolveCasks(e *env, prefix, journal string, dryRun bool, tokens []string, o outdated.CaskOptions) *upgradeStep {
 	ctx := context.Background()
 	installed, err := caskroom.Installed(prefix)
 	if err != nil || (len(installed) == 0 && len(tokens) == 0) {
-		return false, err
+		return failedStep(err)
 	}
 	idx, err := e.caskIndex(ctx, prefix)
 	if err != nil {
-		return false, err
+		return failedStep(err)
 	}
 	if o.Tag, err = platform.Tag(e.host); err != nil {
-		return false, err
+		return failedStep(err)
 	}
 	setCaskMachine(&o, prefix)
 	hints := o
@@ -148,7 +148,7 @@ func upgradeCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 	var failures []error
 	if len(tokens) == 0 {
 		if stale, err = outdated.CheckCasks(idx, prefix, installed, o); err != nil {
-			return false, err
+			return failedStep(err)
 		}
 	} else {
 		named := o
@@ -169,7 +169,7 @@ func upgradeCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 			}
 			rs, err := outdated.CheckCasks(idx, prefix, []caskroom.Cask{ic}, named)
 			if err != nil {
-				return false, err
+				return failedStep(err)
 			}
 			if len(rs) == 0 {
 				_, _ = fmt.Fprintf(e.err, "brw: warning: Not upgrading %s, the latest version is already installed\n", t)
@@ -185,34 +185,37 @@ func upgradeCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 			upgrade = append(upgrade, r)
 		}
 	}
-	// Unnamed, brew leaves pinned casks out without a word, as it does formulae.
+	var left []outdated.Result
 	if len(pinned) > 0 && len(tokens) > 0 {
 		failures = append(failures, fmt.Errorf("not upgrading %d pinned %s:\n%s", len(pinned),
 			plural(len(pinned), "package", "packages"), strings.Join(versionChanges(pinned), "\n")))
+	} else {
+		left = pinned
 	}
-	if len(upgrade) == 0 {
-		return false, errors.Join(failures...)
-	}
-	if len(tokens) == 0 {
-		printCaskHints(e, idx, upgrade, hints)
-	}
-	if dryRun {
-		_, err := fmt.Fprintf(e.out, "==> Would upgrade %d outdated %s\n%s\n", len(upgrade),
-			plural(len(upgrade), "package", "packages"), strings.Join(versionChanges(upgrade), "\n"))
-		return true, errors.Join(append(failures, err)...)
-	}
-	err = withRoot(prefix, journal, func(root *fsx.Root) error {
-		return runCaskUpgrades(e, root, prefix, idx, o.Tag, upgrade, byToken)
-	})
-	return true, errors.Join(append(failures, err)...)
+	return &upgradeStep{upgrade: upgrade, pinned: left, failures: failures, run: func() ([]string, error) {
+		if len(tokens) == 0 {
+			printCaskHints(e, idx, upgrade, hints)
+		}
+		if dryRun {
+			_, err := fmt.Fprintf(e.out, "==> Would upgrade %d outdated %s\n%s\n", len(upgrade),
+				plural(len(upgrade), "package", "packages"), strings.Join(versionChanges(upgrade), "\n"))
+			return nil, err
+		}
+		var upgraded []string
+		err := withRoot(prefix, journal, func(root *fsx.Root) (err error) {
+			upgraded, err = runCaskUpgrades(e, root, prefix, idx, o.Tag, upgrade, byToken)
+			return err
+		})
+		return upgraded, err
+	}}
 }
 
 // brew's cleanup step is skipped: it cleans brew's own download cache.
-func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, tag string, upgrade []outdated.Result, installed map[string]caskroom.Cask) error {
+func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, tag string, upgrade []outdated.Result, installed map[string]caskroom.Cask) ([]string, error) {
 	ctx := context.Background()
 	client, err := e.apiClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	home, _ := os.UserHomeDir()
 	version, _ := buildInfo()
@@ -233,12 +236,12 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, 
 	_, _ = fmt.Fprintf(e.out, "==> Fetching downloads for: %s\n", sentence(names))
 	var prepared []*cask.PreparedUpgrade
 	var ready []outdated.Result
-	failed := 0
+	var failed []string
 	for _, r := range upgrade {
 		u, closeApps, err := prepareCaskUpgrade(ctx, e, root, prefix, home, version, idx, tag, fetcher, installed[r.Name])
 		if err != nil {
 			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
-			failed++
+			failed = append(failed, r.Name)
 			continue
 		}
 		defer closeApps()
@@ -248,23 +251,19 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix string, idx *api.CaskIndex, 
 	if display != nil {
 		display.Close()
 	}
-	var upgraded []outdated.Result
+	var upgraded []string
 	for i, u := range prepared {
 		if err := u.Run(ctx); err != nil {
 			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
-			failed++
+			failed = append(failed, ready[i].Name)
 			continue
 		}
-		upgraded = append(upgraded, ready[i])
+		upgraded = append(upgraded, ready[i].Name)
 	}
-	// brew sums up only when more than one package changed.
-	if len(upgraded) > 1 {
-		_, _ = fmt.Fprintf(e.out, "==> Upgraded %d outdated packages\n%s\n", len(upgraded), strings.Join(versionChanges(upgraded), "\n"))
+	if len(failed) > 0 {
+		return upgraded, fmt.Errorf("%d of %d casks could not be upgraded: %s", len(failed), len(upgrade), strings.Join(failed, ", "))
 	}
-	if failed > 0 {
-		return fmt.Errorf("%d of %d casks could not be upgraded", failed, len(upgrade))
-	}
-	return nil
+	return upgraded, nil
 }
 
 func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, home, version string, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {

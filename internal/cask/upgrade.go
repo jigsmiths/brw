@@ -79,7 +79,9 @@ func (in *Installer) replace(ctx context.Context, old caskroom.Cask, c api.Cask,
 		}
 		err = errors.Join(err, in.discard(ctx, c, undo))
 		in.warnf("Reverting upgrade for Cask %s", c.Token)
-		err = errors.Join(err, in.restoreBackup(old), in.reinstall(context.WithoutCancel(ctx), old, steps))
+		if rerr := errors.Join(in.restoreBackup(old), in.reinstall(context.WithoutCancel(ctx), old, steps)); rerr != nil {
+			err = errors.Join(err, fmt.Errorf("could not restore %s %s: %w", c.Token, old.Version, rerr))
+		}
 	}()
 	if err := in.installArtifacts(ctx, c, p, links, file, &undo); err != nil {
 		return err
