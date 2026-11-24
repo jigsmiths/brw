@@ -286,3 +286,26 @@ func TestUpdateSkipsATapGitHubSaysIsCurrent(t *testing.T) {
 		t.Errorf("update with GitHub ahead = %q, %v", out, err)
 	}
 }
+
+func TestUpgradeListsUntrustedTapsItSkips(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
+	e, prefix, origin, app := tapStore(t)
+	if out, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", t.TempDir(), "jigsmiths/tap/app"); err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	other := t.TempDir()
+	gitIn(t, other, "init", "-q", "-b", "main")
+	publishTapCask(t, other, app, "1.0")
+	if _, err := tap.Clone(t.Context(), prefix, "other/tap", other); err != nil {
+		t.Fatal(err)
+	}
+	publishTapCask(t, origin, app, "2.0")
+	if _, err := runCmd(t, e, "update", "-prefix", prefix); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix)
+	want := "==> Upgrading 1 outdated package:\napp 1.0 -> 2.0\n==> Skipping other/tap because it is not trusted\n"
+	if err != nil || !strings.HasPrefix(out, want) {
+		t.Errorf("out = %q, err = %v\nwant it to start with %q", out, err, want)
+	}
+}
