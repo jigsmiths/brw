@@ -26,10 +26,7 @@ fmt:
 
 # Same checks as CI and the pre-commit hook
 check:
-    test -z "$(gofmt -l .)"
-    test -z "$(go fix -diff ./...)"
-    just lint
-    just test
+    .githooks/pre-commit
 
 # Compare the read-only commands with the real brew on this machine (slow)
 conformance:
