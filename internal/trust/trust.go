@@ -100,6 +100,8 @@ func normalizeRemote(remote string) string {
 	return strings.TrimSuffix(strings.TrimRight(remote, "/"), ".git")
 }
 
+func SameRemote(a, b string) bool { return normalizeRemote(a) == normalizeRemote(b) }
+
 func defaultRemote(name string) string {
 	user, repo, _ := strings.Cut(name, "/")
 	return "https://github.com/" + user + "/homebrew-" + repo

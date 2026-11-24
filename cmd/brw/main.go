@@ -34,6 +34,8 @@ const usage = `Example usage:
   brw pin FORMULA...
   brw unpin FORMULA...
   brw cleanup [FORMULA|CASK...]
+  brw tap [USER/REPO [URL]]
+  brw untap USER/REPO...
   brw trust [TAP|CASK...]
   brw untrust TAP|CASK...
   brw version
@@ -54,6 +56,7 @@ type env struct {
 	warned        *warnings
 	pull          func(ctx context.Context, t tap.Tap) (changed bool, err error)
 	githubAPI     string
+	confirm       func(action string) bool
 }
 
 func (e *env) kegs(prefix string) ([]cellar.Keg, error) {
@@ -131,6 +134,10 @@ func run(e *env, cmd string, args []string) error {
 		return trustCommand(e, args)
 	case "untrust":
 		return untrustCommand(e, args)
+	case "tap":
+		return tapCommand(e, args)
+	case "untap":
+		return untapCommand(e, args)
 	case "tag":
 		tag, err := platform.Tag(e.host)
 		if err != nil {
