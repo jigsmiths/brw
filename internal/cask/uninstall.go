@@ -59,8 +59,9 @@ type uninstallStep struct {
 	stagedVersion string
 }
 
-var stepOrder = map[string]int{"uninstall": 0, "app": 1, "binary": 2, "generate_completions_from_executable": 3,
-	"preflight_steps": 4, "postflight_steps": 4}
+var stepOrder = map[string]int{"uninstall": 0, "app": 1,
+	"binary": 2, "manpage": 2, "bash_completion": 2, "zsh_completion": 2, "fish_completion": 2,
+	"generate_completions_from_executable": 3, "preflight_steps": 4, "postflight_steps": 4}
 
 // Uninstall refuses, before changing anything, a cask that needs something brw cannot undo yet. force also removes every other version.
 func (in *Installer) Uninstall(ctx context.Context, token, version string, force bool) error {
@@ -105,7 +106,7 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 			if err := in.moveBack(ctx, s.move, force); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
-		case "binary":
+		case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 			if err := in.unlinkBinary(s.move); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
@@ -181,11 +182,11 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if s.directives, err = readDirectives(args); err != nil {
 			return s, fmt.Errorf("%s: uninstall %s: %w", token, args, err)
 		}
-	case "app", "binary":
+	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 		if s.move, err = readMove(args, kind, in.Where); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
 		}
-		if kind == "binary" {
+		if kind != "app" {
 			if _, err := in.prefixRel(s.move.target); err != nil {
 				return s, fmt.Errorf("%s: %w", token, err)
 			}
@@ -638,6 +639,6 @@ func (in *Installer) unlinkBinary(m move) error {
 	if err != nil {
 		return err
 	}
-	in.logf("==> Unlinking Binary '%s'", m.target)
+	in.logf("==> Unlinking %s '%s'", linkNames[m.kind], m.target)
 	return in.Root.Remove(rel)
 }
