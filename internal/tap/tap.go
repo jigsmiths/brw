@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/rb"
 )
 
@@ -152,6 +153,22 @@ func Clone(ctx context.Context, prefix, name, remote string) (Tap, error) {
 	}
 	_, err := run(ctx, "", "clone", "--origin=origin", "-q", "--template=", "--config", "core.fsmonitor=false", "--end-of-options", remote, t.Dir)
 	return t, err
+}
+
+// Remove deletes the tap and its user folder once that is empty.
+func Remove(root *fsx.Root, t Tap) error {
+	if err := root.RemoveAll(t.Dir); err != nil {
+		return err
+	}
+	userDir := filepath.Dir(t.Dir)
+	entries, err := root.ReadDir(userDir)
+	if errors.Is(err, fs.ErrNotExist) || len(entries) > 0 {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return root.Remove(userDir)
 }
 
 func Pull(ctx context.Context, t Tap) (changed bool, err error) {
