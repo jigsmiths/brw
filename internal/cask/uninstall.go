@@ -404,7 +404,6 @@ func (in *Installer) quit(ctx context.Context, ids []string) {
 	}
 }
 
-// loginItems removes each app path, then each name, from the login items.
 func (in *Installer) loginItems(ctx context.Context, apps, names []string) {
 	if in.upgrading {
 		return
