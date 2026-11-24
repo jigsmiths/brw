@@ -122,27 +122,16 @@ func TestConformanceLeaves(t *testing.T) {
 
 func TestConformanceOutdated(t *testing.T) {
 	e := conformanceEnv(t)
-	got, err := runCmd(t, e, "outdated")
+	got, err := runCmd(t, e, "outdated", "--formula")
 	if err != nil {
 		t.Fatal(err)
 	}
 	want, _ := brew(t, "outdated", "--formula", "--quiet")
-	same(t, "outdated", got, want)
+	same(t, "outdated --formula", got, want)
 }
 
-// brw reads only API casks, so other taps' casks are dropped from brew's answer.
 func TestConformanceOutdatedCasks(t *testing.T) {
 	e := conformanceEnv(t)
-	installed, err := caskroom.Installed(defaultPrefix(e.host))
-	if err != nil {
-		t.Fatal(err)
-	}
-	tapped := map[string]bool{}
-	for _, c := range installed {
-		if c.Tap != "" && c.Tap != "homebrew/cask" {
-			tapped[c.Token] = true
-		}
-	}
 	for _, args := range [][]string{
 		{"outdated", "--cask"},
 		{"outdated", "--cask", "--verbose"},
@@ -155,16 +144,9 @@ func TestConformanceOutdatedCasks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		out, _ := brew(t, args...)
-		var want strings.Builder
-		for line := range strings.Lines(out) {
-			if f := strings.Fields(line); len(f) > 0 && !tapped[f[0]] {
-				want.WriteString(line)
-			}
-		}
-		same(t, strings.Join(args, " "), got, want.String())
+		want, _ := brew(t, args...)
+		same(t, strings.Join(args, " "), got, want)
 	}
-	t.Logf("left out casks from other taps: %v", slices.Sorted(maps.Keys(tapped)))
 }
 
 // brew adds spelling suggestions to text searches, so brw's answer may be a subset.
@@ -312,7 +294,8 @@ func TestConformanceInfo(t *testing.T) {
 		t.Fatal("brew info failed")
 	}
 	// brew shows sizes only for bottles whose manifest its own cache happens to hold.
-	brews := infoBlocks(regexp.MustCompile(`(?m)^(Bottle|Installed) Size: .*\n`).ReplaceAllString(want, ""))
+	sizes := regexp.MustCompile(`(?m)^(Bottle|Installed) Size: .*\n`)
+	brews := infoBlocks(sizes.ReplaceAllString(want, ""))
 	got, err := runCmd(t, e, "info", append([]string{"--formula"}, names...)...)
 	if err != nil {
 		t.Fatal(err)
@@ -327,6 +310,13 @@ func TestConformanceInfo(t *testing.T) {
 		for section := range b {
 			if section == "Analytics" || section == "Caveats" {
 				continue
+			}
+			if !slices.Equal(b[section], m[section]) {
+				// brew leaks one formula's Xcode version into later formulae in the same run.
+				alone, _ := brew(t, "info", "--formula", n)
+				if a := infoBlocks(sizes.ReplaceAllString(alone, ""))[n]; a != nil {
+					b[section] = a[section]
+				}
 			}
 			if !slices.Equal(b[section], m[section]) {
 				t.Errorf("%s: section %q differs\nbrw:\n%s\nbrew:\n%s", n, section, strings.Join(m[section], "\n"), strings.Join(b[section], "\n"))
