@@ -3,6 +3,7 @@ package cask
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeExec struct {
@@ -50,6 +52,9 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 	case "/bin/cp", "/bin/mkdir":
 		return exec.CommandContext(ctx, name, args...).Output()
 	case "osascript":
+		if args[0] == "-e" {
+			return nil, nil
+		}
 		id := args[len(args)-1]
 		if !strings.Contains(args[3], "app.quit()") {
 			if f.running[id] > 0 {
@@ -401,5 +406,122 @@ func TestUninstallDeletesWhatOnlySudoCanAndLeavesSystemFolders(t *testing.T) {
 	}
 	if got := f.ran("/usr/bin/sudo"); len(got) != 1 {
 		t.Errorf("sudo calls = %q", got)
+	}
+}
+
+const loginItemArtifacts = `[{"uninstall":[{"login_item":%s}]},{"app":["App.app"]}]`
+
+func installedWithLoginItem(t *testing.T, names string) (*testInstall, *fakeExec, *[]time.Duration) {
+	t.Helper()
+	ti, f := installed(t, fmt.Sprintf(loginItemArtifacts, names))
+	var slept []time.Duration
+	ti.in.Sleep = func(d time.Duration) { slept = append(slept, d) }
+	return ti, f, &slept
+}
+
+func TestUninstallRemovesLoginItem(t *testing.T) {
+	ti, f, slept := installedWithLoginItem(t, `"Example"`)
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	app := filepath.Join(ti.appDir, "App.app")
+	want := []string{
+		`osascript -e tell application "System Events" to delete every login item whose path is "` + app + `"`,
+		`osascript -e tell application "System Events" to delete every login item whose name is "Example"`,
+	}
+	if got := f.ran("osascript"); !slices.Equal(got, want) {
+		t.Errorf("osascript calls = %q, want %q", got, want)
+	}
+	if got, want := ti.out.String(), "==> Removing login item "+app+"\n==> Removing login item Example\n"; !strings.Contains(got, want) {
+		t.Errorf("output = %q, want it to contain %q", got, want)
+	}
+	if !slices.Equal(*slept, []time.Duration{time.Second, time.Second}) {
+		t.Errorf("sleeps = %v", *slept)
+	}
+}
+
+func TestUninstallLoginItemsOnePathPerApp(t *testing.T) {
+	ti, f, slept := installedWithLoginItem(t, `"Example"`)
+	apps := []string{"/Applications/One.app", "/Applications/Two.app"}
+	ti.in.loginItems(context.Background(), apps, nil)
+	want := []string{
+		`osascript -e tell application "System Events" to delete every login item whose path is "/Applications/One.app"`,
+		`osascript -e tell application "System Events" to delete every login item whose path is "/Applications/Two.app"`,
+	}
+	if got := f.ran("osascript"); !slices.Equal(got, want) {
+		t.Errorf("osascript calls = %q, want %q", got, want)
+	}
+	if len(*slept) != 2 {
+		t.Errorf("sleeps = %v", *slept)
+	}
+}
+
+func TestUninstallWithoutLoginItemDirectiveRunsNone(t *testing.T) {
+	ti, f := installed(t, `[{"uninstall":[{"delete":"~/gone"}]},{"app":["App.app"]}]`)
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.ran("osascript"); len(got) != 0 {
+		t.Errorf("osascript calls = %q", got)
+	}
+}
+
+func TestUninstallLoginItemPathFailureWarns(t *testing.T) {
+	ti, f, _ := installedWithLoginItem(t, `"Example"`)
+	app := filepath.Join(ti.appDir, "App.app")
+	f.handle = map[string]func([]string) ([]byte, error){"osascript": func(args []string) ([]byte, error) {
+		if strings.Contains(args[1], "whose path is") {
+			return nil, errors.New("failed")
+		}
+		return nil, nil
+	}}
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if want := "Warning: Removal of login item " + app + " failed. " + automationAccess + "\n"; ti.warn.String() != want {
+		t.Errorf("warnings = %q, want %q", ti.warn.String(), want)
+	}
+	if got := f.ran("osascript"); len(got) != 2 {
+		t.Errorf("osascript calls = %q", got)
+	}
+}
+
+func TestUninstallLoginItemFailureWarns(t *testing.T) {
+	ti, f, _ := installedWithLoginItem(t, `"Example"`)
+	f.fail["osascript"] = true
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(ti.warn.String(), automationAccess) {
+		t.Errorf("warnings = %q", ti.warn.String())
+	}
+	if exists(filepath.Join(ti.appDir, "App.app")) {
+		t.Error("the app should still be removed")
+	}
+}
+
+func TestUninstallLoginItemQuotesTheName(t *testing.T) {
+	ti, f, _ := installedWithLoginItem(t, `"Ex\"ample\\"`)
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	want := `osascript -e tell application "System Events" to delete every login item whose name is "Ex\"ample\\"`
+	got := f.ran("osascript")
+	if len(got) != 2 || got[1] != want {
+		t.Errorf("osascript calls = %q, want last %q", got, want)
+	}
+}
+
+func TestUninstallSkipsLoginItemWhenUpgrading(t *testing.T) {
+	ti, f, slept := installedWithLoginItem(t, `"Example"`)
+	ti.in.upgrading = true
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.ran("osascript"); len(got) != 0 {
+		t.Errorf("osascript calls = %q", got)
+	}
+	if strings.Contains(ti.out.String(), "login item") || len(*slept) != 0 {
+		t.Errorf("output = %q, sleeps = %v", ti.out.String(), *slept)
 	}
 }

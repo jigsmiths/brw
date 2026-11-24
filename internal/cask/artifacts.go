@@ -63,7 +63,7 @@ type installPlan struct {
 	uninstall             []map[string]json.RawMessage
 }
 
-var uninstallDirectives = []string{"quit", "launchctl", "delete", "trash", "rmdir"}
+var uninstallDirectives = []string{"quit", "login_item", "launchctl", "delete", "trash", "rmdir"}
 
 func plan(c api.Cask, w Where) (installPlan, error) {
 	var p installPlan
