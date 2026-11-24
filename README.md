@@ -14,7 +14,7 @@ brew install --cask jigsmiths/tap/brw
 
 ## Usage
 
-Needs [just](https://github.com/casey/just) and Go.
+The commands below run from a checkout and need [just](https://github.com/casey/just) and Go.
 
 ```sh
 just build                       # build bin/brw
@@ -59,7 +59,14 @@ brw reads a tap's cask and formula files with its own Ruby evaluator, so it need
 
 A tap formula installs from its bottle when it has one for this machine. On macOS, one without a bottle is built from its download as brew does: in `HOMEBREW_TEMP`, with brew's build environment, resources, patches and build dependencies. Its `post_install` runs, and its service files are written into the keg. `install --HEAD` builds a tap formula from its head repository into a `HEAD-<commit>` keg.
 
-Like brew, brw only loads casks and formulae from taps you trust, and shares brew's trust store (`$XDG_CONFIG_HOME/homebrew/trust.json`, else `~/.homebrew/trust.json`). `brw trust jigsmiths/tap` trusts a tap, `brw trust jigsmiths/tap/brw` one cask or formula (`--cask` or `--formula` when the tap has both), `brw untrust` removes any of them, and `brw trust` lists what's trusted. Installing by full name trusts that cask or formula. `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` turns the check off.
+Like brew, brw only loads casks and formulae from taps you trust, and shares brew's trust store (`$XDG_CONFIG_HOME/homebrew/trust.json`, else `~/.homebrew/trust.json`).
+
+- `brw trust jigsmiths/tap` trusts a tap.
+- `brw trust jigsmiths/tap/brw` trusts one cask or formula. Pass `--cask` or `--formula` when the tap has both.
+- `brw untrust` removes a trusted tap, cask or formula.
+- `brw trust` lists what's trusted.
+
+Installing by full name trusts that cask or formula. `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` turns the check off.
 
 ## Development
 
@@ -70,11 +77,11 @@ just test
 just lint
 just fmt
 just conformance    # compare the read-only commands with brew (slow)
-just conformance-install      # and -uninstall, -upgrade, -cask-install, -tap, -full
+just conformance-install      # also: -uninstall, -upgrade, -cask-install, -tap, -full
 just clean
 ```
 
-Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only. The conformance harnesses need a brew checkout at `~/.brw-oracle/hb`. `BRW_FORMULA_GOLDEN` and `BRW_FORMULA_PREFIX` point `TestConformanceTapFormulae` at brew's hashes of tap formulae and the prefix with those taps.
+Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only. The conformance tests need a brew checkout at `~/.brw-oracle/hb`. `BRW_FORMULA_GOLDEN` points `TestConformanceTapFormulae` at brew's hashes of tap formulae. `BRW_FORMULA_PREFIX` points it at a prefix that has those taps.
 
 ## License
 
