@@ -330,7 +330,7 @@ var artifactOrder = func() map[string]int {
 			m[k] = i
 		}
 	}
-	m["stage_only"] = -1
+	m["stage_only"] = -1 //guard:allow a sort rank that puts stage_only before every group
 	m["uninstall_preflight"] = m["preflight"]
 	m["uninstall_postflight"] = m["postflight"]
 	return m
