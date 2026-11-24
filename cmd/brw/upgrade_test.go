@@ -517,3 +517,63 @@ func TestUpgradeLeavesSelfUpdatingCasksUnlessGreedy(t *testing.T) {
 		t.Errorf("--greedy: out = %q, err = %v", out, err)
 	}
 }
+
+func TestUpgradeNamesTheCasksThatFailed(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t, "app")
+	makeCaskOutdated(t, prefix, "app")
+	tool := filepath.Join(prefix, "bin/tool")
+	if err := os.Remove(tool); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tool, []byte("not ours"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix)
+	if err == nil || err.Error() != "1 of 1 casks could not be upgraded: app" {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.HasSuffix(out, "==> Failed to upgrade 1 package:\napp 0.9 -> 1.0\n") {
+		t.Errorf("the failed cask is named in the summary:\n%s", out)
+	}
+	if w := e.err.(*bytes.Buffer).String(); strings.Count(w, "already a Binary") != 2 || !strings.Contains(w, "could not restore app 0.9: ") {
+		t.Errorf("the rollback failure should be labelled, not repeated as is:\n%s", w)
+	}
+}
+
+func TestUpgradeListsEveryUpgradeBeforeFetchingAny(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
+	_, e, prefix, _ := installedCasks(t, "app")
+	makeOutdated(t, e, prefix, "jq")
+	makeCaskOutdated(t, prefix, "app")
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	list := "==> Upgrading 2 outdated packages:\njq   0.9 -> 1.0\napp  0.9 -> 1.0\n"
+	if !strings.HasPrefix(out, list) {
+		t.Errorf("output does not start with the list of upgrades:\n%s", out)
+	}
+	if strings.Count(out, "==> Upgrading 2 outdated packages") != 1 {
+		t.Errorf("the list appears more than once:\n%s", out)
+	}
+	if !strings.HasSuffix(out, "==> Upgraded 2 outdated packages\njq   0.9 -> 1.0\napp  0.9 -> 1.0\n") {
+		t.Errorf("the summary covers formulae and casks:\n%s", out)
+	}
+}
+
+func TestUpgradeListsPinnedFormulaeOnTheirOwnLine(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t, "app")
+	makeOutdated(t, e, prefix, "jq")
+	makeCaskOutdated(t, prefix, "app")
+	if _, err := runCmd(t, e, "pin", "-prefix", prefix, "jq"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	want := "==> Upgrading 1 outdated package:\napp 0.9 -> 1.0\n==> Pinned, not upgrading 1 package:\njq 0.9 -> 1.0\n"
+	if !strings.HasPrefix(out, want) {
+		t.Errorf("output:\n%s\nwant it to start with:\n%s", out, want)
+	}
+}
