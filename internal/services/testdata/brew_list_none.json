@@ -1,0 +1,30 @@
+[
+  {
+    "name": "atuin",
+    "status": "none",
+    "user": null,
+    "file": "/opt/homebrew/opt/atuin/sh.brew.atuin.plist",
+    "exit_code": null
+  },
+  {
+    "name": "cloudflared",
+    "status": "none",
+    "user": null,
+    "file": "/opt/homebrew/opt/cloudflared/sh.brew.cloudflared.plist",
+    "exit_code": null
+  },
+  {
+    "name": "emacs",
+    "status": "none",
+    "user": null,
+    "file": "/opt/homebrew/opt/emacs/homebrew.mxcl.emacs.plist",
+    "exit_code": null
+  },
+  {
+    "name": "zellij",
+    "status": "none",
+    "user": null,
+    "file": "/opt/homebrew/opt/zellij/sh.brew.zellij.plist",
+    "exit_code": null
+  }
+]

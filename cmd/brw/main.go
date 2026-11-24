@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
+	"path/filepath"
+	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/services"
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
@@ -36,6 +40,7 @@ const usage = `Example usage:
   brw cleanup [FORMULA|CASK...]
   brw tap [USER/REPO [URL]]
   brw untap USER/REPO...
+  brw services [list|start|stop|restart] [FORMULA...]
   brw trust [TAP|CASK...]
   brw untrust TAP|CASK...
   brw version
@@ -57,6 +62,14 @@ type env struct {
 	pull          func(ctx context.Context, t tap.Tap) (changed bool, err error)
 	githubAPI     string
 	confirm       func(action string) bool
+
+	launchctl  services.Launchctl
+	uid        int
+	user       string
+	agentsDir  string
+	daemonsDir string
+	configHome string
+	sleep      func(time.Duration)
 }
 
 func (e *env) kegs(prefix string) ([]cellar.Keg, error) {
@@ -83,7 +96,26 @@ func main() {
 }
 
 func newEnv(host platform.Host) *env {
-	return &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host}
+	e := &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host,
+		launchctl: services.NewLaunchctl(), uid: os.Getuid(), daemonsDir: "/Library/LaunchDaemons"}
+	e.user = os.Getenv("USER")
+	if u, err := user.Current(); e.user == "" && err == nil {
+		e.user = u.Username
+	}
+	e.agentsDir, _ = services.AgentsDir()
+	e.configHome = userConfigHome()
+	return e
+}
+
+// userConfigHome is brew's HOMEBREW_USER_CONFIG_HOME.
+func userConfigHome() string {
+	for _, v := range []string{"XDG_CONFIG_HOME", "HOMEBREW_XDG_CONFIG_HOME"} {
+		if dir := os.Getenv(v); dir != "" {
+			return filepath.Join(dir, "homebrew")
+		}
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".homebrew")
 }
 
 func run(e *env, cmd string, args []string) error {
@@ -126,6 +158,8 @@ func run(e *env, cmd string, args []string) error {
 		return pinCommand(e, args)
 	case "unpin":
 		return unpinCommand(e, args)
+	case "services":
+		return servicesCommand(e, args)
 	case "version":
 		return versionCommand(e, args)
 	case "update":

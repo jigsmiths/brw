@@ -1,0 +1,5 @@
+Name        Status User File
+atuin       none                 
+cloudflared none                 
+emacs       none                 
+zellij      none                 
