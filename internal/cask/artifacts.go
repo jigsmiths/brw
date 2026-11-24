@@ -51,7 +51,6 @@ var manSection = regexp.MustCompile(`\.([1-8]|n|l)(?:\.gz)?$`)
 
 var completionKindShell = map[string]string{"bash_completion": "bash", "zsh_completion": "zsh", "fish_completion": "fish"}
 
-// linkNames covers the artifacts brew symlinks into the prefix, which brw links the same way.
 var linkNames = map[string]string{
 	"binary": "Binary", "manpage": "Manpage",
 	"bash_completion": "Bash Completion", "zsh_completion": "Zsh Completion", "fish_completion": "Fish Completion",

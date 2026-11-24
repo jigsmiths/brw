@@ -85,11 +85,15 @@ func completionPath(shell, name string) string {
 	return filepath.Join(dir, file)
 }
 
-func completionName(shell, name string) (dir, file string) {
-	bare := strings.TrimSuffix(name, filepath.Ext(name))
-	if bare == "" {
-		bare = name // a leading dot is not an extension
+func trimExt(name string) string {
+	if bare := strings.TrimSuffix(name, filepath.Ext(name)); bare != "" {
+		return bare
 	}
+	return name
+}
+
+func completionName(shell, name string) (dir, file string) {
+	bare := trimExt(name)
 	switch shell {
 	case "bash":
 		return "etc/bash_completion.d", bare
