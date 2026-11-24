@@ -56,6 +56,9 @@ func (u *PreparedUpgrade) Run(ctx context.Context) error {
 	in, old, c := u.in, u.old, u.c
 	in.logf("==> Upgrading %s", c.Token)
 	in.logf("  %s -> %s", old.Version, c.Version)
+	if err := in.satisfyDependencies(ctx, c); err != nil {
+		return err
+	}
 	before := in.approvals(ctx, u.oldApps)
 	in.upgrading, in.reopen = true, nil
 	defer func() { in.upgrading, in.reopen = false, nil }()

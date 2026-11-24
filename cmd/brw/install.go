@@ -64,11 +64,12 @@ func installCommand(e *env, args []string) error {
 }
 
 type resolved struct {
-	formulae []string
-	casks    []api.Cask
-	idx      *api.Index
-	client   *api.Client
-	failures []error
+	formulae    []string
+	casks       []api.Cask
+	formulaDeps []string // formulae a cask needs, installed but not on request
+	idx         *api.Index
+	client      *api.Client
+	failures    []error
 }
 
 func (e *env) resolve(ctx context.Context, prefix string, names []string, formulaOnly, caskOnly bool) (resolved, error) {
@@ -85,16 +86,8 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 		if r.idx, r.client, err = e.indexAndClient(ctx, prefix); err != nil {
 			return r, err
 		}
-		// tapping a dependency's tap can bring in formulae that name further taps
-		for missing := untappedTaps(r.idx, prefix, names); len(missing) > 0; missing = untappedTaps(r.idx, prefix, names) {
-			for _, name := range missing {
-				if _, err := e.ensureTap(ctx, prefix, name); err != nil {
-					return r, err
-				}
-			}
-			if r.idx, r.client, err = e.indexAndClient(ctx, prefix); err != nil {
-				return r, err
-			}
+		if err := e.tapMissing(ctx, prefix, &r, names); err != nil {
+			return r, err
 		}
 	}
 	var casks *api.CaskIndex
@@ -157,6 +150,21 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 		r.failures = append(r.failures, fmt.Errorf("%d of %d names are neither a formula nor a cask", unknown, total))
 	}
 	return r, nil
+}
+
+// tapMissing taps what names and their dependencies need; a tapped dependency can name further taps.
+func (e *env) tapMissing(ctx context.Context, prefix string, r *resolved, names []string) (err error) {
+	for missing := untappedTaps(r.idx, prefix, names); len(missing) > 0; missing = untappedTaps(r.idx, prefix, names) {
+		for _, name := range missing {
+			if _, err := e.ensureTap(ctx, prefix, name); err != nil {
+				return err
+			}
+		}
+		if r.idx, r.client, err = e.indexAndClient(ctx, prefix); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func untappedTaps(idx *api.Index, prefix string, names []string) []string {
@@ -280,14 +288,23 @@ func (e *env) newPlanner(prefix string, idx *api.Index, client *api.Client, kegs
 }
 
 func installFormulae(e *env, prefix, journal string, dryRun, head bool, r resolved) error {
-	idx, client, names := r.idx, r.client, r.formulae
+	idx, client := r.idx, r.client
+	names := slices.Clone(r.formulae)
+	var asDependency []string
+	for _, d := range r.formulaDeps {
+		if !slices.Contains(names, d) {
+			names = append(names, d)
+			asDependency = append(asDependency, d)
+		}
+	}
 	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
 	}
 	planner := e.newPlanner(prefix, idx, client, kegs)
+	planner.AsDependency = asDependency
 	if head {
-		planner.HeadNames = names
+		planner.HeadNames = r.formulae
 	}
 	plan, planErrs := planner.PlanEach(names)
 	for _, err := range planErrs {

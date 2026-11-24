@@ -159,6 +159,9 @@ func (r *Resolver) declared(name string) ([]string, error) {
 	return out, nil
 }
 
+// Declared lists the direct dependencies in the order the formula names them.
+func (r *Resolver) Declared(name string) ([]string, error) { return r.declared(name) }
+
 func (r *Resolver) Direct(name string) ([]string, error) {
 	out, err := r.declared(name)
 	slices.Sort(out)

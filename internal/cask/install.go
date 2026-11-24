@@ -40,6 +40,10 @@ type Installer struct {
 	Config  Config
 	Exec    Exec
 	Adopt   bool
+	// RuntimeDeps lists what the receipt records; nil records none.
+	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
+	// SatisfyDependencies installs what c needs; nil leaves it to the caller, and Install then fails if it is missing.
+	SatisfyDependencies func(ctx context.Context, c api.Cask) error
 
 	upgrading     bool
 	reopen        []string
@@ -66,10 +70,25 @@ func (in *Installer) warnf(format string, args ...any) {
 	}
 }
 
-func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
+func (in *Installer) Install(ctx context.Context, c api.Cask) error {
+	return in.install(ctx, c, true)
+}
+
+// InstallAsDependency records that another cask needs c, as brew does, so it is not on request.
+// Its own dependencies are not satisfied: they are in the list of the cask that asked for it.
+func (in *Installer) InstallAsDependency(ctx context.Context, c api.Cask) error {
+	return in.install(ctx, c, false)
+}
+
+func (in *Installer) install(ctx context.Context, c api.Cask, onRequest bool) (err error) {
 	p, links, file, err := in.prepare(ctx, c, nil)
 	if err != nil {
 		return err
+	}
+	if onRequest {
+		if err := in.satisfyDependencies(ctx, c); err != nil {
+			return err
+		}
 	}
 	in.logf("==> Installing Cask %s", c.Token)
 	version := filepath.Join("Caskroom", c.Token, c.Version)
@@ -85,7 +104,7 @@ func (in *Installer) Install(ctx context.Context, c api.Cask) (err error) {
 	if err := in.installArtifacts(ctx, c, p, links, file, &undo); err != nil {
 		return err
 	}
-	if err := in.writeReceipt(c, p, true); err != nil {
+	if err := in.writeReceipt(c, p, onRequest); err != nil {
 		return err
 	}
 	in.logf("%s was successfully installed!", badge()+c.Token)
@@ -549,6 +568,13 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) err
 		Version    string  `json:"version"`
 		Path       string  `json:"path"`
 	}
+	var deps RuntimeDependencies
+	if in.RuntimeDeps != nil {
+		var err error
+		if deps, err = in.RuntimeDeps(c); err != nil {
+			return err
+		}
+	}
 	var head *string
 	if c.TapGitHead != "" {
 		head = &c.TapGitHead
@@ -568,14 +594,14 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) err
 		UninstallFlightBlocks bool                         `json:"uninstall_flight_blocks"`
 		InstalledOnRequest    bool                         `json:"installed_on_request"`
 		Time                  int64                        `json:"time"`
-		RuntimeDependencies   struct{}                     `json:"runtime_dependencies"`
+		RuntimeDependencies   RuntimeDependencies          `json:"runtime_dependencies"`
 		Source                source                       `json:"source"`
 		Arch                  string                       `json:"arch"`
 		UninstallArtifacts    []map[string]json.RawMessage `json:"uninstall_artifacts"`
 		BuiltOn               map[string]string            `json:"built_on"`
 	}{
 		HomebrewVersion: in.Version, LoadedFromAPI: fromAPI, LoadedFromInternalAPI: fromAPI,
-		InstalledOnRequest: onRequest, Time: in.Now().Unix(),
+		InstalledOnRequest: onRequest, Time: in.Now().Unix(), RuntimeDependencies: deps,
 		Source: source{Tap: c.Tap, TapGitHead: head, Version: c.Version, Path: path},
 		Arch:   arch, UninstallArtifacts: p.uninstall,
 		BuiltOn: map[string]string{"os": "Macintosh", "os_version": "macOS " + in.Host.MacVersion},
