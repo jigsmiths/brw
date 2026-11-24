@@ -139,7 +139,7 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
-	for i, m := range p.binaries {
+	for i, m := range p.links {
 		if links[i] == skipLink {
 			continue
 		}
@@ -149,7 +149,7 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 		}
 		switch action {
 		case alreadyLinked:
-			in.logf("==> Binary '%s' is already linked to '%s'", filepath.Base(m.source), m.target)
+			in.logf("==> %s '%s' is already linked to '%s'", linkNames[m.kind], filepath.Base(m.source), m.target)
 			continue
 		case skipLink:
 			continue
@@ -209,13 +209,13 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bo
 			return nil, brewError("%s: It seems there is already an App at '%s'.", c.Token, m.target)
 		}
 	}
-	links := make([]linkAction, len(p.binaries))
-	for i, m := range p.binaries {
+	links := make([]linkAction, len(p.links))
+	for i, m := range p.links {
 		if _, err := in.prefixRel(m.target); err != nil {
 			return nil, fmt.Errorf("%s: %w", c.Token, err)
 		}
 		if filepath.IsAbs(m.source) && !in.inside(in.Where.AppDir, m.source) && !in.inside(in.Where.Prefix, m.source) {
-			return nil, fmt.Errorf("%s: binary source %s: outside %s and %s: %w", c.Token, m.source, in.Where.AppDir, in.Where.Prefix, ErrUnsupported)
+			return nil, fmt.Errorf("%s: %s source %s: outside %s and %s: %w", c.Token, m.kind, m.source, in.Where.AppDir, in.Where.Prefix, ErrUnsupported)
 		}
 		if owned[m.target] {
 			continue
@@ -225,7 +225,7 @@ func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bo
 			return nil, err
 		}
 		if action == skipLink {
-			in.warnf("It seems there is already a Binary at '%s' from formula %s; skipping link.", m.target, formula)
+			in.warnf("It seems there is already a %s at '%s' from formula %s; skipping link.", linkNames[m.kind], m.target, formula)
 		}
 		links[i] = action
 	}
@@ -257,7 +257,7 @@ func (in *Installer) binaryAction(c api.Cask, m move) (linkAction, string, error
 			return skipLink, formula, nil
 		}
 	}
-	return 0, "", brewError("%s: It seems there is already a Binary at '%s'.", c.Token, m.target)
+	return 0, "", brewError("%s: It seems there is already a %s at '%s'.", c.Token, linkNames[m.kind], m.target)
 }
 
 func (in *Installer) linksToSource(c api.Cask, m move, real string) bool {
@@ -408,12 +408,12 @@ func (in *Installer) linkBinary(ctx context.Context, staged string, m move, acti
 		return err
 	}
 	if action == overwrite {
-		in.warnf("It seems there is already a Binary at '%s'; overwriting.", m.target)
+		in.warnf("It seems there is already a %s at '%s'; overwriting.", linkNames[m.kind], m.target)
 		if err := in.removePath(ctx, in.Root, rel); err != nil {
 			return err
 		}
 	}
-	in.logf("==> Linking Binary '%s' to '%s'", filepath.Base(m.source), m.target)
+	in.logf("==> Linking %s '%s' to '%s'", linkNames[m.kind], filepath.Base(m.source), m.target)
 	if err := in.Root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 		return err
 	}
@@ -429,6 +429,9 @@ func (in *Installer) linkBinary(ctx context.Context, staged string, m move, acti
 		return err
 	}
 	*undo = append(*undo, func() error { return in.Root.Remove(rel) })
+	if m.kind != "binary" {
+		return nil
+	}
 	return in.makeExecutable(real)
 }
 

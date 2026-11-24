@@ -38,7 +38,7 @@ func (in *Installer) PrepareUpgrade(ctx context.Context, old caskroom.Cask, c ap
 		case "app":
 			u.oldApps = append(u.oldApps, s.move.target)
 			owned[s.move.target] = true
-		case "binary":
+		case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 			owned[s.move.target] = true
 		}
 	}
@@ -172,7 +172,7 @@ func (in *Installer) reinstall(ctx context.Context, old caskroom.Cask, steps []u
 				continue
 			}
 			errs = errors.Join(errs, in.moveApp(ctx, version, move{source: rel, target: s.move.target}, false, &undo))
-		case "binary":
+		case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 			action, _, err := in.binaryAction(oc, s.move)
 			if err != nil {
 				errs = errors.Join(errs, err)

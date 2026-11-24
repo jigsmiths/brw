@@ -81,25 +81,33 @@ func (g generator) name(token string) string {
 }
 
 func completionPath(shell, name string) string {
+	dir, file := completionName(shell, name)
+	return filepath.Join(dir, file)
+}
+
+func completionName(shell, name string) (dir, file string) {
 	bare := strings.TrimSuffix(name, filepath.Ext(name))
+	if bare == "" {
+		bare = name // a leading dot is not an extension
+	}
 	switch shell {
 	case "bash":
-		return filepath.Join("etc/bash_completion.d", bare)
+		return "etc/bash_completion.d", bare
 	case "zsh":
 		if !strings.HasPrefix(name, "_") {
 			name = "_" + bare
 		}
-		return filepath.Join("share/zsh/site-functions", name)
+		return "share/zsh/site-functions", name
 	case "fish":
 		if !strings.HasSuffix(name, ".fish") {
 			name = bare + ".fish"
 		}
-		return filepath.Join("share/fish/vendor_completions.d", name)
+		return "share/fish/vendor_completions.d", name
 	default:
 		if !strings.HasPrefix(name, "_") || !strings.HasSuffix(name, ".ps1") {
 			name = "_" + bare + ".ps1"
 		}
-		return filepath.Join("share/pwsh/completions", name)
+		return "share/pwsh/completions", name
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,11 +32,33 @@ func Placeholders(w Where) func(string) string {
 }
 
 type move struct {
-	source, target string
+	source, target, kind string
+}
+
+type invalidManpageName string
+
+func (e invalidManpageName) Error() string { return "'" + string(e) + "' is not a valid man page name" }
+
+// joinName is Ruby's Pathname#join: an absolute name replaces the directory.
+func joinName(dir, name string) string {
+	if filepath.IsAbs(name) {
+		return filepath.Clean(name)
+	}
+	return filepath.Join(dir, name)
+}
+
+var manSection = regexp.MustCompile(`\.([1-8]|n|l)(?:\.gz)?$`)
+
+var completionKindShell = map[string]string{"bash_completion": "bash", "zsh_completion": "zsh", "fish_completion": "fish"}
+
+// linkNames covers the artifacts brew symlinks into the prefix, which brw links the same way.
+var linkNames = map[string]string{
+	"binary": "Binary", "manpage": "Manpage",
+	"bash_completion": "Bash Completion", "zsh_completion": "Zsh Completion", "fish_completion": "Fish Completion",
 }
 
 type installPlan struct {
-	apps, binaries        []move
+	apps, links           []move
 	generators            []generator
 	preflight, postflight []json.RawMessage
 	uninstall             []map[string]json.RawMessage
@@ -67,15 +90,18 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 		for kind, args := range obj {
 			args = fill(args)
 			switch kind {
-			case "app", "binary":
+			case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 				m, err := readMove(args, kind, w)
+				if badName, ok := errors.AsType[invalidManpageName](err); ok {
+					return installPlan{}, brewError("Cask '%s' definition is invalid: %s", c.Token, badName)
+				}
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
 				if kind == "app" {
 					p.apps = append(p.apps, m)
 				} else {
-					p.binaries = append(p.binaries, m)
+					p.links = append(p.links, m)
 				}
 			case "uninstall":
 				if bad := unknownDirectives(args); bad != "" {
@@ -107,7 +133,7 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 			p.uninstall = append(p.uninstall, map[string]json.RawMessage{kind: args})
 		}
 	}
-	if len(p.apps) == 0 && len(p.binaries) == 0 {
+	if len(p.apps) == 0 && len(p.links) == 0 {
 		return unsupported("no app or binary")
 	}
 	return p, nil
@@ -189,7 +215,7 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 	if err := json.Unmarshal(args, &list); err != nil || len(list) == 0 {
 		return move{}, fmt.Errorf("unexpected arguments")
 	}
-	var m move
+	m := move{kind: kind}
 	if err := json.Unmarshal(list[0], &m.source); err != nil || m.source == "" {
 		return move{}, fmt.Errorf("unexpected source")
 	}
@@ -203,8 +229,26 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 		}
 	}
 	dir := w.AppDir
-	if kind == "binary" {
+	switch kind {
+	case "binary":
 		dir = filepath.Join(w.Prefix, "bin")
+	case "manpage":
+		section := manSection.FindStringSubmatch(m.source)
+		if section == nil {
+			return move{}, invalidManpageName(m.source)
+		}
+		m.target = joinName(filepath.Join(w.Prefix, "share/man/man"+section[1]), target)
+		return m, nil
+	case "bash_completion", "zsh_completion", "fish_completion":
+		shell := completionKindShell[kind]
+		name := target
+		keepsPath := shell == "zsh" && strings.HasPrefix(name, "_") || shell == "fish" && strings.HasSuffix(name, ".fish")
+		if !keepsPath {
+			name = filepath.Base(name)
+		}
+		sub, file := completionName(shell, name)
+		m.target = joinName(filepath.Join(w.Prefix, sub), file)
+		return m, nil
 	}
 	switch {
 	case target == "~" || strings.HasPrefix(target, "~/"):

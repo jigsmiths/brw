@@ -215,7 +215,7 @@ func TestUninstallDeleteFallsBackToSudo(t *testing.T) {
 func TestUninstallRefusesWhatBrwCannotUndo(t *testing.T) {
 	for _, artifacts := range []string{
 		`[{"uninstall":[{"pkgutil":"com.example.pkg"}]},{"app":["App.app"]}]`,
-		`[{"app":["App.app"]},{"manpage":["App.app/man/app.1"]}]`,
+		`[{"app":["App.app"]},{"suite":["App.app/man"]}]`,
 	} {
 		ti, f := installed(t, `[{"app":["App.app"]}]`)
 		receipt := filepath.Join(ti.prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json")
