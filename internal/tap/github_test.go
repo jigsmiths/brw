@@ -39,6 +39,11 @@ func github(t *testing.T, sha string, asked *atomic.Int32) *httptest.Server {
 	return s
 }
 
+func unchanged(api string, tp Tap) bool {
+	same, _ := Unchanged(context.Background(), http.DefaultClient, api, tp)
+	return same
+}
+
 func TestUnchangedAsksGitHubForTheBranchHead(t *testing.T) {
 	for _, remote := range []string{
 		"https://github.com/jigsmiths/homebrew-tap",
@@ -48,13 +53,13 @@ func TestUnchangedAsksGitHubForTheBranchHead(t *testing.T) {
 	} {
 		tp, head := githubTap(t, remote)
 		var asked atomic.Int32
-		if !Unchanged(context.Background(), http.DefaultClient, github(t, head, &asked).URL, tp) {
+		if !unchanged(github(t, head, &asked).URL, tp) {
 			t.Errorf("%s at GitHub's head: Unchanged = false", remote)
 		}
-		if !Unchanged(context.Background(), http.DefaultClient, github(t, strings.ToUpper(head), &asked).URL, tp) {
+		if !unchanged(github(t, strings.ToUpper(head), &asked).URL, tp) {
 			t.Errorf("%s with GitHub's head in capitals: Unchanged = false", remote)
 		}
-		if Unchanged(context.Background(), http.DefaultClient, github(t, "0123abcd", &asked).URL, tp) {
+		if unchanged(github(t, "0123abcd", &asked).URL, tp) {
 			t.Errorf("%s behind GitHub: Unchanged = true", remote)
 		}
 	}
@@ -69,9 +74,26 @@ func TestUnchangedSendsTheGitHubToken(t *testing.T) {
 		w.WriteHeader(http.StatusNotModified)
 	}))
 	defer s.Close()
-	Unchanged(context.Background(), http.DefaultClient, s.URL, tp)
+	unchanged(s.URL, tp)
 	if got != "Bearer secret" {
 		t.Errorf("Authorization = %q", got)
+	}
+}
+
+func TestUnchangedAsksWithoutARejectedToken(t *testing.T) {
+	t.Setenv("HOMEBREW_GITHUB_API_TOKEN", "expired")
+	tp, _ := githubTap(t, "https://github.com/jigsmiths/homebrew-tap")
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	defer s.Close()
+	same, tokenRejected := Unchanged(context.Background(), http.DefaultClient, s.URL, tp)
+	if !same || !tokenRejected {
+		t.Errorf("Unchanged = %v, %v; want true, true", same, tokenRejected)
 	}
 }
 
@@ -80,21 +102,21 @@ func TestUnchangedIsFalseWhenGitHubCannotSay(t *testing.T) {
 	tp, _ := githubTap(t, "https://github.com/jigsmiths/homebrew-tap")
 	for name, status := range map[string]int{"private": http.StatusNotFound, "rate limited": http.StatusForbidden} {
 		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
-		if Unchanged(context.Background(), http.DefaultClient, s.URL, tp) {
+		if unchanged(s.URL, tp) {
 			t.Errorf("%s: Unchanged = true", name)
 		}
 		s.Close()
 	}
-	if Unchanged(context.Background(), http.DefaultClient, "http://127.0.0.1:1", tp) {
+	if unchanged("http://127.0.0.1:1", tp) {
 		t.Error("offline: Unchanged = true")
 	}
 
 	var asked atomic.Int32
 	elsewhere, head := githubTap(t, "https://gitlab.com/jigsmiths/homebrew-tap")
-	if Unchanged(context.Background(), http.DefaultClient, github(t, head, &asked).URL, elsewhere) || asked.Load() != 0 {
+	if unchanged(github(t, head, &asked).URL, elsewhere) || asked.Load() != 0 {
 		t.Errorf("a tap not on GitHub: asked GitHub %d times", asked.Load())
 	}
-	if Unchanged(context.Background(), http.DefaultClient, "http://127.0.0.1:1", Tap{Name: "u/t", Dir: t.TempDir()}) {
+	if unchanged("http://127.0.0.1:1", Tap{Name: "u/t", Dir: t.TempDir()}) {
 		t.Error("a folder that is no clone: Unchanged = true")
 	}
 }

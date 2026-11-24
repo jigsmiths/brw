@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/tap"
@@ -55,6 +56,7 @@ func (e *env) pullTaps(ctx context.Context, prefix string) ([]string, error) {
 	results := make([]result, len(taps))
 	slots := make(chan struct{}, maxPulls)
 	var wg sync.WaitGroup
+	var tokenRejected atomic.Bool
 	for i, t := range taps {
 		if t.Name == "homebrew/core" {
 			continue // read from the API, as brew does unless told not to
@@ -62,11 +64,14 @@ func (e *env) pullTaps(ctx context.Context, prefix string) ([]string, error) {
 		wg.Go(func() {
 			slots <- struct{}{}
 			defer func() { <-slots }()
-			changed, err := e.pullTap(ctx, t)
+			changed, err := e.pullTap(ctx, t, &tokenRejected)
 			results[i] = result{changed, err}
 		})
 	}
 	wg.Wait()
+	if tokenRejected.Load() {
+		_, _ = fmt.Fprintln(e.err, "brw: warning: GitHub rejected HOMEBREW_GITHUB_API_TOKEN; checking taps without it")
+	}
 	var updated []string
 	for i, r := range results {
 		if r.err != nil {
@@ -82,12 +87,16 @@ func (e *env) pullTaps(ctx context.Context, prefix string) ([]string, error) {
 
 const maxPulls = 8
 
-func (e *env) pullTap(ctx context.Context, t tap.Tap) (bool, error) {
+func (e *env) pullTap(ctx context.Context, t tap.Tap, tokenRejected *atomic.Bool) (bool, error) {
 	if e.pull != nil {
 		return e.pull(ctx, t)
 	}
 	api := cmp.Or(e.githubAPI, tap.GitHubAPI)
-	if tap.Unchanged(ctx, http.DefaultClient, api, t) {
+	unchanged, rejected := tap.Unchanged(ctx, http.DefaultClient, api, t)
+	if rejected {
+		tokenRejected.Store(true)
+	}
+	if unchanged {
 		return false, nil
 	}
 	return tap.Pull(ctx, t)
