@@ -19,7 +19,6 @@ import (
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
-// depSource is what a cask's dependency graph is built from.
 type depSource struct {
 	cask        func(token string) (api.Cask, error)
 	formulaDeps func(name string) ([]string, error)
@@ -31,7 +30,6 @@ type depNode struct {
 	name string
 }
 
-// shortName is what brew prints for a dependency: the token or the formula name, without a tap.
 func (n depNode) shortName() string { return path.Base(n.name) }
 
 // depGraph mirrors brew's TopologicalHash: each package maps to its dependencies, formulae first, in the order first reached.
@@ -84,7 +82,6 @@ func buildGraph(root api.Cask, src depSource) (depGraph, error) {
 	return g, visit(g.root)
 }
 
-// tsort lists the dependencies, each after what it needs, as brew's tsort_with_cycles does, and fails on a cycle.
 func (g depGraph) tsort() ([]depNode, error) {
 	token := g.root.name
 	if slices.Contains(g.children[g.root], g.root) {
@@ -144,8 +141,7 @@ func (g depGraph) tsort() ([]depNode, error) {
 	return slices.DeleteFunc(out, func(n depNode) bool { return n == g.root }), nil
 }
 
-// runtimeDeps lists every dependency of root in the order brew's Cask::Tab does:
-// the dependencies of each package in the order it is first reached.
+// runtimeDeps orders dependencies as brew's Cask::Tab does: each package's dependencies as first reached.
 func runtimeDeps(root api.Cask, src depSource) (cask.RuntimeDependencies, error) {
 	g, err := buildGraph(root, src)
 	if err != nil {
@@ -180,7 +176,6 @@ func runtimeDeps(root api.Cask, src depSource) (cask.RuntimeDependencies, error)
 	return out, nil
 }
 
-// depLoader reads casks and formulae for a dependency graph; with autoTap it clones a tap that a dependency names.
 type depLoader struct {
 	e        *env
 	ctx      context.Context
@@ -278,7 +273,6 @@ func (l *depLoader) source(owner string) depSource {
 	}
 }
 
-// runtimeDepsFor loads the formula index only for a cask that has dependencies.
 func (e *env) runtimeDepsFor(ctx context.Context, prefix, tag string, casks *api.CaskIndex, idx *api.Index) func(api.Cask) (cask.RuntimeDependencies, error) {
 	l := &depLoader{e: e, ctx: ctx, prefix: prefix, tag: tag, casks: casks, idx: idx}
 	return func(c api.Cask) (cask.RuntimeDependencies, error) {
@@ -309,8 +303,7 @@ func installedCaskTokens(prefix string) (map[string]bool, error) {
 	return out, nil
 }
 
-// satisfyDependencies is brew's Cask::Installer#satisfy_cask_and_formula_dependencies:
-// the missing casks go in first, then the formulae, none of them on request.
+// satisfyDependencies installs missing casks, then formulae, as brew does, none on request.
 func (e *env) satisfyDependencies(ctx context.Context, prefix, journal string, parent *cask.Installer, appDir, explicitAppDir, tag string, casks *api.CaskIndex, c api.Cask) error {
 	l := &depLoader{e: e, ctx: ctx, prefix: prefix, tag: tag, casks: casks, autoTap: true}
 	src := l.source(c.Token)
@@ -383,7 +376,6 @@ func installDependencyCask(ctx context.Context, parent *cask.Installer, appDir, 
 	return in.InstallAsDependency(ctx, dep)
 }
 
-// dryRunDependencies lists what brew's `install --dry-run` shows for c: the casks it needs, then the formulae.
 func (e *env) dryRunDependencies(ctx context.Context, prefix, tag string, casks *api.CaskIndex, c api.Cask) ([]string, error) {
 	l := &depLoader{e: e, ctx: ctx, prefix: prefix, tag: tag, casks: casks}
 	g, err := buildGraph(c, l.source(c.Token))

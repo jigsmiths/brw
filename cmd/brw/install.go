@@ -66,7 +66,7 @@ func installCommand(e *env, args []string) error {
 type resolved struct {
 	formulae    []string
 	casks       []api.Cask
-	formulaDeps []string // formulae a cask needs, installed but not on request
+	formulaDeps []string
 	idx         *api.Index
 	client      *api.Client
 	failures    []error
@@ -152,7 +152,6 @@ func (e *env) resolve(ctx context.Context, prefix string, names []string, formul
 	return r, nil
 }
 
-// tapMissing taps what names and their dependencies need; a tapped dependency can name further taps.
 func (e *env) tapMissing(ctx context.Context, prefix string, r *resolved, names []string) (err error) {
 	for missing := untappedTaps(r.idx, prefix, names); len(missing) > 0; missing = untappedTaps(r.idx, prefix, names) {
 		for _, name := range missing {

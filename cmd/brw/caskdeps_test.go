@@ -123,7 +123,6 @@ func (s *store) dependsOn(token string, formula, casks []string) {
 	s.t.Fatalf("no cask %s", token)
 }
 
-// appCask makes every cask move the same App.app, so give each its own target.
 func (s *store) retarget(token string) {
 	s.t.Helper()
 	for _, c := range s.casks {
@@ -178,7 +177,6 @@ func TestInstallCaskBringsItsDependencies(t *testing.T) {
 	if caskOnRequest(t, prefix, "dep") || !caskOnRequest(t, prefix, "app") {
 		t.Error("only the named cask should be on request")
 	}
-	// brew installs the dependency casks, then the formulae, then the cask itself.
 	marks := []string{"==> Installing dependencies: jq, dep\n", "==> Installing Cask dep\n", "==> Pouring jq 1.0\n", "==> Installing Cask app\n"}
 	last := -1
 	for _, m := range marks {

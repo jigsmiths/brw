@@ -56,7 +56,6 @@ func TestInstallRefusesWhenADependencyIsMissing(t *testing.T) {
 	}
 }
 
-// As in brew, the cask is downloaded first, then its dependencies go in, then it is staged.
 func TestInstallSatisfiesDependenciesAfterTheDownloadAndBeforeStaging(t *testing.T) {
 	ti := newTestInstall(t, appTarball)
 	c := ti.caskWithDeps(t, api.CaskDependsOn{Formula: []string{"jq"}})
