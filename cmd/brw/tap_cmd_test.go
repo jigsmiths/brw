@@ -148,8 +148,14 @@ func TestTapCustomRemoteChangesTheRemoteAndFetches(t *testing.T) {
 	if w := stderrOf(e); !strings.Contains(w, "u/t: changed remote from "+origin+" to "+other) {
 		t.Errorf("stderr = %q", w)
 	}
-	want, _ := exec.Command("git", "-C", other, "rev-parse", "HEAD").Output()
-	got, _ := exec.Command("git", "-C", tapDir(prefix, "u/t"), "rev-parse", "refs/remotes/origin/main").Output()
+	revParse := func(dir, ref string) []byte {
+		cmd := exec.Command("git", "-C", dir, "rev-parse", ref)
+		cmd.Env = tap.GitEnv()
+		out, _ := cmd.Output()
+		return out
+	}
+	want := revParse(other, "HEAD")
+	got := revParse(tapDir(prefix, "u/t"), "refs/remotes/origin/main")
 	if len(want) == 0 || string(got) != string(want) {
 		t.Errorf("origin/main = %q, want the new remote's %q", got, want)
 	}
@@ -242,7 +248,6 @@ func TestTapHonoursAllowedAndForbiddenTaps(t *testing.T) {
 	t.Setenv("HOMEBREW_FORBIDDEN_TAPS", "u/t")
 	t.Setenv("HOMEBREW_FORBIDDEN_OWNER", "Acme IT")
 	t.Setenv("HOMEBREW_FORBIDDEN_OWNER_CONTACT", "it@acme.example")
-	// u/t names the default GitHub remote only, so a tap from elsewhere is not forbidden by it
 	if _, err = runCmd(t, e, "tap", "-prefix", prefix, "u/t", origin); err != nil {
 		t.Errorf("a tap on a custom remote matched a name reference: %v", err)
 	}

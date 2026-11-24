@@ -155,7 +155,6 @@ func Clone(ctx context.Context, prefix, name, remote string) (Tap, error) {
 	return t, err
 }
 
-// Remove deletes the tap and its user folder once that is empty.
 func Remove(root *fsx.Root, t Tap) error {
 	if err := root.RemoveAll(t.Dir); err != nil {
 		return err

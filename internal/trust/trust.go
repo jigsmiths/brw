@@ -100,7 +100,6 @@ func normalizeRemote(remote string) string {
 	return strings.TrimSuffix(strings.TrimRight(remote, "/"), ".git")
 }
 
-// SameRemote says whether two remotes name one repository.
 func SameRemote(a, b string) bool { return normalizeRemote(a) == normalizeRemote(b) }
 
 func defaultRemote(name string) string {

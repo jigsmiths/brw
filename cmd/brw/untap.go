@@ -83,7 +83,6 @@ type untapper struct {
 	dryRun bool
 }
 
-// tapPackages is what is installed from a tap: formula racks and casks, with their full names.
 type tapPackages struct {
 	formulae []string
 	casks    []caskroom.Cask
@@ -204,7 +203,6 @@ func (u untapper) removeTap(t tap.Tap) error {
 	return nil
 }
 
-// installedFrom finds what is installed from the tap: kegs by receipt and casks by Caskroom receipt.
 func installedFrom(e *env, prefix, tapName string) (tapPackages, error) {
 	var in tapPackages
 	kegs, err := e.kegs(prefix)
@@ -239,7 +237,6 @@ type trustEntry struct {
 	name string
 }
 
-// trustEntries are the tap's own entry and those of its formulae and casks, by its remote and by its name.
 func trustEntries(store *trust.Store, name, remote string) []trustEntry {
 	ref := trust.Reference(name, remote)
 	var out []trustEntry

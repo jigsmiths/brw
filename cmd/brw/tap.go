@@ -114,7 +114,6 @@ func listTaps(e *env, prefix string) error {
 	return err
 }
 
-// fetchTap is what brew does for a tapped repository that is shallow or whose remote is changing.
 func fetchTap(ctx context.Context, e *env, t tap.Tap, requested string, dryRun bool) error {
 	current, shallow := t.Remote(), tap.Shallow(ctx, t)
 	if dryRun {
@@ -196,7 +195,6 @@ func withChangeRoot(e *env, prefix, journal string, dryRun bool, fn func(*fsx.Ro
 	return fn(root)
 }
 
-// ask is brew's Ask.confirm?: it declines unless a person can answer.
 func (e *env) ask(action string) bool {
 	if e.confirm != nil {
 		return e.confirm(action)

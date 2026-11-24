@@ -37,7 +37,6 @@ var (
 	remoteLike         = regexp.MustCompile(`^[^/]+:.`)
 )
 
-// deprecatedOfficial are the official taps brew has emptied.
 var deprecatedOfficial = []string{
 	"aliases", "apache", "binary", "bundle", "cask-drivers", "cask-eid", "cask-fonts", "cask-versions",
 	"command-not-found", "completions", "devel-only", "dupes", "emacs", "formula-analytics", "fuse", "games",
@@ -45,7 +44,6 @@ var deprecatedOfficial = []string{
 	"services", "test-bot", "tex", "versions", "x11",
 }
 
-// ParseName reads a tap name as brew does: user/repo, with a leading homebrew- or linuxbrew- dropped from the repo.
 func ParseName(arg string) (string, error) {
 	user, repo, _ := strings.Cut(arg, "/")
 	invalid := func(part string) bool {
@@ -62,7 +60,6 @@ func ParseName(arg string) (string, error) {
 	return user + "/" + repo, nil
 }
 
-// DefaultRemote is where brew clones the tap from.
 func DefaultRemote(name string) string {
 	user, repo, _ := strings.Cut(name, "/")
 	if user == "homebrew" || user == "linuxbrew" {
@@ -73,7 +70,6 @@ func DefaultRemote(name string) string {
 
 func official(name string) bool { return strings.HasPrefix(name, "homebrew/") }
 
-// CheckClonable refuses the taps brew says are gone or moved.
 func CheckClonable(name string) error {
 	user, repo, _ := strings.Cut(name, "/")
 	switch {
@@ -89,7 +85,6 @@ func CheckClonable(name string) error {
 	return nil
 }
 
-// CheckEnv applies HOMEBREW_ALLOWED_TAPS and HOMEBREW_FORBIDDEN_TAPS to a tap and its remote, warning on stderr about invalid entries.
 func CheckEnv(name, remote string, warn io.Writer) error {
 	allowed, forbidden := references(allowedTaps, warn), references(forbiddenTaps, warn)
 	implicit := official(name) && (remote == "" || trust.SameRemote(remote, DefaultRemote(name)))
@@ -149,7 +144,6 @@ func matches(name, ref, remote string) bool {
 	return !custom && name == strings.ToLower(ref)
 }
 
-// CheckGit says plainly when git is missing, since tapping runs it.
 func CheckGit() error {
 	if _, err := exec.LookPath("git"); err != nil {
 		return errors.New("git is required to tap, and unlike brew, brw does not install it")
@@ -162,7 +156,6 @@ func Shallow(ctx context.Context, t Tap) bool {
 	return err == nil && out == "true"
 }
 
-// Fetch updates a tap that is already cloned, making a shallow one whole.
 func Fetch(ctx context.Context, t Tap) error {
 	_, _ = run(ctx, t.Dir, "config", "--local", "--unset", "homebrew.forceautoupdate")
 	args := []string{"fetch"}
@@ -173,7 +166,6 @@ func Fetch(ctx context.Context, t Tap) error {
 	return err
 }
 
-// FixRemote points origin at requested and refetches, following the tap's default branch if it was renamed, as brew's fix_remote_configuration does.
 func FixRemote(ctx context.Context, t Tap, requested string, log io.Writer) error {
 	previous := t.Remote()
 	if _, err := run(ctx, t.Dir, "remote", "set-url", "origin", "--end-of-options", requested); err != nil {
@@ -218,7 +210,6 @@ func originBranch(ctx context.Context, t Tap) string {
 	return strings.TrimPrefix(ref, "refs/remotes/origin/")
 }
 
-// Contents counts what the tap provides, as brew says it when tapping and untapping.
 func (t Tap) Contents() []string {
 	var out []string
 	count := func(n int, one, many string) {
@@ -251,7 +242,6 @@ func completionDirs(prefix string, t Tap) []linkDirs {
 	}
 }
 
-// LinkManpages links the tap's man pages into the prefix, and its shell completions too when it is an official checkout, as brew does.
 func LinkManpages(root *fsx.Root, prefix string, t Tap, warn io.Writer) error {
 	dirs := manpageDirs(prefix, t)
 	if official(t.Name) && trust.SameRemote(t.Remote(), DefaultRemote(t.Name)) {
@@ -264,7 +254,6 @@ func LinkManpages(root *fsx.Root, prefix string, t Tap, warn io.Writer) error {
 	return errors.Join(errs...)
 }
 
-// UnlinkManpages removes the links the tap's man pages and completions made.
 func UnlinkManpages(root *fsx.Root, prefix string, t Tap) error {
 	var errs []error
 	for _, d := range append(manpageDirs(prefix, t), completionDirs(prefix, t)...) {
@@ -358,7 +347,6 @@ func unlinkAll(root *fsx.Root, d linkDirs) error {
 	return nil
 }
 
-// CacheDir is where brew keeps its caches.
 func CacheDir() string {
 	if d := os.Getenv("HOMEBREW_CACHE"); d != "" {
 		return d
@@ -373,10 +361,8 @@ func CacheDir() string {
 	return filepath.Join(home, ".cache/Homebrew")
 }
 
-// DescriptionCaches are brew's caches of formula and cask descriptions, keyed by full name.
 var DescriptionCaches = []string{"descriptions.json", "cask_descriptions.json"}
 
-// ForgetDescriptions drops the tap's entries from brew's description caches, as brew does when untapping.
 func ForgetDescriptions(cacheDir string, t Tap) error {
 	var errs []error
 	for _, name := range DescriptionCaches {
