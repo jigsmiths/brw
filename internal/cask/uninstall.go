@@ -89,10 +89,16 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 }
 
 func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []uninstallStep, force bool) error {
+	var apps []string
+	for _, s := range steps {
+		if s.kind == "app" {
+			apps = append(apps, s.move.target)
+		}
+	}
 	for _, s := range steps {
 		switch s.kind {
 		case "uninstall":
-			if err := in.runDirectives(ctx, s.directives); err != nil {
+			if err := in.runDirectives(ctx, s.directives, apps); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		case "app":
@@ -233,12 +239,15 @@ func readDirectives(args json.RawMessage) (map[string][]string, error) {
 	return out, nil
 }
 
-func (in *Installer) runDirectives(ctx context.Context, d map[string][]string) error {
+func (in *Installer) runDirectives(ctx context.Context, d map[string][]string, apps []string) error {
 	if s := d["launchctl"]; len(s) > 0 {
 		in.launchctl(ctx, s)
 	}
 	if s := d["quit"]; len(s) > 0 {
 		in.quit(ctx, s)
+	}
+	if s := d["login_item"]; len(s) > 0 {
+		in.loginItems(ctx, apps, s)
 	}
 	if s := d["delete"]; len(s) > 0 {
 		if err := in.deletePaths(ctx, s); err != nil {
@@ -392,6 +401,27 @@ func (in *Installer) quit(ctx context.Context, ids []string) {
 		if !quit {
 			in.warnf("Application '%s' did not quit. %s", id, automationAccess)
 		}
+	}
+}
+
+func (in *Installer) loginItems(ctx context.Context, apps, names []string) {
+	if in.upgrading {
+		return
+	}
+	remove := func(property, id string) {
+		in.logf("==> Removing login item %s", id)
+		quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(id)
+		script := `tell application "System Events" to delete every login item whose ` + property + ` is "` + quoted + `"`
+		if _, err := in.exec(ctx, "osascript", "-e", script); err != nil {
+			in.warnf("Removal of login item %s failed. %s", id, automationAccess)
+		}
+		in.sleep(time.Second)
+	}
+	for _, a := range apps {
+		remove("path", a)
+	}
+	for _, n := range names {
+		remove("name", n)
 	}
 }
 
