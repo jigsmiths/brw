@@ -287,6 +287,35 @@ func TestUpdateSkipsATapGitHubSaysIsCurrent(t *testing.T) {
 	}
 }
 
+func TestUpdateWarnsOnceAboutARejectedGitHubToken(t *testing.T) {
+	t.Setenv("HOMEBREW_GITHUB_API_TOKEN", "expired")
+	e, prefix, origin, _ := tapStore(t)
+	for _, name := range []string{"jigsmiths/tap", "jigsmiths/other"} {
+		if _, err := tap.Clone(t.Context(), prefix, name, origin); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, tap.Dir(prefix, name), "remote", "set-url", "origin", "https://github.com/jigsmiths/homebrew-tap")
+	}
+	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNotModified)
+	}))
+	defer github.Close()
+	e.githubAPI = github.URL
+	e.err = &bytes.Buffer{}
+
+	if _, err := runCmd(t, e, "update", "-prefix", prefix); err != nil {
+		t.Fatal(err)
+	}
+	want := "brw: warning: GitHub rejected HOMEBREW_GITHUB_API_TOKEN; checking taps without it\n"
+	if w := e.err.(*bytes.Buffer).String(); w != want {
+		t.Errorf("stderr = %q, want %q", w, want)
+	}
+}
+
 func TestUpgradeListsUntrustedTapsItSkips(t *testing.T) {
 	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
 	e, prefix, origin, app := tapStore(t)
