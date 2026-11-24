@@ -720,3 +720,15 @@ func TestMain(m *testing.M) {
 	_ = os.Unsetenv("HOMEBREW_GITHUB_ACTIONS")
 	os.Exit(m.Run())
 }
+
+func TestCaskStepsExpandAppdirInArguments(t *testing.T) {
+	f := newFixture(t)
+	apps := t.TempDir()
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log,
+		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0"), AppDir: apps}
+	f.write("Caskroom/tool/2.0/tool", "#!/bin/sh\nprintf '%s' \"$1\" > \"$2/out\"\n", 0o755)
+	f.mustRun(`[{"type":"run","command":{"path":"{{staged_path}}/tool"},"args":["{{appdir}}/Tool.app","{{caskroom_path}}"]}]`)
+	if got := f.read("Caskroom/tool/out"); got != apps+"/Tool.app" {
+		t.Errorf("{{appdir}} = %q, want %q", got, apps+"/Tool.app")
+	}
+}

@@ -33,6 +33,7 @@ type Context struct {
 	Token  string
 	Staged string // absolute
 	Arch   string // arm or intel
+	AppDir string
 }
 
 func (c Context) cask() bool { return c.Token != "" }
@@ -229,6 +230,8 @@ func (r *runner) token(name string) (string, bool) {
 			return c.Token, true
 		case "arch":
 			return c.Arch, true
+		case "appdir":
+			return c.AppDir, c.AppDir != ""
 		case "staged_path", "caskroom_path":
 			p, err := r.base(name, "")
 			return p, err == nil
