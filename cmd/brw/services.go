@@ -42,9 +42,7 @@ type serviceTarget struct {
 	hasService bool
 	source     string
 
-	// explicit is the plist name a formula's service block sets; brew then uses no other.
-	explicit string
-	// generated is the plist rendered from the formula's service block, which brew installs in place of the keg file.
+	explicit  string
 	generated []byte
 }
 
@@ -459,7 +457,6 @@ func (e *env) startService(t serviceTarget, journal string) error {
 	return nil
 }
 
-// runService loads the keg's own plist without registering it, like brew services run.
 func (e *env) runService(t serviceTarget) error {
 	s, err := e.snapshot(t)
 	if err != nil {
@@ -661,7 +658,6 @@ func (e *env) bootoutAll(label string) error {
 	return nil
 }
 
-// bootout returns launchctl's exit status; only a failure to run it is an error.
 func (e *env) bootout(domain, label string) (int, error) {
 	err := e.launchctl.Bootout(domain, label)
 	if err == nil {

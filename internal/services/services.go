@@ -56,7 +56,6 @@ func Names(formula string) []string {
 
 func Domain(uid int) string { return "gui/" + strconv.Itoa(uid) }
 
-// Domains are the launchd domains brew probes for a user, in order.
 func Domains(uid int) []string {
 	return []string{Domain(uid), "user/" + strconv.Itoa(uid)}
 }
@@ -206,7 +205,6 @@ type State struct {
 	Info   Info
 }
 
-// Classify is brew's FormulaWrapper#to_hash status, in its order.
 func Classify(s State) string {
 	switch {
 	case s.Info.Running():

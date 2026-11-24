@@ -21,10 +21,10 @@ const (
 
 type fakeLaunchctl struct {
 	calls     []string
-	loaded    map[string]string // label -> print output
-	stubborn  int               // bootouts that leave the service loaded
+	loaded    map[string]string
+	stubborn  int
 	bootouts  int
-	bootoutOK bool // bootout of a service that is not loaded succeeds
+	bootoutOK bool
 }
 
 func (f *fakeLaunchctl) Print(domain, label string) (string, error) {

@@ -216,7 +216,7 @@ func TestFormatJSONMatchesBrew(t *testing.T) {
 type probeLaunchctl struct {
 	Launchctl
 	calls    []string
-	printOut map[string]string // domain -> output
+	printOut map[string]string
 	listOut  string
 }
 

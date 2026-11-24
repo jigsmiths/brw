@@ -107,7 +107,6 @@ func newEnv(host platform.Host) *env {
 	return e
 }
 
-// userConfigHome is brew's HOMEBREW_USER_CONFIG_HOME.
 func userConfigHome() string {
 	for _, v := range []string{"XDG_CONFIG_HOME", "HOMEBREW_XDG_CONFIG_HOME"} {
 		if dir := os.Getenv(v); dir != "" {
