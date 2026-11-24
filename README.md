@@ -2,9 +2,14 @@
 
 [![ci](https://github.com/jigsmiths/brw/actions/workflows/ci.yml/badge.svg)](https://github.com/jigsmiths/brw/actions/workflows/ci.yml)
 
-A Go, Homebrew-compatible package client. It reads Homebrew's metadata and bottles and shares a prefix with `brew`.
+brw is a Homebrew-compatible package client written in Go. It shares a prefix with `brew`, so you can switch between them for everyday installs and upgrades.
 
-**Status:** early. Queries, install, upgrade, reinstall, uninstall, link, unlink and cleanup work for bottled formulae, and for tap formulae with or without bottles. For casks, the queries work and brw installs, upgrades and uninstalls casks whose artifacts are apps and binaries.
+- Install, upgrade and uninstall formulae and casks.
+- Tap formulae install from a bottle, or build from source on macOS like brew.
+- Reads tap files with its own Ruby evaluator, so it needs no Ruby.
+- Uses brew's tap trust store.
+
+brw is early. Casks work when their artifacts are apps and binaries.
 
 ## Install
 
@@ -12,76 +17,24 @@ A Go, Homebrew-compatible package client. It reads Homebrew's metadata and bottl
 brew install --cask jigsmiths/tap/brw
 ```
 
-## Usage
-
-The commands below run from a checkout and need [just](https://github.com/casey/just) and Go.
+Then use it like brew:
 
 ```sh
-just build                       # build bin/brw
-just run list                    # installed formulae and casks (--formula, --cask, --versions)
-just run search jq               # also: search --desc "json processor", search '/^lib/', --cask, --formula
-just run info jq                 # also: info --json jq, info --cask slack
-just run deps git --tree         # also: --1, --installed
-just run uses --installed pcre2
-just run leaves                  # not needed by anything else; -r on request, -p as dependency
-just run outdated                # also: --cask, --formula, --greedy, --json, --quiet
-just run update                  # refresh the formula and cask listings and pull the taps
-just install                     # put brw on your PATH (GOBIN)
+brw install jq
+brw upgrade
 ```
 
-Commands that change the prefix take `--dry-run` (`-n`) to show what they would do.
+Run `brw help` to see every command. Commands that change the prefix take `--dry-run`.
+
+## Build from source
+
+You need Go and [just](https://github.com/casey/just).
 
 ```sh
-just run install jq              # bottle and its dependencies
-just run install --cask slack    # app and binary casks; also --appdir, --adopt; formulae and casks can be mixed
-just run install jigsmiths/tap/brw  # a tap's cask or formula by full name, tapping it first if needed
-just run upgrade                 # all outdated formulae and casks, or name some
-just run reinstall jq
-just run uninstall jq            # also: --cask, --force, --ignore-dependencies
-just run autoremove              # drop dependencies nothing needs
-just run link jq                 # also: unlink; link --force, --overwrite
-just run cleanup                 # also: --prune=30, --scrub, --prune-prefix
+just setup     # once: use the repo's git hooks
+just check     # what CI runs: format, lint, tests
+just run ARGS  # run brw from the checkout
 ```
-
-Update brw itself with `brw update && brw upgrade brw`, or `brew upgrade --cask brw`. Each release signs `checksums.txt` with Sigstore. To check a release by hand:
-
-```sh
-cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
-  --certificate-identity https://github.com/jigsmiths/brw/.github/workflows/release.yml@refs/heads/main \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
-```
-
-Commands take `--prefix` and default to Homebrew's prefix for this machine.
-
-### Taps
-
-brw reads a tap's cask and formula files with its own Ruby evaluator, so it needs no Ruby. Simple `preflight` and `postflight` blocks become cask install steps. brw refuses a file with Ruby it can't translate.
-
-A tap formula installs from its bottle when it has one for this machine. On macOS, one without a bottle is built from its download as brew does: in `HOMEBREW_TEMP`, with brew's build environment, resources, patches and build dependencies. Its `post_install` runs, and its service files are written into the keg. `install --HEAD` builds a tap formula from its head repository into a `HEAD-<commit>` keg.
-
-Like brew, brw only loads casks and formulae from taps you trust, and shares brew's trust store (`$XDG_CONFIG_HOME/homebrew/trust.json`, else `~/.homebrew/trust.json`).
-
-- `brw trust jigsmiths/tap` trusts a tap.
-- `brw trust jigsmiths/tap/brw` trusts one cask or formula. Pass `--cask` or `--formula` when the tap has both.
-- `brw untrust` removes a trusted tap, cask or formula.
-- `brw trust` lists what's trusted.
-
-Installing by full name trusts that cask or formula. `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` turns the check off.
-
-## Development
-
-```sh
-just setup          # once: use the repo's git hooks
-just check          # what CI and the pre-commit hook run: gofmt, go fix, lint, tests
-just test
-just lint
-just fmt
-just conformance    # compare the read-only commands with brew (slow)
-just conformance-install      # also: -uninstall, -upgrade, -cask-install, -tap, -full
-just clean
-```
-
-Writes to a prefix go through `internal/fsx`. Tests use temp prefixes only. The conformance tests need a brew checkout at `~/.brw-oracle/hb`. `BRW_FORMULA_GOLDEN` points `TestConformanceTapFormulae` at brew's hashes of tap formulae. `BRW_FORMULA_PREFIX` points it at a prefix that has those taps.
 
 ## License
 
