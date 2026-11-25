@@ -17,7 +17,6 @@ import (
 
 const rootServiceGroup = "admin"
 
-// domain is brew's System.domain_target: chosen on first use, then kept for the run.
 func (e *env) domain() (string, error) {
 	if !e.targetKnown {
 		e.target, e.targetErr = e.chooseDomain()

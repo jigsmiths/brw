@@ -15,8 +15,7 @@ import (
 
 const userNameKeyName = "UserName"
 
-// ApplyUserName sets UserName the way brew's --sudo-service-user does: it parses the plist
-// and writes it back as the Ruby plist gem's to_plist.
+// ApplyUserName sets UserName and re-serializes the plist as the Ruby plist gem's to_plist does.
 func ApplyUserName(plist []byte, user string) ([]byte, error) {
 	root, err := parsePlist(string(plist))
 	if err != nil {
@@ -270,7 +269,6 @@ func emitScalar(b *strings.Builder, pad, tag, text string) {
 	b.WriteString(pad + "<" + tag + ">" + text + "</" + tag + ">\n")
 }
 
-// rubyFloat is Float#to_s.
 func rubyFloat(f float64) string {
 	switch {
 	case f != f:
