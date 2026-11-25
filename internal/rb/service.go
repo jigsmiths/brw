@@ -219,22 +219,9 @@ func cronFields(spec string) [][2]string {
 	fields := strings.Fields(parseCron(spec))
 	var out [][2]string
 	for i, k := range []string{"Minute", "Hour", "Day", "Month", "Weekday"} {
-		v := fields[i]
-		if v != "*" {
-			v = strconv.Itoa(rubyToI(v))
-		}
-		out = append(out, [2]string{k, v})
+		out = append(out, [2]string{k, fields[i]})
 	}
 	return out
-}
-
-func rubyToI(s string) int {
-	end := 0
-	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
-		end++
-	}
-	n, _ := strconv.Atoi(s[:end])
-	return n
 }
 
 var socketRx = regexp.MustCompile(`(?i)^([a-z]+)://(.+):([0-9]+)$`)

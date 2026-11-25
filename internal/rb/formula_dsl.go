@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -419,10 +420,18 @@ func parseCron(s string) string {
 	default:
 		parts := strings.Fields(s)
 		if len(parts) != 5 {
-			fail("cron %q", s)
+			fail("Service#parse_cron expects a valid cron syntax")
 		}
 		for i, k := range []string{"Minute", "Hour", "Day", "Month", "Weekday"} {
 			f[k] = parts[i]
+			if parts[i] == "*" {
+				continue
+			}
+			n, ok := rubyInteger(parts[i])
+			if !ok {
+				fail("invalid value for Integer(): %q", parts[i])
+			}
+			f[k] = strconv.Itoa(n)
 		}
 	}
 	return f["Minute"] + " " + f["Hour"] + " " + f["Day"] + " " + f["Month"] + " " + f["Weekday"]

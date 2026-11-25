@@ -150,6 +150,35 @@ func TestServiceDetailsRequiresRootAndName(t *testing.T) {
 	}
 }
 
+func TestServiceCronFieldsFollowRubysInteger(t *testing.T) {
+	d := serviceDetails(t, "  service do\n    run [\"x\"]\n    run_type :cron\n    cron \"0x1f 017 1_0 0b11 +5\"\n  end\n")
+	want := [][2]string{{"Month", "3"}, {"Day", "10"}, {"Weekday", "5"}, {"Hour", "15"}, {"Minute", "31"}}
+	if !reflect.DeepEqual(d.Cron, want) {
+		t.Errorf("cron = %v, want %v", d.Cron, want)
+	}
+}
+
+func TestServiceCronErrorsAreBrews(t *testing.T) {
+	withHome(t)
+	for cron, want := range map[string]string{
+		"5 4 * * x":    `invalid value for Integer(): "x"`,
+		"08 * * * *":   `invalid value for Integer(): "08"`,
+		"1__0 * * * *": `invalid value for Integer(): "1__0"`,
+		"1 2 3 4":      "Service#parse_cron expects a valid cron syntax",
+		"@reboot":      "Service#parse_cron expects a valid cron syntax",
+	} {
+		src := "class Tool < Formula\n  url \"https://example.com/tool-1.0.tar.gz\"\n  sha256 \"aa\"\n\n  service do\n" +
+			"    run [\"x\"]\n    run_type :cron\n    cron \"" + cron + "\"\n  end\nend\n"
+		f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+		if err == nil {
+			_, err = f.ServiceDetails("/opt/homebrew")
+		}
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want %q", cron, err, want)
+		}
+	}
+}
+
 func TestServiceDetailsWithoutABlock(t *testing.T) {
 	if d := serviceDetails(t, ""); d.Defined || len(d.Command) != 0 {
 		t.Errorf("details = %+v", d)
