@@ -37,7 +37,6 @@ func (in *Installer) sameApp(ctx context.Context, source, target string) (bool, 
 	return true, nil
 }
 
-// bundleVersion is BundleVersion.from_info_plist; a plutil that fails raises, as system_command! does.
 func (in *Installer) bundleVersion(ctx context.Context, plist string) (short, version string, ok bool, err error) {
 	if fi, err := os.Stat(plist); err != nil || fi.Size() == 0 {
 		return "", "", false, nil

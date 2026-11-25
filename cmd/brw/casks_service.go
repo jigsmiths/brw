@@ -8,7 +8,6 @@ import (
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
-// rootLaunchctl probes launchd as root, as launchctl_run does with sudo: true.
 type rootLaunchctl struct {
 	services.Launchctl
 	run sudo.Runner
@@ -40,7 +39,6 @@ func (e *env) runner() sudo.Runner {
 	return sudo.Exec
 }
 
-// findService is Homebrew::Services::System.launchctl_find_service.
 func (e *env) findService(_ context.Context, label string, privilege sudo.Privilege) (bool, error) {
 	domains, err := e.domains()
 	if err != nil {

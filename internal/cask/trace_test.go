@@ -11,8 +11,6 @@ import (
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
-// brew echoes the commands it runs through SystemCommand, but not the ones it reads with popen_read,
-// FFI or Kernel#system, so each helper is pinned to the way brew runs it.
 func TestOnlyBrewsSystemCommandsEchoUnderVerboseAndDebug(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range []struct {

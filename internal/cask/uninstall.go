@@ -36,7 +36,6 @@ func execCommand(ctx context.Context, name string, args ...string) ([]byte, erro
 	return out, nil
 }
 
-// system runs a command as brew's SystemCommand does, which echoes it under --verbose --debug.
 func (in *Installer) system(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if in.debug() && (in.Verbose || sudo.EnvTrue("HOMEBREW_VERBOSE")) && in.Warn != nil {
 		_, _ = fmt.Fprintln(in.Warn, sudo.Redact(sudo.ShellJoin(append([]string{"/usr/bin/env", name}, args...)), sudo.SensitiveValues()))
@@ -516,7 +515,6 @@ func (in *Installer) resolvePaths(action string, paths []string, each func(path 
 	}
 }
 
-// trashScript is Foundation.trash_paths: one NSFileManager.trashItemAtURL call per path, printing 1 or 0 for each.
 const trashScript = `'use strict';
 ObjC.import('Foundation')
 function run(argv) {

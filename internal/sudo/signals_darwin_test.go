@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// rubySignals is Signal.list from macOS's Ruby 2.6 and brew's portable Ruby 4.0.10, which agree.
 var rubySignals = map[string]syscall.Signal{
 	"EXIT": 0, "HUP": 1, "INT": 2, "QUIT": 3, "ILL": 4, "TRAP": 5, "ABRT": 6, "IOT": 6, "EMT": 7, "FPE": 8, "KILL": 9,
 	"BUS": 10, "SEGV": 11, "SYS": 12, "PIPE": 13, "ALRM": 14, "TERM": 15, "URG": 16, "STOP": 17, "TSTP": 18, "CONT": 19,

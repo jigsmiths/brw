@@ -28,24 +28,23 @@ type Config struct {
 }
 
 type Installer struct {
-	Root    *fsx.Root
-	Apps    *fsx.Root
-	Where   Where
-	Host    platform.Host
-	Fetcher *Fetcher
-	Log     io.Writer
-	Warn    io.Writer
-	Now     func() time.Time
-	Sleep   func(time.Duration)
-	Version string
-	APIPath string
-	Config  Config
-	Exec    Exec
-	Run     sudo.Runner
-	Kill    func(pid int, sig syscall.Signal) error
-	Verbose bool
-	Debug   bool
-	// FindService is Homebrew::Services::System.launchctl_find_service for the uninstall launchctl directive.
+	Root        *fsx.Root
+	Apps        *fsx.Root
+	Where       Where
+	Host        platform.Host
+	Fetcher     *Fetcher
+	Log         io.Writer
+	Warn        io.Writer
+	Now         func() time.Time
+	Sleep       func(time.Duration)
+	Version     string
+	APIPath     string
+	Config      Config
+	Exec        Exec
+	Run         sudo.Runner
+	Kill        func(pid int, sig syscall.Signal) error
+	Verbose     bool
+	Debug       bool
 	FindService func(ctx context.Context, label string, privilege sudo.Privilege) (bool, error)
 	Adopt       bool
 	// RuntimeDeps lists what the receipt records; nil records none.

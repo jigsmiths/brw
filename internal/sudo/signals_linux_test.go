@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// rubySignals is Signal.list from ruby:3.4 on linux/amd64 and linux/arm64, which agree.
 var rubySignals = map[string]syscall.Signal{
 	"EXIT": 0, "HUP": 1, "INT": 2, "QUIT": 3, "ILL": 4, "TRAP": 5, "ABRT": 6, "IOT": 6, "BUS": 7, "FPE": 8, "KILL": 9,
 	"USR1": 10, "SEGV": 11, "USR2": 12, "PIPE": 13, "ALRM": 14, "TERM": 15, "CHLD": 17, "CLD": 17, "CONT": 18, "STOP": 19,
