@@ -274,6 +274,30 @@ func TestPlanKeepsAVersionedFormulaKegOnlyWhenTheBaseIsKegOnlyOrItIsOnlyNeeded(t
 	}
 }
 
+func TestPlanTreatsNamesNeededByACaskAsDependencies(t *testing.T) {
+	idx := index(t, versionedKegOnly("icu4c@77"), f("lib"), f("app", "lib"))
+	p := planner(t, mac, idx)
+	p.Kegs = []cellar.Keg{keg("lib", "0.9")}
+	p.AsDependency = []string{"icu4c@77", "lib"}
+	plan, err := p.Plan([]string{"icu4c@77", "lib", "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Item{}
+	for _, it := range plan.Items {
+		byName[it.Formula.Name] = it
+	}
+	if it := byName["icu4c@77"]; it.OnRequest || !it.KegOnly {
+		t.Errorf("icu4c@77 = %+v: not on request, so it stays keg-only", it)
+	}
+	if !byName["app"].OnRequest {
+		t.Error("a named formula is on request")
+	}
+	if len(plan.AlreadyInstalled) != 0 {
+		t.Errorf("AlreadyInstalled = %v, want no mention of an installed dependency", plan.AlreadyInstalled)
+	}
+}
+
 func TestPlanSkipsWhatIsInstalled(t *testing.T) {
 	idx := index(t, f("app", "lib"), f("lib", "base"), f("base"))
 	p := planner(t, mac, idx)

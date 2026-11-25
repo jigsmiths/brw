@@ -78,6 +78,8 @@ type Planner struct {
 	Now       time.Time // zero means now
 
 	HeadNames []string
+	// AsDependency names formulae that something else, such as a cask, needs: planned as if reached through a dependency.
+	AsDependency []string
 
 	upgrading map[string]bool // count as not installed
 }
@@ -112,7 +114,7 @@ func (p *Planner) Plan(names []string) (*Plan, error) {
 			r.Override(f)
 			w.heads = append(w.heads, f.Name)
 		}
-		if err := w.visit(f, true); err != nil {
+		if err := w.visit(f, !slices.Contains(p.AsDependency, name)); err != nil {
 			return nil, err
 		}
 	}

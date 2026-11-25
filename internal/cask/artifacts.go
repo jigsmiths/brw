@@ -73,9 +73,6 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 	if len(c.Rename) > 0 {
 		return unsupported("rename")
 	}
-	if len(c.DependsOn.Formula) > 0 || len(c.DependsOn.Cask) > 0 {
-		return unsupported("dependencies")
-	}
 	fill := jsonFiller(Placeholders(w))
 	for _, raw := range c.Artifacts {
 		var obj map[string]json.RawMessage
