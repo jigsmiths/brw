@@ -302,6 +302,7 @@ func fakePkgutil(pkgs map[string]bomPkg, matches string) func(sudo.Command) (str
 }
 
 func TestUninstallPkgutil(t *testing.T) {
+	t.Setenv("HOMEBREW_LIBRARY", "")
 	ti, _ := installed(t, `[{"app":["App.app"]}]`)
 	receipt := filepath.Join(ti.prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json")
 	if err := os.WriteFile(receipt, []byte(`{"uninstall_artifacts":[{"uninstall":[{"pkgutil":["com.example.*"]}]}]}`), 0o644); err != nil {
@@ -371,6 +372,52 @@ func TestUninstallPkgutil(t *testing.T) {
 	wantOut := "==> Uninstalling packages with `sudo` (which may request your password)...\ncom.example.a\ncom.example.b\n"
 	if !strings.Contains(ti.out.String(), wantOut) {
 		t.Errorf("out = %q, want it to contain %q", ti.out.String(), wantOut)
+	}
+}
+
+func TestUninstallPkgutilRunsBrewsRmdirScriptWhenItIsThere(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		library bool
+	}{{"brews copy", true}, {"embedded copy", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOMEBREW_LIBRARY", "")
+			ti, _ := installed(t, `[{"app":["App.app"]}]`)
+			receipt := filepath.Join(ti.prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json")
+			if err := os.WriteFile(receipt, []byte(`{"uninstall_artifacts":[{"uninstall":[{"pkgutil":"com.example.a"}]}]}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			script := filepath.Join(ti.prefix, "Library/Homebrew/cask/utils/rmdir.sh")
+			if tc.library {
+				if err := os.MkdirAll(filepath.Dir(script), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(script, []byte("#!/bin/bash\n"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			volume := t.TempDir()
+			f := &fakeRun{handle: fakePkgutil(map[string]bomPkg{
+				"com.example.a": {plist: pkgInfoPlist(volume, "opt/x")},
+			}, "com.example.a\n")}
+			ti.in.Run = f.run
+			if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"-0", "--", "/bin/bash", "-c", rmdirScript, "rmdir.sh"}
+			if tc.library {
+				want = []string{"-0", "--", script}
+			}
+			var got []string
+			for _, c := range f.sudoCalls() {
+				if c.Exe == "/usr/bin/xargs" {
+					got = c.Args
+				}
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("xargs args = %q, want %q", got, want)
+			}
+		})
 	}
 }
 

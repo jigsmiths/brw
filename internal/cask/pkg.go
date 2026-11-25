@@ -183,6 +183,21 @@ func withChoicesFile(choices json.RawMessage, fn func(path string) error) error 
 //go:embed rmdir.sh
 var rmdirScript string
 
+// rmdirArgs runs brew's own rmdir.sh when the prefix has Homebrew's library, and the embedded copy otherwise.
+func (in *Installer) rmdirArgs() []string {
+	libraries := []string{filepath.Join(in.Where.Prefix, "Library")}
+	if lib := os.Getenv("HOMEBREW_LIBRARY"); lib != "" {
+		libraries = slices.Insert(libraries, 0, lib)
+	}
+	for _, lib := range libraries {
+		script := filepath.Join(lib, "Homebrew/cask/utils/rmdir.sh")
+		if fi, err := os.Stat(script); err == nil && fi.Mode().IsRegular() {
+			return []string{"-0", "--", script}
+		}
+	}
+	return []string{"-0", "--", "/bin/bash", "-c", rmdirScript, "rmdir.sh"}
+}
+
 func (in *Installer) uninstallPkgutil(ctx context.Context, regexes []string) error {
 	in.logf("==> Uninstalling packages with `sudo` (which may request your password)...")
 	for _, re := range regexes {
@@ -271,7 +286,7 @@ func (in *Installer) uninstallPkg(ctx context.Context, id string) error {
 	}
 	rm := func(paths []string) error { return xargs(paths, "-0", "--", "/bin/rm", "--") }
 	rmdir := func(paths []string) error {
-		return xargs(paths, "-0", "--", "/bin/bash", "-c", rmdirScript, "rmdir.sh")
+		return xargs(paths, in.rmdirArgs()...)
 	}
 	if len(files) > 0 {
 		if err := rm(files); err != nil {
