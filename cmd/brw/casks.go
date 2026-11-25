@@ -286,7 +286,6 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, idx *api.Ca
 	return upgraded, nil
 }
 
-// Unlike brew, dependency casks installed during an upgrade ignore the upgraded cask's appdir.
 const defaultAppDir = "/Applications"
 
 func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
