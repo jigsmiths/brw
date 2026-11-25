@@ -70,6 +70,9 @@ func servicesCommand(e *env, args []string) error {
 	if e.launchctl == nil {
 		return errors.New("launchctl is not available")
 	}
+	if err := e.resolveDomain(); err != nil {
+		return err
+	}
 	switch sub {
 	case "list":
 		return servicesList(e, args)
@@ -491,9 +494,9 @@ func (e *env) startService(t serviceTarget, journal string) error {
 	}
 	if e.sudoUser != "" {
 		e.ohai("Setting username in %s to: %s", t.serviceName(), e.sudoUser)
-		edited, ok := services.ApplyUserName(body, e.sudoUser)
-		if !ok {
-			return fmt.Errorf("the service file for `%s` is not an XML plist brw can set a username in", t.name)
+		edited, err := services.ApplyUserName(body, e.sudoUser)
+		if err != nil {
+			return fmt.Errorf("cannot set the username in the service file for `%s`: %w", t.name, err)
 		}
 		body = edited
 	}

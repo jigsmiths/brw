@@ -17,20 +17,24 @@ import (
 
 const rootServiceGroup = "admin"
 
-// domain is brew's System.domain_target.
-func (e *env) domain() string {
+// resolveDomain is brew's System.domain_target, run once before a command uses the domain.
+func (e *env) resolveDomain() error {
+	e.target = services.Domain(e.uid)
 	if e.root() {
-		return services.Domain(e.uid)
+		return nil
 	}
 	overSSH := false
 	if os.Getenv("HOMEBREW_SSH_TTY") != "" {
 		console, err := e.consoleUID()
-		overSSH = err == nil && console != e.uid
+		if err != nil {
+			return err
+		}
+		overSSH = console != e.uid
 	}
 	if !overSSH && os.Getenv("HOMEBREW_SUDO_USER") == "" {
-		return services.Domain(e.uid)
+		return nil
 	}
-	if !e.domainWarned && os.Getenv("HOMEBREW_SERVICES_NO_DOMAIN_WARNING") == "" {
+	if os.Getenv("HOMEBREW_SERVICES_NO_DOMAIN_WARNING") == "" {
 		if overSSH {
 			e.opoo("running over SSH without /dev/console ownership, using user/* instead of gui/* domain!")
 		} else {
@@ -40,12 +44,14 @@ func (e *env) domain() string {
 			_, _ = fmt.Fprint(e.err, "Hide this warning by setting `HOMEBREW_SERVICES_NO_DOMAIN_WARNING=1`.\n"+
 				"Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).\n")
 		}
-		e.domainWarned = true
 	}
-	return services.UserDomain(e.uid)
+	e.target = services.UserDomain(e.uid)
+	return nil
 }
 
-func (e *env) domains() []string { return services.Candidates(e.domain(), e.uid) }
+func (e *env) domain() string { return e.target }
+
+func (e *env) domains() []string { return services.Candidates(e.target, e.uid) }
 
 func consoleOwner() (int, error) {
 	fi, err := os.Stat("/dev/console")
@@ -123,17 +129,26 @@ func (e *env) takeRootOwnership(t serviceTarget, dst string, body []byte) error 
 	return e.takeOwnership(paths, rootServiceGroup, true)
 }
 
-func chownToRoot(paths []string, group string, sticky bool) error {
-	g, err := user.LookupGroup(group)
+type ownerChanger struct {
+	uid       int
+	lookupGid func(group string) (int, error)
+}
+
+var rootOwner = ownerChanger{uid: 0, lookupGid: func(name string) (int, error) {
+	g, err := user.LookupGroup(name)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	gid, err := strconv.Atoi(g.Gid)
+	return strconv.Atoi(g.Gid)
+}}
+
+func (o ownerChanger) apply(paths []string, group string, sticky bool) error {
+	gid, err := o.lookupGid(group)
 	if err != nil {
 		return err
 	}
 	for _, p := range paths {
-		if err := os.Chown(p, 0, gid); err != nil { //fsx:allow root service ownership, as brew's take_root_ownership?
+		if err := os.Chown(p, o.uid, gid); err != nil { //fsx:allow root service ownership, as brew's take_root_ownership?
 			return err
 		}
 		if !sticky {

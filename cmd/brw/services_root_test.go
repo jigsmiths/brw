@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -31,6 +33,52 @@ func rootEnvFor(t *testing.T, plist string) (*env, string, string, *fakeLaunchct
 	}
 	e.userExists = func(name string) bool { return name == "svc" || name == e.user }
 	return e, prefix, agents, lc, fakes
+}
+
+func TestOwnerChangerSetsOwnershipAndTheStickyBit(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "keg")
+	if err := os.Mkdir(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	plist := filepath.Join(t.TempDir(), "x.plist")
+	if err := os.WriteFile(plist, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var group string
+	o := ownerChanger{uid: os.Getuid(), lookupGid: func(name string) (int, error) { group = name; return os.Getgid(), nil }}
+
+	if err := o.apply([]string{plist}, "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	if group != "admin" {
+		t.Errorf("group looked up = %q", group)
+	}
+	fi, _ := os.Stat(plist)
+	if fi.Mode().Perm() != 0o644 || fi.Mode()&os.ModeSticky != 0 {
+		t.Errorf("plist mode = %v", fi.Mode())
+	}
+	if st := fi.Sys().(*syscall.Stat_t); int(st.Uid) != os.Getuid() || int(st.Gid) != os.Getgid() {
+		t.Errorf("plist owner = %d:%d", st.Uid, st.Gid)
+	}
+
+	if err := o.apply([]string{dir}, "admin", true); err != nil {
+		t.Fatal(err)
+	}
+	fi, _ = os.Stat(dir)
+	if fi.Mode()&os.ModeSticky == 0 || fi.Mode().Perm() != 0o750 {
+		t.Errorf("keg mode = %v, want sticky with 0750 kept", fi.Mode())
+	}
+	if st := fi.Sys().(*syscall.Stat_t); int(st.Uid) != os.Getuid() || int(st.Gid) != os.Getgid() {
+		t.Errorf("keg owner = %d:%d", st.Uid, st.Gid)
+	}
+
+	if err := o.apply([]string{filepath.Join(dir, "missing")}, "admin", true); err == nil {
+		t.Error("a missing path is an error")
+	}
+	bad := ownerChanger{uid: os.Getuid(), lookupGid: func(string) (int, error) { return 0, errors.New("no group") }}
+	if err := bad.apply([]string{dir}, "admin", false); err == nil {
+		t.Error("an unknown group is an error")
+	}
 }
 
 func TestServicesRootStartUsesTheDaemonsDirAndSystemDomain(t *testing.T) {

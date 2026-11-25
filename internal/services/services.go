@@ -65,7 +65,6 @@ func Domain(uid int) string {
 
 func Domains(uid int) []string { return Candidates(Domain(uid), uid) }
 
-// Candidates are the domains brew probes for a service: the chosen one first, then the user's others.
 func Candidates(chosen string, uid int) []string {
 	if uid == 0 {
 		return []string{systemDomain}
@@ -151,22 +150,6 @@ func insertTopLevel(s, key, block string) string {
 		}
 	}
 	return s[:at] + block + s[at:]
-}
-
-const userNameKeyName = "UserName"
-
-var userNameEntry = regexp.MustCompile(`\t<key>` + userNameKeyName + `</key>\n\t<string>[^<]*</string>\n`)
-
-func ApplyUserName(plist []byte, user string) (out []byte, editable bool) {
-	s := string(plist)
-	if !strings.HasSuffix(s, plistTail) || !strings.Contains(s, "\n<dict>\n") {
-		return plist, false
-	}
-	block := "\t<key>" + userNameKeyName + "</key>\n\t<string>" + xmlEscaper.Replace(user) + "</string>\n"
-	if loc := userNameEntry.FindStringIndex(s); loc != nil {
-		return []byte(s[:loc[0]] + block + s[loc[1]:]), true
-	}
-	return []byte(insertTopLevel(s, userNameKeyName, block)), true
 }
 
 var (

@@ -287,25 +287,6 @@ func TestRootUsesTheSystemDomainOnly(t *testing.T) {
 	}
 }
 
-func TestApplyUserNameInsertsSortedOrReplaces(t *testing.T) {
-	in := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n" +
-		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>RunAtLoad</key>\n\t<true/>\n</dict>\n</plist>\n"
-	got, ok := ApplyUserName([]byte(in), "svc")
-	want := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n" +
-		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>RunAtLoad</key>\n\t<true/>\n" +
-		"\t<key>UserName</key>\n\t<string>svc</string>\n</dict>\n</plist>\n"
-	if !ok || string(got) != want {
-		t.Fatalf("insert = %v\n%s\nwant\n%s", ok, got, want)
-	}
-	again, ok := ApplyUserName(got, "other")
-	if !ok || string(again) != strings.Replace(want, ">svc<", ">other<", 1) {
-		t.Errorf("replace = %v\n%s", ok, again)
-	}
-	if _, ok := ApplyUserName([]byte("not a plist"), "svc"); ok {
-		t.Error("a file that is not a plist cannot be edited")
-	}
-}
-
 func TestProgram(t *testing.T) {
 	args := "<dict>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/opt/x/bin/x</string>\n\t\t<string>serve</string>\n\t</array>\n</dict>"
 	if got, key := Program([]byte(args)); got != "/opt/x/bin/x" || key != "first ProgramArguments value" {

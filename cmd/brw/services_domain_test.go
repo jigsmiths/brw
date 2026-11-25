@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -54,6 +55,17 @@ func TestServicesDomainWarningCanBeHidden(t *testing.T) {
 	}
 	if stderr(e) != "" || !strings.HasPrefix(calls(lc), "enable user/501/") {
 		t.Errorf("stderr = %q, calls = %q", stderr(e), calls(lc))
+	}
+}
+
+func TestServicesFailWhenTheConsoleCannotBeStatedOverSsh(t *testing.T) {
+	clearDomainEnv(t)
+	t.Setenv("HOMEBREW_SSH_TTY", "/dev/ttys001")
+	e, prefix, _, lc := servicesEnv(t)
+	e.consoleUID = func() (int, error) { return 0, errors.New("stat /dev/console: no such file or directory") }
+	_, err := runCmd(t, e, "services", "list", "-prefix", prefix)
+	if err == nil || !strings.Contains(err.Error(), "/dev/console") || len(lc.calls) != 0 {
+		t.Errorf("err = %v, calls = %q", err, lc.calls)
 	}
 }
 
