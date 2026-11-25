@@ -219,7 +219,7 @@ func TestUninstallDeleteFallsBackToSudo(t *testing.T) {
 
 func TestUninstallRefusesWhatBrwCannotUndo(t *testing.T) {
 	for _, artifacts := range []string{
-		`[{"uninstall":[{"pkgutil":"com.example.pkg"}]},{"app":["App.app"]}]`,
+		`[{"uninstall":[{"script":{"executable":"x"}}]},{"app":["App.app"]}]`,
 		`[{"app":["App.app"]},{"suite":["App.app/man"]}]`,
 	} {
 		ti, f := installed(t, `[{"app":["App.app"]}]`)

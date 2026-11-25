@@ -101,12 +101,35 @@ var undeletableHome = []string{
 	"~/Library/Workflows",
 }
 
+var undeletableContainers = []string{
+	"~/Library/Application Support/com.apple.TCC", "~/Library/Keychains", "~/Library/Messages",
+}
+
 func undeletable(path, home string) bool {
 	path = filepath.Clean(path)
-	if slices.Contains(undeletableSystem, path) {
-		return true
+	candidates := []string{path}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		candidates = append(candidates, filepath.Join(dir, filepath.Base(path)))
 	}
-	return slices.ContainsFunc(undeletableHome, func(d string) bool {
-		return filepath.Clean(home+strings.TrimPrefix(d, "~")) == path
+	var containers []string
+	for _, c := range undeletableContainers {
+		c = filepath.Clean(home + strings.TrimPrefix(c, "~"))
+		containers = append(containers, c)
+		if real, err := filepath.EvalSymlinks(c); err == nil {
+			containers = append(containers, real)
+		}
+	}
+	return slices.ContainsFunc(candidates, func(candidate string) bool {
+		if slices.Contains(undeletableSystem, candidate) {
+			return true
+		}
+		if slices.ContainsFunc(undeletableHome, func(d string) bool {
+			return filepath.Clean(home+strings.TrimPrefix(d, "~")) == candidate
+		}) {
+			return true
+		}
+		return slices.ContainsFunc(containers, func(c string) bool {
+			return candidate == c || strings.HasPrefix(candidate, c+"/")
+		})
 	})
 }

@@ -77,15 +77,47 @@ func TestPlanTargets(t *testing.T) {
 
 func TestPlanRefusesWhatBrwCannotInstall(t *testing.T) {
 	for name, c := range map[string]api.Cask{
-		"pkg":     {Token: "a", Artifacts: raws(t, `[{"pkg":["a.pkg"]}]`)},
 		"suite":   {Token: "b", Artifacts: raws(t, `[{"app":["B.app"]},{"suite":["b"]}]`)},
-		"pkgutil": {Token: "c", Artifacts: raws(t, `[{"uninstall":[{"pkgutil":"com.c"}]},{"app":["C.app"]}]`)},
+		"script":  {Token: "c", Artifacts: raws(t, `[{"uninstall":[{"script":{"executable":"x"}}]},{"app":["C.app"]}]`)},
 		"rename":  {Token: "d", Artifacts: raws(t, `[{"app":["D.app"]}]`), Rename: raws(t, `[{"from":"a","to":"b"}]`)},
 		"nothing": {Token: "h", Artifacts: raws(t, `[{"zap":[{"trash":"~/x"}]}]`)},
 	} {
 		if _, err := plan(c, where); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%s: err = %v, want ErrUnsupported", name, err)
 		}
+	}
+}
+
+func TestPlanPkg(t *testing.T) {
+	c := api.Cask{Token: "p", Artifacts: raws(t, `[
+		{"pkg":["Sub/P.pkg",{"choices":[{"choiceIdentifier":"a","choiceAttribute":"selected","attributeSetting":1}]},{"allow_untrusted":true}]},
+		{"pkg":["Q.pkg",{"choices":[]}]},
+		{"uninstall":[{"pkgutil":["com.p.*","com.q"]}]}]`)}
+	p, err := plan(c, where)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.pkgs) != 2 {
+		t.Fatalf("pkgs = %+v", p.pkgs)
+	}
+	first := p.pkgs[0]
+	if first.path != "Sub/P.pkg" || !first.allowUntrusted || !strings.Contains(string(first.choices), "choiceIdentifier") {
+		t.Errorf("first = %+v", first)
+	}
+	if second := p.pkgs[1]; second.path != "Q.pkg" || second.allowUntrusted || len(second.choices) != 0 {
+		t.Errorf("second = %+v", second)
+	}
+	want := `[{"uninstall":[{"pkgutil":["com.p.*","com.q"]}]}]`
+	if got, _ := json.Marshal(p.uninstall); string(got) != want {
+		t.Errorf("a pkg has no uninstall phase, so only the uninstall stanza is recorded: %s", got)
+	}
+}
+
+func TestPlanPkgRejectsUnknownKeys(t *testing.T) {
+	c := api.Cask{Token: "p", Artifacts: raws(t, `[{"pkg":["P.pkg",{"bogus":1}]}]`)}
+	_, err := plan(c, where)
+	if err == nil || !strings.Contains(err.Error(), "Unknown key: :bogus. Valid keys are: :allow_untrusted, :choices") {
+		t.Errorf("err = %v", err)
 	}
 }
 

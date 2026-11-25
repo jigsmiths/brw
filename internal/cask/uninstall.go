@@ -156,8 +156,8 @@ func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, er
 		return nil, err
 	}
 	var receipt struct {
-		UninstallFlightBlocks bool                         `json:"uninstall_flight_blocks"`
-		UninstallArtifacts    []map[string]json.RawMessage `json:"uninstall_artifacts"`
+		UninstallFlightBlocks bool            `json:"uninstall_flight_blocks"`
+		UninstallArtifacts    json.RawMessage `json:"uninstall_artifacts"`
 	}
 	if err := json.Unmarshal(b, &receipt); err != nil {
 		return nil, fmt.Errorf("%s: install receipt: %w", token, err)
@@ -165,10 +165,11 @@ func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, er
 	if receipt.UninstallFlightBlocks {
 		return nil, unsupported(token, "uninstall flight blocks")
 	}
-	if len(receipt.UninstallArtifacts) == 0 {
+	var artifacts []map[string]json.RawMessage
+	if err := json.Unmarshal(receipt.UninstallArtifacts, &artifacts); err != nil || artifacts == nil {
 		return nil, unsupported(token, "no uninstall artifacts in the install receipt")
 	}
-	return receipt.UninstallArtifacts, nil
+	return artifacts, nil
 }
 
 func (in *Installer) readStep(token, version, kind string, args json.RawMessage) (uninstallStep, error) {
@@ -181,6 +182,11 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		}
 		if s.directives, err = readDirectives(args); err != nil {
 			return s, fmt.Errorf("%s: uninstall %s: %w", token, args, err)
+		}
+		if len(s.directives["pkgutil"]) > 0 {
+			if err := refuseRoot(); err != nil {
+				return s, err
+			}
 		}
 	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 		if s.move, err = readMove(args, kind, in.Where); err != nil {
@@ -249,6 +255,11 @@ func (in *Installer) runDirectives(ctx context.Context, d map[string][]string, a
 	}
 	if s := d["login_item"]; len(s) > 0 {
 		in.loginItems(ctx, apps, s)
+	}
+	if s := d["pkgutil"]; len(s) > 0 {
+		if err := in.uninstallPkgutil(ctx, s); err != nil {
+			return err
+		}
 	}
 	if s := d["delete"]; len(s) > 0 {
 		if err := in.deletePaths(ctx, s); err != nil {

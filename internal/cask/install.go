@@ -129,6 +129,12 @@ func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]b
 	if p.needsSudo() && !sudo.Available(ctx, in.runner()) {
 		return installPlan{}, nil, "", brewError("%s: The installer artifact requires sudo, but HOMEBREW_NO_SUDO is set.", c.Token)
 	}
+	if len(p.pkgs) > 0 {
+		if err := refuseRoot(); err != nil {
+			return installPlan{}, nil, "", err
+		}
+		in.warnAllowUntrusted(p.pkgs)
+	}
 	links, err := in.checkTargets(c, p, owned)
 	if err != nil {
 		return installPlan{}, nil, "", err
@@ -160,6 +166,11 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 	}
 	if err := in.runInstallers(ctx, c.Token, staged, p.installers); err != nil {
 		return err
+	}
+	for _, pk := range p.pkgs {
+		if err := in.installPkg(ctx, c.Token, staged, pk); err != nil {
+			return fmt.Errorf("%s: %w", c.Token, err)
+		}
 	}
 	for _, m := range p.apps {
 		if err := in.moveApp(ctx, version, m, c.AutoUpdates, undo); err != nil {
@@ -587,6 +598,10 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) err
 	if c.TapGitHead != "" {
 		head = &c.TapGitHead
 	}
+	uninstall := p.uninstall
+	if uninstall == nil {
+		uninstall = []map[string]json.RawMessage{}
+	}
 	fromAPI, path := c.SourceFile == "", in.APIPath
 	if !fromAPI {
 		path = c.SourceFile
@@ -611,7 +626,7 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) err
 		HomebrewVersion: in.Version, LoadedFromAPI: fromAPI, LoadedFromInternalAPI: fromAPI,
 		InstalledOnRequest: onRequest, Time: in.Now().Unix(), RuntimeDependencies: deps,
 		Source: source{Tap: c.Tap, TapGitHead: head, Version: c.Version, Path: path},
-		Arch:   arch, UninstallArtifacts: p.uninstall,
+		Arch:   arch, UninstallArtifacts: uninstall,
 		BuiltOn: map[string]string{"os": "Macintosh", "os_version": "macOS " + in.Host.MacVersion},
 	}, "", "  ")
 	if err != nil {

@@ -366,12 +366,12 @@ func TestInstallChecksTheCaskFirst(t *testing.T) {
 	if err := ti.in.Install(context.Background(), c); err == nil || !strings.Contains(err.Error(), "older than Golden Gate") {
 		t.Errorf("err = %v", err)
 	}
-	c = ti.cask(t, `[{"pkg":["a.pkg"]}]`)
+	c = ti.cask(t, `[{"suite":["a"]}]`)
 	if _, err := json.Marshal(c); err != nil {
 		t.Fatal(err)
 	}
 	if err := ti.in.Install(context.Background(), c); err == nil {
-		t.Error("installed a pkg cask")
+		t.Error("installed a suite cask")
 	}
 	if ti.hits.Load() != 0 {
 		t.Error("downloaded a cask that cannot be installed")
