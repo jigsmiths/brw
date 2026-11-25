@@ -10,13 +10,17 @@ import (
 	"syscall"
 
 	"github.com/jigsmiths/brw/internal/fsx"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 func (in *Installer) sudoIfNeeded(ctx context.Context, name string, args ...string) error {
-	if _, err := in.exec(ctx, name, args...); err == nil {
-		return nil
+	_, err := in.exec(ctx, name, args...)
+	if err == nil || !sudo.Available(ctx, in.runner()) {
+		return err
 	}
-	_, err := in.privileged(ctx, true, name, args...)
+	retry := in.command(sudo.Sudo, name, args...)
+	retry.Stderr = nil
+	_, err = in.capture(ctx, retry)
 	return err
 }
 
@@ -64,7 +68,9 @@ func (in *Installer) removePath(ctx context.Context, r *fsx.Root, rel string) er
 	}
 	if ownedByOther(abs, dir) {
 		in.logf("==> Using sudo to gain ownership of path '%s'", abs)
-		_, _ = in.privileged(ctx, true, "chown", append(flags, "--", currentUser(), abs)...)
+		chown := in.command(sudo.Sudo, "chown", append(flags, "--", currentUser(), abs)...)
+		chown.MustSucceed = false
+		_, _ = in.capture(ctx, chown)
 		fix()
 		err = remove()
 	}

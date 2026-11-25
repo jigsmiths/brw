@@ -19,6 +19,7 @@ import (
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/poststep"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 type Exec func(ctx context.Context, name string, args ...string) ([]byte, error)
@@ -313,9 +314,12 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 	uid := fmt.Sprint(os.Getuid())
 	for _, s := range all {
 		in.logf("==> Removing launchctl service %s", s)
-		for _, sudo := range []bool{false, true} {
+		for _, asRoot := range []bool{false, true} {
+			if asRoot && !sudo.Available(ctx, in.runner()) {
+				continue
+			}
 			found := false
-			if sudo {
+			if asRoot {
 				_, err := in.exec(ctx, "/bin/launchctl", "print", "system/"+s)
 				found = err == nil
 			} else {
@@ -326,29 +330,36 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 					}
 				}
 			}
+			privilege := sudo.User
+			if asRoot {
+				privilege = sudo.Root
+			}
 			if found {
-				if _, err := in.privileged(ctx, sudo, "/bin/launchctl", "remove", s); err == nil {
+				if err := in.privileged(ctx, privilege, "/bin/launchctl", "remove", s); err == nil {
 					in.sleep(time.Second)
 				}
 			}
 			for _, dir := range []string{"/Library/LaunchAgents", "/Library/LaunchDaemons"} {
-				if !sudo {
+				if !asRoot {
 					dir = filepath.Join(in.Where.Home, dir)
 				}
 				plist := filepath.Join(dir, s+".plist")
 				if _, err := os.Lstat(plist); err == nil {
-					_, _ = in.privileged(ctx, sudo, "/bin/rm", "-f", "--", plist)
+					_ = in.privileged(ctx, privilege, "/bin/rm", "-f", "--", plist)
 				}
 			}
 		}
 	}
 }
 
-func (in *Installer) privileged(ctx context.Context, sudo bool, name string, args ...string) ([]byte, error) {
-	if sudo {
-		return in.exec(ctx, "/usr/bin/sudo", append([]string{"-E", "--", name}, args...)...)
+// privileged runs an unprivileged command through Exec and anything else through the sudo runner.
+func (in *Installer) privileged(ctx context.Context, privilege sudo.Privilege, name string, args ...string) error {
+	if privilege == sudo.User {
+		_, err := in.exec(ctx, name, args...)
+		return err
 	}
-	return in.exec(ctx, name, args...)
+	_, err := in.capture(ctx, in.command(privilege, name, args...))
+	return err
 }
 
 func (in *Installer) sleep(d time.Duration) {
@@ -514,7 +525,9 @@ func (in *Installer) deletePaths(ctx context.Context, paths []string) error {
 		}
 		args := append([]string{"-r", "-f", "--"}, resolved...)
 		if _, e := in.exec(ctx, "/bin/rm", args...); e != nil {
-			if _, e := in.privileged(ctx, true, "/bin/rm", args...); e != nil {
+			sudoRm := in.command(sudo.Sudo, xargsPath, "-0", "--", "/bin/rm", "-r", "-f", "--")
+			sudoRm.Input = strings.Join(resolved, "\x00")
+			if _, e := in.capture(ctx, sudoRm); e != nil {
 				err = errors.Join(err, e)
 			}
 		}

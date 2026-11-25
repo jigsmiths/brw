@@ -12,10 +12,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 type fakeExec struct {
 	calls   []string
+	runs    []sudo.Command
 	running map[string]int
 	fail    map[string]bool
 	noFix   bool
@@ -24,6 +27,28 @@ type fakeExec struct {
 	gui bool
 	// hostID is the bundle ID of the app brw runs in; runningIDs lists the running apps.
 	hostID, runningIDs string
+}
+
+// run is the sudo runner that performs privileged commands through exec as /usr/bin/sudo calls.
+func (f *fakeExec) run(ctx context.Context, c sudo.Command) (sudo.Result, error) {
+	f.runs = append(f.runs, c)
+	exe, args := c.Exe, c.Args
+	if exe == "/usr/bin/sudo" {
+		return sudo.Result{}, nil
+	}
+	if exe == "/usr/bin/xargs" {
+		exe, args = args[2], append(slices.Clone(args[3:]), strings.Split(c.Input, "\x00")...)
+	}
+	prefix := []string{"-E", "--"}
+	switch c.Privilege {
+	case sudo.User:
+		out, err := f.exec(ctx, exe, args...)
+		return sudo.Result{Stdout: string(out)}, err
+	case sudo.Root:
+		prefix = append([]string{"-u", "root"}, prefix...)
+	}
+	out, err := f.exec(ctx, "/usr/bin/sudo", slices.Concat(prefix, []string{exe}, args)...)
+	return sudo.Result{Stdout: string(out)}, err
 }
 
 func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -36,7 +61,7 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 	}
 	switch name {
 	case "/usr/bin/sudo":
-		cmd := args[2:]
+		cmd := args[slices.Index(args, "--")+1:]
 		target := cmd[len(cmd)-1]
 		if cmd[0] == "chown" {
 			_ = exec.CommandContext(ctx, "chflags", "-R", "0", target).Run()
@@ -122,7 +147,7 @@ func installed(t *testing.T, artifacts string) (*testInstall, *fakeExec) {
 	}
 	ti.out.Reset()
 	f := &fakeExec{running: map[string]int{}, fail: map[string]bool{}, gui: true}
-	ti.in.Exec = f.exec
+	ti.in.Exec, ti.in.Run = f.exec, f.run
 	return ti, f
 }
 
@@ -244,6 +269,71 @@ func TestUninstallDeleteFallsBackToSudo(t *testing.T) {
 	want := []string{"/usr/bin/sudo -E -- /bin/rm -r -f -- " + filepath.Join(home, "locked")}
 	if got := f.ran("/usr/bin/sudo"); !slices.Equal(got, want) {
 		t.Errorf("sudo calls = %q, want %q", got, want)
+	}
+}
+
+func TestUninstallDeleteSudoGoesThroughTheRunnerAsBrewBuildsIt(t *testing.T) {
+	home := t.TempDir()
+	ti, f := installed(t, `[{"uninstall":[{"delete":"~/locked"}]},{"app":["App.app"]}]`)
+	ti.in.Where.Home = home
+	if err := os.WriteFile(filepath.Join(home, "locked"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.fail["/bin/rm"] = true
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	c := f.runs[len(f.runs)-1]
+	if c.Exe != "/usr/bin/xargs" || c.Privilege != sudo.Sudo || !c.MustSucceed || c.Input != filepath.Join(home, "locked") ||
+		!slices.Equal(c.Args, []string{"-0", "--", "/bin/rm", "-r", "-f", "--"}) {
+		t.Errorf("runner got %v", c)
+	}
+}
+
+func TestUninstallSystemLaunchctlServiceRunsAsRoot(t *testing.T) {
+	ti, f := installed(t, `[{"uninstall":[{"launchctl":"com.example.daemon"}]},{"app":["App.app"]}]`)
+	f.handle = map[string]func([]string) ([]byte, error){"/bin/launchctl": func(args []string) ([]byte, error) {
+		if args[0] == "print" && args[1] == "system/com.example.daemon" {
+			return nil, nil
+		}
+		return nil, errors.New("not found")
+	}}
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	var removes []sudo.Command
+	for _, c := range f.runs {
+		if c.Exe == "/bin/launchctl" {
+			removes = append(removes, c)
+		}
+	}
+	if len(removes) != 1 || removes[0].Privilege != sudo.Root || !slices.Equal(removes[0].Args, []string{"remove", "com.example.daemon"}) {
+		t.Errorf("launchctl runs = %v", removes)
+	}
+}
+
+func TestUninstallSkipsSystemLaunchctlWhenSudoIsOff(t *testing.T) {
+	ti, f := installed(t, `[{"uninstall":[{"launchctl":"com.example.daemon"}]},{"app":["App.app"]}]`)
+	t.Setenv("HOMEBREW_NO_SUDO", "1")
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.ran("/bin/launchctl print system/"); len(got) != 0 {
+		t.Errorf("system domain was queried: %q", got)
+	}
+}
+
+func TestInstallIntoALockedAppFolderNeedsSudoAvailable(t *testing.T) {
+	ti := newTestInstall(t, appTarball)
+	f := &fakeExec{running: map[string]int{}, fail: map[string]bool{}}
+	ti.in.Exec, ti.in.Run = f.exec, f.run
+	lock(t, ti.appDir)
+	t.Setenv("HOMEBREW_NO_SUDO", "1")
+	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"app":["App.app"]}]`)); err == nil {
+		t.Error("the install should fail without sudo")
+	}
+	if got := f.ran("/usr/bin/sudo"); len(got) != 0 {
+		t.Errorf("sudo ran: %q", got)
 	}
 }
 

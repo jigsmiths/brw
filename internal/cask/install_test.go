@@ -450,7 +450,7 @@ func TestInstallRefusesTargetsOutsideItsFolders(t *testing.T) {
 func TestInstallIntoALockedAppFolder(t *testing.T) {
 	ti := newTestInstall(t, appTarball)
 	f := &fakeExec{running: map[string]int{}, fail: map[string]bool{}}
-	ti.in.Exec = f.exec
+	ti.in.Exec, ti.in.Run = f.exec, f.run
 	lock(t, ti.appDir)
 	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"app":["App.app"]}]`)); err != nil {
 		t.Fatal(err)
