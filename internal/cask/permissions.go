@@ -61,7 +61,6 @@ func rmArgs(path string, recursive bool) []string {
 	return args
 }
 
-// gainPermissions is Cask::Utils.gain_permissions: retry after unlocking the path, then after taking ownership of it.
 func (in *Installer) gainPermissions(ctx context.Context, path string, flags []string, try func(path string) error) error {
 	triedPermissions, triedOwnership := false, false
 	for {

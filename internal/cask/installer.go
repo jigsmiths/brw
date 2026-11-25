@@ -180,7 +180,6 @@ func (in *Installer) runScript(ctx context.Context, s installerStep, exe string,
 	return err
 }
 
-// command is SystemCommand.run! with its defaults: it must succeed and prints stderr but not stdout.
 func (in *Installer) command(privilege sudo.Privilege, exe string, args ...string) sudo.Command {
 	c := sudo.Command{
 		Exe: exe, Args: args, Privilege: privilege, MustSucceed: true,
@@ -237,7 +236,6 @@ func (in *Installer) chmodAll(path string, perm os.FileMode) error {
 	return os.Chmod(path, perm) //fsx:allow brew makes an installer script outside the prefix executable
 }
 
-// sudoArtifact names the first artifact brew installs that requires sudo, or "" if none does.
 func (p installPlan) sudoArtifact() string {
 	switch {
 	case slices.ContainsFunc(p.installers, func(s installerStep) bool { return s.sudo }):

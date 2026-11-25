@@ -346,7 +346,6 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 	}
 }
 
-// launchctlFinds is Homebrew::Services::System.launchctl_find_service.
 func (in *Installer) launchctlFinds(ctx context.Context, label string, privilege sudo.Privilege) bool {
 	uid := fmt.Sprint(os.Getuid())
 	sshWithoutConsole := false
@@ -386,7 +385,6 @@ func (in *Installer) launchctlFinds(ctx context.Context, label string, privilege
 	return present("list", label)
 }
 
-// privileged runs an unprivileged command through Exec and anything else through the sudo runner.
 func (in *Installer) privileged(ctx context.Context, privilege sudo.Privilege, name string, args ...string) error {
 	if privilege == sudo.User {
 		_, err := in.exec(ctx, name, args...)
@@ -617,7 +615,6 @@ func (in *Installer) rmdirs(ctx context.Context, dirs []string) error {
 
 const dsStore = ".DS_Store"
 
-// rmdirAll is recursive_rmdir: it reports whether every directory was empty enough to remove.
 func (in *Installer) rmdirAll(ctx context.Context, dirs []string) (bool, error) {
 	for _, d := range dirs {
 		in.logf("%s", tildeHome(d, in.Where.Home))

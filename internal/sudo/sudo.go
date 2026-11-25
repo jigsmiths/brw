@@ -39,7 +39,6 @@ type Command struct {
 	Secrets        []string
 }
 
-// Format prints the command for every verb with its secrets redacted and its writers left out.
 func (c Command) Format(f fmt.State, _ rune) {
 	hide := func(s string) string { return Redact(s, c.Secrets) }
 	args := make([]string, len(c.Args))
@@ -62,7 +61,6 @@ type message string
 
 func (m message) Error() string { return string(m) }
 
-// executionError is brew's ErrorDuringExecution.
 type executionError string
 
 func (e executionError) Error() string { return string(e) }

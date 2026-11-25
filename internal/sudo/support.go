@@ -52,14 +52,12 @@ func signalName(s syscall.Signal) string {
 
 var forbiddenInTests = []string{"/usr/bin/sudo", "/usr/sbin/installer", "/usr/sbin/pkgutil", "/bin/launchctl", "/usr/bin/trash"}
 
-// Guard panics when a test binary is about to run a command that changes the machine.
 func Guard(exe string) {
 	if testing.Testing() && slices.Contains(forbiddenInTests, exe) {
 		panic("a test ran " + exe + " for real; stub the runner")
 	}
 }
 
-// ParseSignal is Process.kill's lookup of a signal name, with or without its SIG prefix.
 func ParseSignal(name string) (syscall.Signal, error) {
 	bare := strings.TrimPrefix(name, "SIG")
 	if bare == "EXIT" {

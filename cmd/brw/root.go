@@ -16,7 +16,6 @@ var (
 	cgroupJobs  = regexp.MustCompile(`azpl_job|actions_job|docker|garden|kubepods`)
 )
 
-// refuseRoot is brew's check-run-command-as-root; `services` is the one command brew lets root run.
 func refuseRoot(e *env, cmd string) error {
 	if !e.euidRoot || cmd == "services" || inContainer() {
 		return nil
@@ -25,7 +24,6 @@ func refuseRoot(e *env, cmd string) error {
 
 }
 
-// tracing is brew's global --verbose and --debug.
 type tracing struct{ verbose, debug bool }
 
 func traceFlags(fs *flag.FlagSet) *tracing {

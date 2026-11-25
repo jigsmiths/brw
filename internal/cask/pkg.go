@@ -183,7 +183,6 @@ func withChoicesFile(choices json.RawMessage, fn func(path string) error) error 
 //go:embed rmdir.sh
 var rmdirScript string
 
-// rmdirArgs runs brew's own rmdir.sh when the prefix has Homebrew's library, and the embedded copy otherwise.
 func (in *Installer) rmdirArgs() []string {
 	libraries := []string{filepath.Join(in.Where.Prefix, "Library")}
 	if lib := os.Getenv("HOMEBREW_LIBRARY"); lib != "" {

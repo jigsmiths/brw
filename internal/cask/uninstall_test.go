@@ -17,20 +17,17 @@ import (
 )
 
 type fakeExec struct {
-	calls   []string
-	runs    []sudo.Command
-	running map[string]int
-	fail    map[string]bool
-	noFix   bool
-	handle  map[string]func(args []string) ([]byte, error)
-	// gui is whether the user has a console session.
-	gui bool
-	// hostID is the bundle ID of the app brw runs in; runningIDs lists the running apps.
+	calls              []string
+	runs               []sudo.Command
+	running            map[string]int
+	fail               map[string]bool
+	noFix              bool
+	handle             map[string]func(args []string) ([]byte, error)
+	gui                bool
 	hostID, runningIDs string
 	failRun            map[string]bool
 }
 
-// run is the sudo runner that performs privileged commands through exec as /usr/bin/sudo calls.
 func (f *fakeExec) run(ctx context.Context, c sudo.Command) (sudo.Result, error) {
 	f.runs = append(f.runs, c)
 	exe, args := c.Exe, c.Args

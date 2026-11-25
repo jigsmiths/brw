@@ -14,7 +14,6 @@ const lsappinfoPath = "/usr/bin/lsappinfo"
 
 var lsappinfoBundleID = regexp.MustCompile(`bundleID="([^"]*)"`)
 
-// lsappinfoBundleIDs lists the bundle IDs in lsappinfo's output, in order, skipping apps without one.
 func lsappinfoBundleIDs(out string) []string {
 	var ids []string
 	for _, m := range lsappinfoBundleID.FindAllStringSubmatch(out, -1) {
@@ -90,7 +89,6 @@ func (in *Installer) gui(ctx context.Context) bool {
 	return false
 }
 
-// bundleIDs expands `*` in bundle IDs to the running applications that match, listing them once.
 type bundleIDs struct {
 	in      *Installer
 	running []string
