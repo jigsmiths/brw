@@ -266,6 +266,18 @@ func TestQueryTreatsEmptyOutputAsNotLoaded(t *testing.T) {
 	}
 }
 
+func TestCandidatesStartWithTheChosenDomainWithoutRepeats(t *testing.T) {
+	if got := Candidates("user/501", 501); !reflect.DeepEqual(got, []string{"user/501", "gui/501"}) {
+		t.Errorf("user: %v", got)
+	}
+	if got := Candidates("gui/501", 501); !reflect.DeepEqual(got, []string{"gui/501", "user/501"}) {
+		t.Errorf("gui: %v", got)
+	}
+	if got := Candidates("system", 0); !reflect.DeepEqual(got, []string{"system"}) {
+		t.Errorf("root: %v", got)
+	}
+}
+
 func TestRootUsesTheSystemDomainOnly(t *testing.T) {
 	if got := Domain(0); got != "system" {
 		t.Errorf("Domain(0) = %q", got)

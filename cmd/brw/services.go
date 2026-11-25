@@ -149,7 +149,7 @@ type serviceSnap struct {
 func (e *env) snapshot(t serviceTarget) (serviceSnap, error) {
 	s := serviceSnap{active: t.serviceName()}
 	for _, label := range e.labels(t) {
-		loaded, info, err := services.Query(e.launchctl, services.Domains(e.uid), label)
+		loaded, info, err := services.Query(e.launchctl, e.domains(), label)
 		if err != nil {
 			return s, err
 		}
@@ -435,7 +435,7 @@ func serviceTargets(e *env, prefix string, names []string) ([]serviceTarget, err
 }
 
 func (e *env) planService(verb string, t serviceTarget) {
-	domain := services.Domain(e.uid)
+	domain := e.domain()
 	dests := e.dests(t)
 	if verb != "start" {
 		_, _ = fmt.Fprintf(e.out, "launchctl bootout %s/%s\nrm %s\n", domain, t.serviceName(), strings.Join(dests, " "))
@@ -511,7 +511,7 @@ func (e *env) startService(t serviceTarget, journal string) error {
 	if err := e.checkLoad(t, "start"); err != nil {
 		return err
 	}
-	domain := services.Domain(e.uid)
+	domain := e.domain()
 	if err := e.launchctl.Enable(domain, label); err != nil {
 		return err
 	}
@@ -558,7 +558,7 @@ func (e *env) runService(t serviceTarget) error {
 		}
 		file = tmp.Name()
 	}
-	if err := e.launchctl.Bootstrap(services.Domain(e.uid), file); err != nil {
+	if err := e.launchctl.Bootstrap(e.domain(), file); err != nil {
 		return err
 	}
 	e.ohai("Successfully ran `%s` (label: %s)", t.name, label)
@@ -645,7 +645,7 @@ func (e *env) sleepFor(d time.Duration) {
 }
 
 func (e *env) running(label string) (bool, error) {
-	loaded, _, err := services.Query(e.launchctl, services.Domains(e.uid), label)
+	loaded, _, err := services.Query(e.launchctl, e.domains(), label)
 	return loaded, err
 }
 
@@ -663,10 +663,10 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 			if e.root() {
 				sudo = ""
 			}
-			return fmt.Errorf("service `%s` is started as `%s`. Try:\n  %sbrw services stop %s", t.name, *e.owner(t, s), sudo, t.name)
+			return fmt.Errorf("Service `%s` is started as `%s`. Try:\n  %sbrw services stop %s", t.name, *e.owner(t, s), sudo, t.name) //nolint:staticcheck // matches brew's error text
 		}
 		for _, n := range t.names() {
-			if e.launchctl.Bootout(services.Domain(e.uid), n) == nil {
+			if e.launchctl.Bootout(e.domain(), n) == nil {
 				e.ohai("Successfully stopped `%s` (label: %s)", t.name, n)
 				return nil
 			}
@@ -703,7 +703,7 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 }
 
 func (e *env) bootoutAll(label string) error {
-	for _, domain := range services.Domains(e.uid) {
+	for _, domain := range e.domains() {
 		up, err := e.running(label)
 		if err != nil || !up {
 			return err

@@ -155,7 +155,7 @@ func TestServicesSudoServiceUserRunsTheServiceAsThatUser(t *testing.T) {
 func TestServicesSudoServiceUserMustExist(t *testing.T) {
 	e, prefix, _, lc, _ := rootEnvFor(t, envPlist)
 	_, err := runCmd(t, e, "services", "start", "-prefix", prefix, "--sudo-service-user=ghost", "foo")
-	if err == nil || err.Error() != "cannot start `foo` as `ghost` is not a user" || len(lc.calls) != 0 {
+	if err == nil || err.Error() != "Cannot start `foo` as `ghost` is not a user!" || len(lc.calls) != 0 {
 		t.Errorf("err = %v, calls = %q", err, lc.calls)
 	}
 }
@@ -164,7 +164,7 @@ func TestServicesSudoServiceUserNeedsRoot(t *testing.T) {
 	e, prefix, _, lc := servicesEnv(t)
 	for _, sub := range []string{"list", "start", "stop", "restart"} {
 		_, err := runCmd(t, e, "services", sub, "-prefix", prefix, "--sudo-service-user", "svc", "foo")
-		if err == nil || !strings.Contains(err.Error(), "`brw services --sudo-service-user` is supported only when running as root") {
+		if err == nil || !strings.Contains(err.Error(), "`brw services --sudo-service-user` is supported only when running as root!") {
 			t.Errorf("%s: %v", sub, err)
 		}
 	}
@@ -222,7 +222,7 @@ func TestServicesStopSaysWhichUserStartedAServiceInAnotherDomain(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := runCmd(t, e, "services", "stop", "-prefix", prefix, "foo")
-	want := "service `foo` is started as `root`. Try:\n  sudo brw services stop foo"
+	want := "Service `foo` is started as `root`. Try:\n  sudo brw services stop foo"
 	if err == nil || err.Error() != want {
 		t.Errorf("as user: %v, want %q", err, want)
 	}
@@ -238,7 +238,7 @@ func TestServicesStopSaysWhichUserStartedAServiceInAnotherDomain(t *testing.T) {
 	}
 	e.uid = 0
 	_, err = runCmd(t, e, "services", "stop", "-prefix", prefix, "foo")
-	want = "service `foo` is started as `me`. Try:\n  brw services stop foo"
+	want = "Service `foo` is started as `me`. Try:\n  brw services stop foo"
 	if err == nil || err.Error() != want {
 		t.Errorf("as root: %v, want %q", err, want)
 	}

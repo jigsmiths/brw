@@ -72,6 +72,9 @@ type env struct {
 	sleep      func(time.Duration)
 	sudoUser   string
 
+	consoleUID   func() (int, error)
+	domainWarned bool
+
 	takeOwnership func(paths []string, group string, sticky bool) error
 	userExists    func(name string) bool
 }
@@ -102,7 +105,7 @@ func main() {
 func newEnv(host platform.Host) *env {
 	e := &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host,
 		launchctl: services.NewLaunchctl(), uid: os.Getuid(), daemonsDir: "/Library/LaunchDaemons",
-		takeOwnership: chownToRoot, userExists: userExists}
+		takeOwnership: chownToRoot, userExists: userExists, consoleUID: consoleOwner}
 	e.user = os.Getenv("USER")
 	if u, err := user.Current(); e.user == "" && err == nil {
 		e.user = u.Username

@@ -10,18 +10,61 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/jigsmiths/brw/internal/services"
 )
 
 const rootServiceGroup = "admin"
 
+// domain is brew's System.domain_target.
+func (e *env) domain() string {
+	if e.root() {
+		return services.Domain(e.uid)
+	}
+	overSSH := false
+	if os.Getenv("HOMEBREW_SSH_TTY") != "" {
+		console, err := e.consoleUID()
+		overSSH = err == nil && console != e.uid
+	}
+	if !overSSH && os.Getenv("HOMEBREW_SUDO_USER") == "" {
+		return services.Domain(e.uid)
+	}
+	if !e.domainWarned && os.Getenv("HOMEBREW_SERVICES_NO_DOMAIN_WARNING") == "" {
+		if overSSH {
+			e.opoo("running over SSH without /dev/console ownership, using user/* instead of gui/* domain!")
+		} else {
+			e.opoo("running through sudo, using user/* instead of gui/* domain!")
+		}
+		if os.Getenv("HOMEBREW_NO_ENV_HINTS") == "" {
+			_, _ = fmt.Fprint(e.err, "Hide this warning by setting `HOMEBREW_SERVICES_NO_DOMAIN_WARNING=1`.\n"+
+				"Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).\n")
+		}
+		e.domainWarned = true
+	}
+	return services.UserDomain(e.uid)
+}
+
+func (e *env) domains() []string { return services.Candidates(e.domain(), e.uid) }
+
+func consoleOwner() (int, error) {
+	fi, err := os.Stat("/dev/console")
+	if err != nil {
+		return 0, err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, errors.New("no owner for /dev/console")
+	}
+	return int(st.Uid), nil
+}
+
 func (e *env) setSudoUser(name string) error {
 	if name == "" {
 		return nil
 	}
 	if !e.root() {
-		return errors.New("`brw services --sudo-service-user` is supported only when running as root")
+		return errors.New("`brw services --sudo-service-user` is supported only when running as root!") //nolint:staticcheck // matches brew's error text
 	}
 	e.sudoUser = name
 	return nil
@@ -35,7 +78,7 @@ func (e *env) checkLoad(t serviceTarget, function string) error {
 		e.opoo("`%s` must be run as root to start at system startup!", t.name)
 	}
 	if e.sudoUser != "" && e.sudoUser != e.user && !e.userExists(e.sudoUser) {
-		return fmt.Errorf("cannot %s `%s` as `%s` is not a user", function, t.name, e.sudoUser)
+		return fmt.Errorf("Cannot %s `%s` as `%s` is not a user!", function, t.name, e.sudoUser) //nolint:staticcheck // matches brew's error text
 	}
 	return nil
 }

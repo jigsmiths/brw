@@ -63,12 +63,23 @@ func Domain(uid int) string {
 	return "gui/" + strconv.Itoa(uid)
 }
 
-func Domains(uid int) []string {
+func Domains(uid int) []string { return Candidates(Domain(uid), uid) }
+
+// Candidates are the domains brew probes for a service: the chosen one first, then the user's others.
+func Candidates(chosen string, uid int) []string {
 	if uid == 0 {
 		return []string{systemDomain}
 	}
-	return []string{Domain(uid), "user/" + strconv.Itoa(uid)}
+	var out []string
+	for _, d := range []string{chosen, UserDomain(uid), Domain(uid)} {
+		if !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
+
+func UserDomain(uid int) string { return "user/" + strconv.Itoa(uid) }
 
 func ParseEnvFile(content string) (env map[string]string, skipped []string) {
 	env = map[string]string{}
