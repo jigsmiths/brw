@@ -49,10 +49,8 @@ func signalName(s syscall.Signal) string {
 	return platformSignalNames[s]
 }
 
-// EnvSet reports whether the variable is set and not blank.
 func EnvSet(name string) bool { return strings.TrimSpace(os.Getenv(name)) != "" }
 
-// EnvTrue reports whether the variable is set, not blank and not a false word.
 func EnvTrue(name string) bool {
 	return EnvSet(name) && !slices.Contains(falsyValues, strings.ToLower(strings.TrimSpace(os.Getenv(name))))
 }
@@ -96,7 +94,6 @@ func tputColumns() string {
 	return string(out)
 }
 
-// SensitiveValues are the values of environment variables whose names look secret, empty ones included.
 func SensitiveValues() []string {
 	var out []string
 	for _, kv := range os.Environ() {

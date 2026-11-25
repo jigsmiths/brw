@@ -27,33 +27,26 @@ const (
 )
 
 type Command struct {
-	Exe  string
-	Args []string
-	// Env holds NAME=value entries; with sudo they are passed through `sudo -E`.
-	Env       []string
-	Input     string
-	Privilege Privilege
-	// MustSucceed makes a non-zero exit an error.
-	MustSucceed bool
-	// Stdout and Stderr receive redacted lines as they arrive; nil discards that stream.
+	Exe            string
+	Args           []string
+	Env            []string
+	Input          string
+	Privilege      Privilege
+	MustSucceed    bool
 	Stdout, Stderr io.Writer
-	// Trace receives the redacted command line before it runs.
-	Trace io.Writer
-	// Color paints stderr lines in a failure message red.
-	Color   bool
-	Secrets []string
+	Trace          io.Writer
+	Color          bool
+	Secrets        []string
 }
 
 type Result struct{ Stdout, Stderr string }
 
-// Runner is injectable so callers can test without running anything.
 type Runner func(ctx context.Context, c Command) (Result, error)
 
 type message string
 
 func (m message) Error() string { return string(m) }
 
-// Argv is the command line to execute, including the sudo or env prefix.
 func (c Command) Argv() ([]string, error) {
 	if c.Privilege == User {
 		return append([]string{envCommand, c.Exe}, c.Args...), nil
@@ -88,7 +81,6 @@ func (c Command) Argv() ([]string, error) {
 	return append(argv, c.Args...), nil
 }
 
-// Exec runs c, first checking that sudo is usable when c needs it.
 func Exec(ctx context.Context, c Command) (Result, error) {
 	if c.Privilege != User && !Available(ctx, Exec) {
 		return Result{}, message(failureMessage(append([]string{c.Exe}, c.Args...), "exited with 1", "sudo is disabled by HOMEBREW_NO_SUDO.\n", c.Secrets))
