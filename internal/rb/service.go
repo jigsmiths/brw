@@ -3,6 +3,8 @@ package rb
 import (
 	"fmt"
 	"maps"
+	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -74,9 +76,60 @@ func (s renderedService) get(k string) value {
 }
 
 func (s renderedService) str(v value) string {
-	out := strings.ReplaceAll(str(v), PrefixPlaceholder, s.root)
-	if home, ok := lookupEnv("HOME"); ok && (out == "~" || strings.HasPrefix(out, "~/")) {
-		out = home + out[1:]
+	return strings.ReplaceAll(str(v), PrefixPlaceholder, s.root)
+}
+
+func expandOrFail(p string) string {
+	out, err := ExpandPath(p)
+	if err != nil {
+		fail("%v", err)
+	}
+	return out
+}
+
+// ExpandPath is File.expand_path: ~ and ~user are replaced and the result is absolute and clean.
+func ExpandPath(p string) (string, error) {
+	if strings.HasPrefix(p, "~") {
+		name, rest, _ := strings.Cut(p[1:], "/")
+		if rest != "" || strings.HasSuffix(p, "/") {
+			rest = "/" + rest
+		}
+		home := ""
+		if name == "" {
+			var ok bool
+			if home, ok = lookupEnv("HOME"); !ok {
+				home, _ = os.UserHomeDir()
+			}
+		} else {
+			var ok bool
+			if home, ok = lookupHome(name); !ok {
+				return "", fmt.Errorf("user %s doesn't exist", name)
+			}
+		}
+		p = home + rest
+	}
+	if !filepath.IsAbs(p) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		p = filepath.Join(wd, p)
+	}
+	return filepath.Clean(p), nil
+}
+
+var lookupHome = func(name string) (string, bool) {
+	u, err := user.Lookup(name)
+	if err != nil {
+		return "", false
+	}
+	return u.HomeDir, true
+}
+
+func (s renderedService) arg(v value) string {
+	out := s.str(v)
+	if strings.HasPrefix(out, "~") {
+		return expandOrFail(out)
 	}
 	return out
 }
@@ -86,7 +139,7 @@ func (s renderedService) path(k string) (string, bool) {
 	if blank(v) {
 		return "", false
 	}
-	return filepath.Clean(s.str(v)), true
+	return expandOrFail(s.str(v)), true
 }
 
 func (s renderedService) command() []string {
@@ -98,11 +151,11 @@ func (s renderedService) command() []string {
 	switch x := run.(type) {
 	case *arr:
 		for _, e := range x.v {
-			out = append(out, s.str(e))
+			out = append(out, s.arg(e))
 		}
 	case nil:
 	default:
-		out = []string{s.str(x)}
+		out = []string{s.arg(x)}
 	}
 	return out
 }
@@ -160,7 +213,11 @@ func (s renderedService) cron() [][2]string {
 	if s.sv.cron == "" {
 		return nil
 	}
-	fields := strings.Fields(parseCron(s.sv.cron))
+	return cronFields(s.sv.cron)
+}
+
+func cronFields(spec string) [][2]string {
+	fields := strings.Fields(parseCron(spec))
 	var out [][2]string
 	for i, k := range []string{"Minute", "Hour", "Day", "Month", "Weekday"} {
 		v := fields[i]
