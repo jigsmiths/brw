@@ -27,6 +27,7 @@ type fakeExec struct {
 	gui bool
 	// hostID is the bundle ID of the app brw runs in; runningIDs lists the running apps.
 	hostID, runningIDs string
+	failRun            map[string]bool
 }
 
 // run is the sudo runner that performs privileged commands through exec as /usr/bin/sudo calls.
@@ -35,6 +36,9 @@ func (f *fakeExec) run(ctx context.Context, c sudo.Command) (sudo.Result, error)
 	exe, args := c.Exe, c.Args
 	if exe == "/usr/bin/sudo" {
 		return sudo.Result{}, nil
+	}
+	if f.failRun[exe] {
+		return sudo.Result{}, errors.New(exe + " failed")
 	}
 	if exe == "/usr/bin/xargs" {
 		exe, args = args[2], append(slices.Clone(args[3:]), strings.Split(c.Input, "\x00")...)
@@ -250,25 +254,27 @@ func TestUninstallDirectives(t *testing.T) {
 	if got := f.ran("/usr/bin/trash"); !slices.Equal(got, []string{"/usr/bin/trash " + filepath.Join(home, "old")}) {
 		t.Errorf("trash calls = %q", got)
 	}
-	if got := f.ran("/usr/bin/sudo"); len(got) != 0 {
-		t.Errorf("sudo should not be needed: %q", got)
+	if got, want := f.ran("/usr/bin/sudo -E --"), []string{"/usr/bin/sudo -E -- /bin/rm -r -f -- " + filepath.Join(home, "gone")}; !slices.Equal(got, want) {
+		t.Errorf("sudo calls = %q, want %q", got, want)
 	}
 }
 
-func TestUninstallDeleteFallsBackToSudo(t *testing.T) {
+func TestUninstallDeleteAlwaysUsesSudo(t *testing.T) {
 	home := t.TempDir()
-	ti, f := installed(t, `[{"uninstall":[{"delete":"~/locked"}]},{"app":["App.app"]}]`)
+	ti, f := installed(t, `[{"uninstall":[{"delete":"~/plain"}]},{"app":["App.app"]}]`)
 	ti.in.Where.Home = home
-	if err := os.WriteFile(filepath.Join(home, "locked"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "plain"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f.fail["/bin/rm"] = true
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"/usr/bin/sudo -E -- /bin/rm -r -f -- " + filepath.Join(home, "locked")}
+	want := []string{"/usr/bin/sudo -E -- /bin/rm -r -f -- " + filepath.Join(home, "plain")}
 	if got := f.ran("/usr/bin/sudo"); !slices.Equal(got, want) {
 		t.Errorf("sudo calls = %q, want %q", got, want)
+	}
+	if got := f.ran("/bin/rm"); len(got) != 0 {
+		t.Errorf("rm ran without sudo: %q", got)
 	}
 }
 
@@ -290,25 +296,63 @@ func TestUninstallDeleteSudoGoesThroughTheRunnerAsBrewBuildsIt(t *testing.T) {
 	}
 }
 
-func TestUninstallSystemLaunchctlServiceRunsAsRoot(t *testing.T) {
+func launchctlRuns(f *fakeExec, privilege sudo.Privilege) [][]string {
+	var out [][]string
+	for _, c := range f.runs {
+		if c.Exe == "/bin/launchctl" && c.Privilege == privilege {
+			out = append(out, c.Args)
+		}
+	}
+	return out
+}
+
+func TestUninstallLaunchctlFindsSystemServicesAsRootLikeBrew(t *testing.T) {
+	t.Setenv("HOMEBREW_SUDO_USER", "")
+	t.Setenv("HOMEBREW_SSH_TTY", "")
+	uid := fmt.Sprint(os.Getuid())
 	ti, f := installed(t, `[{"uninstall":[{"launchctl":"com.example.daemon"}]},{"app":["App.app"]}]`)
-	f.handle = map[string]func([]string) ([]byte, error){"/bin/launchctl": func(args []string) ([]byte, error) {
-		if args[0] == "print" && args[1] == "system/com.example.daemon" {
+	f.handle = map[string]func([]string) ([]byte, error){
+		"/bin/launchctl": func([]string) ([]byte, error) { return nil, errors.New("not found") },
+		"/usr/bin/sudo": func(args []string) ([]byte, error) {
+			if slices.Contains(args, "list") {
+				return []byte("{ \"Label\" = \"com.example.daemon\"; };\n"), nil
+			}
 			return nil, nil
+		},
+	}
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"print", "gui/" + uid + "/com.example.daemon"}, {"print", "user/" + uid + "/com.example.daemon"},
+		{"list", "com.example.daemon"}, {"remove", "com.example.daemon"},
+	}
+	if got := launchctlRuns(f, sudo.Root); !slices.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("root launchctl runs = %q, want %q", got, want)
+	}
+}
+
+func TestUninstallLaunchctlProbesTheUserDomainsInBrewsOrder(t *testing.T) {
+	t.Setenv("HOMEBREW_SUDO_USER", "")
+	t.Setenv("HOMEBREW_SSH_TTY", "")
+	uid := fmt.Sprint(os.Getuid())
+	ti, f := installed(t, `[{"uninstall":[{"launchctl":"com.example.agent"}]},{"app":["App.app"]}]`)
+	t.Setenv("HOMEBREW_NO_SUDO", "1")
+	f.handle = map[string]func([]string) ([]byte, error){"/bin/launchctl": func(args []string) ([]byte, error) {
+		if args[0] == "list" {
+			return []byte("{ };\n"), nil
 		}
 		return nil, errors.New("not found")
 	}}
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	var removes []sudo.Command
-	for _, c := range f.runs {
-		if c.Exe == "/bin/launchctl" {
-			removes = append(removes, c)
-		}
+	want := []string{
+		"/bin/launchctl print gui/" + uid + "/com.example.agent", "/bin/launchctl print user/" + uid + "/com.example.agent",
+		"/bin/launchctl list com.example.agent", "/bin/launchctl remove com.example.agent",
 	}
-	if len(removes) != 1 || removes[0].Privilege != sudo.Root || !slices.Equal(removes[0].Args, []string{"remove", "com.example.daemon"}) {
-		t.Errorf("launchctl runs = %v", removes)
+	if got := f.ran("/bin/launchctl"); !slices.Equal(got, want) {
+		t.Errorf("launchctl calls = %q, want %q", got, want)
 	}
 }
 
@@ -318,8 +362,139 @@ func TestUninstallSkipsSystemLaunchctlWhenSudoIsOff(t *testing.T) {
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.ran("/bin/launchctl print system/"); len(got) != 0 {
-		t.Errorf("system domain was queried: %q", got)
+	if got := launchctlRuns(f, sudo.Root); len(got) != 0 {
+		t.Errorf("root launchctl ran: %q", got)
+	}
+}
+
+func unreadableDir(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o755) })
+}
+
+func TestUninstallRmdirListsUnreadableDirectoriesWithSudo(t *testing.T) {
+	home := t.TempDir()
+	ti, f := installed(t, `[{"uninstall":[{"rmdir":"~/Locked"}]},{"app":["App.app"]}]`)
+	ti.in.Where.Home = home
+	unreadableDir(t, filepath.Join(home, "Locked"))
+	f.handle = map[string]func([]string) ([]byte, error){"/usr/bin/sudo": func(args []string) ([]byte, error) {
+		if slices.Contains(args, "/bin/ls") {
+			return []byte(".DS_Store\n"), nil
+		}
+		return nil, nil
+	}}
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	var ls []sudo.Command
+	for _, c := range f.runs {
+		if c.Exe == "/bin/ls" {
+			ls = append(ls, c)
+		}
+	}
+	if len(ls) != 1 || ls[0].Privilege != sudo.Sudo || !ls[0].MustSucceed || ls[0].Stderr != nil ||
+		!slices.Equal(ls[0].Args, []string{"-A", "-F", "--", filepath.Join(home, "Locked")}) {
+		t.Errorf("ls runs = %v", ls)
+	}
+	if exists(filepath.Join(home, "Locked")) {
+		t.Error("the directory holds nothing but a .DS_Store, so it should go")
+	}
+}
+
+func TestUninstallRmdirFailsWhenTheSudoListingFails(t *testing.T) {
+	home := t.TempDir()
+	ti, f := installed(t, `[{"uninstall":[{"rmdir":"~/Locked"}]},{"app":["App.app"]}]`)
+	ti.in.Where.Home = home
+	unreadableDir(t, filepath.Join(home, "Locked"))
+	f.handle = map[string]func([]string) ([]byte, error){"/usr/bin/sudo": func([]string) ([]byte, error) {
+		return nil, errors.New("Failure while executing; `ls`")
+	}}
+	err := ti.in.Uninstall(context.Background(), "app", "1.0", false)
+	if err == nil || !strings.Contains(err.Error(), "Failure while executing") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestUninstallRmdirRemovesDirectoriesThatSudoSawEmpty(t *testing.T) {
+	home := t.TempDir()
+	ti, f := installed(t, `[{"uninstall":[{"rmdir":"~/Locked"}]},{"app":["App.app"]}]`)
+	ti.in.Where.Home = home
+	unreadableDir(t, filepath.Join(home, "Locked"))
+	f.handle = map[string]func([]string) ([]byte, error){"/usr/bin/sudo": func([]string) ([]byte, error) { return nil, nil }}
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if exists(filepath.Join(home, "Locked")) {
+		t.Error("the empty directory should go")
+	}
+}
+
+func TestUninstallTrashRetriesWithPermissionsLikeBrew(t *testing.T) {
+	home := t.TempDir()
+	ti, f := installed(t, `[{"uninstall":[{"trash":"~/old"}]},{"app":["App.app"]}]`)
+	ti.in.Where.Home = home
+	if err := os.Mkdir(filepath.Join(home, "old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	attempts := 0
+	f.handle = map[string]func([]string) ([]byte, error){"/usr/bin/trash": func([]string) ([]byte, error) {
+		if attempts++; attempts <= 2 {
+			return nil, errors.New("not permitted")
+		}
+		return nil, nil
+	}}
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(home, "old")
+	want := []string{"/usr/bin/trash " + old, "/usr/bin/trash " + old, "/usr/bin/chflags -R -- 000 " + old, "/usr/bin/trash " + old}
+	var got []string
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "/usr/bin/trash") || strings.HasPrefix(c, "/usr/bin/chflags") {
+			got = append(got, c)
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if ti.warn.Len() > 0 {
+		t.Errorf("warnings = %q", ti.warn.String())
+	}
+}
+
+func TestUninstallTrashWarnsAboutWhatStaysUntrashable(t *testing.T) {
+	home := t.TempDir()
+	ti, f := installed(t, `[{"uninstall":[{"trash":"~/old"}]},{"app":["App.app"]}]`)
+	ti.in.Where.Home = home
+	if err := os.Mkdir(filepath.Join(home, "old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.fail["/usr/bin/trash"] = true
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if want := "Warning: The following files could not be trashed, please do so manually:\n" + filepath.Join(home, "old") + "\n"; ti.warn.String() != want {
+		t.Errorf("warnings = %q, want %q", ti.warn.String(), want)
+	}
+}
+
+func TestPurgeRaisesWhenChownFails(t *testing.T) {
+	ti, f := installed(t, `[{"app":["App.app"]}]`)
+	version := filepath.Join(ti.prefix, "Caskroom/app/1.0")
+	lockedFile(t, filepath.Join(version, "locked"))
+	f.noFix = true
+	f.failRun = map[string]bool{"chown": true}
+	ownedByOther = func(string, bool) bool { return true }
+	t.Cleanup(func() { ownedByOther = ownedByAnother })
+	err := ti.in.Uninstall(context.Background(), "app", "1.0", false)
+	if err == nil || !strings.Contains(err.Error(), "chown failed") {
+		t.Errorf("err = %v", err)
 	}
 }
 

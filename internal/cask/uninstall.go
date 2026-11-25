@@ -297,12 +297,13 @@ func (in *Installer) runDirectives(ctx context.Context, token string, step unins
 		in.trash(ctx, s)
 	}
 	if s := d["rmdir"]; len(s) > 0 {
-		in.rmdirs(ctx, s)
+		if err := in.rmdirs(ctx, s); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// launchctl looks a system service up without sudo, unlike brew, so a password is asked for only when there is one to remove.
 func (in *Installer) launchctl(ctx context.Context, services []string) {
 	var all []string
 	for _, s := range services {
@@ -312,30 +313,17 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 		}
 		all = append(all, in.runningServices(ctx, s)...)
 	}
-	uid := fmt.Sprint(os.Getuid())
 	for _, s := range all {
 		in.logf("==> Removing launchctl service %s", s)
 		for _, asRoot := range []bool{false, true} {
 			if asRoot && !sudo.Available(ctx, in.runner()) {
 				continue
 			}
-			found := false
-			if asRoot {
-				_, err := in.exec(ctx, "/bin/launchctl", "print", "system/"+s)
-				found = err == nil
-			} else {
-				for _, domain := range []string{"user/" + uid, "gui/" + uid} {
-					if _, err := in.exec(ctx, "/bin/launchctl", "print", domain+"/"+s); err == nil {
-						found = true
-						break
-					}
-				}
-			}
 			privilege := sudo.User
 			if asRoot {
 				privilege = sudo.Root
 			}
-			if found {
+			if in.launchctlFinds(ctx, s, privilege) {
 				if err := in.privileged(ctx, privilege, "/bin/launchctl", "remove", s); err == nil {
 					in.sleep(time.Second)
 				}
@@ -349,8 +337,53 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 					_ = in.privileged(ctx, privilege, "/bin/rm", "-f", "--", plist)
 				}
 			}
+			if _, err := os.Stat(s); err == nil {
+				_ = in.privileged(ctx, privilege, "/bin/launchctl", "unload", "-w", "--", s)
+				_ = in.privileged(ctx, privilege, "/bin/rm", "-f", "--", s)
+				in.sleep(time.Second)
+			}
 		}
 	}
+}
+
+// launchctlFinds is Homebrew::Services::System.launchctl_find_service.
+func (in *Installer) launchctlFinds(ctx context.Context, label string, privilege sudo.Privilege) bool {
+	uid := fmt.Sprint(os.Getuid())
+	sshWithoutConsole := false
+	if os.Getenv("HOMEBREW_SSH_TTY") != "" {
+		fi, err := os.Stat("/dev/console")
+		st, ok := fi.Sys().(*syscall.Stat_t)
+		sshWithoutConsole = err == nil && ok && int(st.Uid) != os.Getuid()
+	}
+	domains := []string{"gui/" + uid}
+	if sshWithoutConsole || os.Getenv("HOMEBREW_SUDO_USER") != "" {
+		domains = []string{"user/" + uid}
+	}
+	for _, d := range []string{"user/" + uid, "gui/" + uid} {
+		if !slices.Contains(domains, d) {
+			domains = append(domains, d)
+		}
+	}
+	present := func(args ...string) bool {
+		var out string
+		var err error
+		if privilege == sudo.User {
+			var b []byte
+			b, err = in.exec(ctx, "/bin/launchctl", args...)
+			out = string(b)
+		} else {
+			c := in.command(privilege, "/bin/launchctl", args...)
+			c.Stderr = nil
+			out, err = in.capture(ctx, c)
+		}
+		return err == nil && strings.TrimSpace(out) != ""
+	}
+	for _, d := range domains {
+		if present("print", d+"/"+label) {
+			return true
+		}
+	}
+	return present("list", label)
 }
 
 // privileged runs an unprivileged command through Exec and anything else through the sudo runner.
@@ -509,13 +542,15 @@ func (in *Installer) resolvePaths(action string, paths []string, each func(path 
 	}
 }
 
-const accessWrite = 0x2
+const (
+	accessWrite = 0x2
+	accessRead  = 0x4
+)
 
 func writable(dir string) bool {
 	return syscall.Access(dir, accessWrite) == nil
 }
 
-// deletePaths tries without sudo first, unlike brew, so most casks need no password.
 func (in *Installer) deletePaths(ctx context.Context, paths []string) error {
 	in.logf("==> Removing files:")
 	var err error
@@ -524,13 +559,10 @@ func (in *Installer) deletePaths(ctx context.Context, paths []string) error {
 		if len(resolved) == 0 {
 			return
 		}
-		args := append([]string{"-r", "-f", "--"}, resolved...)
-		if _, e := in.exec(ctx, "/bin/rm", args...); e != nil {
-			sudoRm := in.command(sudo.Sudo, xargsPath, "-0", "--", "/bin/rm", "-r", "-f", "--")
-			sudoRm.Input = strings.Join(resolved, "\x00")
-			if _, e := in.capture(ctx, sudoRm); e != nil {
-				err = errors.Join(err, e)
-			}
+		rm := in.command(sudo.Sudo, xargsPath, "-0", "--", "/bin/rm", "-r", "-f", "--")
+		rm.Input = strings.Join(resolved, "\x00")
+		if _, e := in.capture(ctx, rm); e != nil {
+			err = errors.Join(err, e)
 		}
 	})
 	return err
@@ -548,7 +580,14 @@ func (in *Installer) trash(ctx context.Context, paths []string) {
 	}
 	var failed []string
 	for _, p := range all {
-		if _, err := in.exec(ctx, "/usr/bin/trash", p); err != nil {
+		trash := func(p string) error {
+			_, err := in.exec(ctx, "/usr/bin/trash", p)
+			return err
+		}
+		if trash(p) == nil {
+			continue
+		}
+		if in.gainPermissions(ctx, p, []string{"-R"}, trash) != nil {
 			failed = append(failed, p)
 		}
 	}
@@ -560,50 +599,86 @@ func (in *Installer) trash(ctx context.Context, paths []string) {
 	}
 }
 
-func (in *Installer) rmdirs(ctx context.Context, dirs []string) {
+func (in *Installer) rmdirs(ctx context.Context, dirs []string) error {
 	in.logf("==> Removing directories if empty:")
+	var err error
 	in.resolvePaths("rmdir", dirs, func(_ string, resolved []string) {
 		for _, r := range resolved {
-			if fi, err := os.Stat(r); err != nil || !fi.IsDir() {
+			if fi, e := os.Stat(r); e != nil || !fi.IsDir() {
 				return
 			}
 		}
-		in.rmdirAll(ctx, resolved)
+		if err == nil {
+			_, err = in.rmdirAll(ctx, resolved)
+		}
 	})
+	return err
 }
 
-func (in *Installer) rmdirAll(ctx context.Context, dirs []string) bool {
+const dsStore = ".DS_Store"
+
+// rmdirAll is recursive_rmdir: it reports whether every directory was empty enough to remove.
+func (in *Installer) rmdirAll(ctx context.Context, dirs []string) (bool, error) {
 	for _, d := range dirs {
 		in.logf("%s", tildeHome(d, in.Where.Home))
-		if fi, err := os.Lstat(d); err != nil || fi.Mode()&fs.ModeSymlink != 0 {
-			return false
+		if fi, err := os.Lstat(d); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			return false, nil
 		}
-		entries, err := os.ReadDir(d)
-		if err != nil {
-			return false
+		children, ok, err := in.rmdirChildren(ctx, d)
+		if err != nil || !ok {
+			return false, err
 		}
-		var children []string
-		for _, e := range entries {
-			p := filepath.Join(d, e.Name())
-			if e.Name() == ".DS_Store" {
-				continue
+		if ds := filepath.Join(d, dsStore); slices.Contains(children, ds) {
+			if err := in.gainPermissionsRemove(ctx, ds); err != nil {
+				return false, err
 			}
-			if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
-				return false
+			children = slices.DeleteFunc(children, func(c string) bool { return c == ds })
+		}
+		if ok, err := in.rmdirAll(ctx, children); err != nil || !ok {
+			return false, err
+		}
+		if err := in.gainPermissionsRmdir(ctx, d); err != nil {
+			if errors.Is(err, syscall.ENOTEMPTY) || sudo.IsFailure(err) {
+				return false, nil
+			}
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (in *Installer) rmdirChildren(ctx context.Context, dir string) (children []string, ok bool, err error) {
+	if syscall.Access(dir, accessRead) == nil {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, e := range entries {
+			p := filepath.Join(dir, e.Name())
+			if fi, err := os.Stat(p); e.Name() != dsStore && (err != nil || !fi.IsDir()) {
+				return nil, false, nil
 			}
 			children = append(children, p)
 		}
-		if _, err := os.Lstat(filepath.Join(d, ".DS_Store")); err == nil {
-			_, _ = in.exec(ctx, "/bin/rm", "-f", "--", filepath.Join(d, ".DS_Store"))
-		}
-		if !in.rmdirAll(ctx, children) {
-			return false
-		}
-		if _, err := in.exec(ctx, "/bin/rmdir", "--", d); err != nil {
-			return false
-		}
+		return children, true, nil
 	}
-	return true
+	ls := in.command(sudo.Sudo, "/bin/ls", "-A", "-F", "--", dir)
+	ls.Stderr = nil
+	out, err := in.capture(ctx, ls)
+	if err != nil {
+		return nil, false, err
+	}
+	for line := range strings.SplitSeq(strings.TrimSuffix(out, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		name, isDir := strings.CutSuffix(line, "/")
+		if !isDir && line != dsStore {
+			return nil, false, nil
+		}
+		children = append(children, filepath.Join(dir, name))
+	}
+	return children, true, nil
 }
 
 func tildeHome(path, home string) string {

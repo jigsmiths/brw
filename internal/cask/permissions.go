@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"syscall"
 
 	"github.com/jigsmiths/brw/internal/fsx"
@@ -44,37 +45,86 @@ func (in *Installer) removePath(ctx context.Context, r *fsx.Root, rel string) er
 	case dir:
 		flags = []string{"-R"}
 	}
-	remove := func() error {
-		if writable(filepath.Dir(abs)) {
+	return in.gainPermissions(ctx, abs, flags, func(p string) error {
+		if writable(filepath.Dir(p)) {
 			return r.RemoveAll(rel)
 		}
-		args := []string{"-f", "--", abs}
-		if dir {
-			args = append([]string{"-R"}, args...)
+		return in.sudoIfNeeded(ctx, "/bin/rm", rmArgs(p, dir)...)
+	})
+}
+
+func rmArgs(path string, recursive bool) []string {
+	args := []string{"-f", "--", path}
+	if recursive {
+		return append([]string{"-R"}, args...)
+	}
+	return args
+}
+
+// gainPermissions is Cask::Utils.gain_permissions: retry after unlocking the path, then after taking ownership of it.
+func (in *Installer) gainPermissions(ctx context.Context, path string, flags []string, try func(path string) error) error {
+	triedPermissions, triedOwnership := false, false
+	for {
+		err := try(path)
+		if err == nil {
+			return nil
 		}
-		return in.sudoIfNeeded(ctx, "/bin/rm", args...)
-	}
-	fix := func() {
-		_, _ = in.exec(ctx, "/usr/bin/chflags", append(flags, "--", "000", abs)...)
-		_, _ = in.exec(ctx, "/bin/chmod", append(flags, "--", "u+rwx", abs)...)
-		_, _ = in.exec(ctx, "/bin/chmod", append(flags, "-N", abs)...)
-	}
-	if err = remove(); err == nil {
-		return nil
-	}
-	fix()
-	if err = remove(); err == nil {
-		return nil
-	}
-	if ownedByOther(abs, dir) {
-		in.logf("==> Using sudo to gain ownership of path '%s'", abs)
-		chown := in.command(sudo.Sudo, "chown", append(flags, "--", currentUser(), abs)...)
+		target := filepath.Clean(path)
+		if fi, e := os.Lstat(target); e == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			flags = []string{"-h"}
+		}
+		if !triedPermissions {
+			_, _ = in.exec(ctx, "/usr/bin/chflags", append(slices.Clone(flags), "--", "000", target)...)
+			_, _ = in.exec(ctx, "/bin/chmod", append(slices.Clone(flags), "--", "u+rwx", target)...)
+			_, _ = in.exec(ctx, "/bin/chmod", append(slices.Clone(flags), "-N", target)...)
+			triedPermissions = true
+			continue
+		}
+		if triedOwnership || !ownedByOther(target, slices.Contains(flags, "-R")) {
+			return err
+		}
+		in.logf("==> Using sudo to gain ownership of path '%s'", path)
+		chown := in.command(sudo.Sudo, "chown", append(slices.Clone(flags), "--", currentUser(), target)...)
 		chown.MustSucceed = false
-		_, _ = in.capture(ctx, chown)
-		fix()
-		err = remove()
+		if _, e := in.capture(ctx, chown); e != nil {
+			return e
+		}
+		triedOwnership, triedPermissions = true, false
 	}
-	return err
+}
+
+func (in *Installer) gainPermissionsRemove(ctx context.Context, path string) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil
+	}
+	flags, dir := []string(nil), false
+	if fi.Mode()&fs.ModeSymlink != 0 {
+		flags = []string{"-h"}
+	} else if fi.IsDir() {
+		flags, dir = []string{"-R"}, true
+	}
+	return in.gainPermissions(ctx, path, flags, func(p string) error {
+		if !writable(filepath.Dir(p)) {
+			return in.sudoIfNeeded(ctx, "/bin/rm", rmArgs(p, dir)...)
+		}
+		if dir {
+			return os.RemoveAll(p) //fsx:allow brew's FileUtils.rm_r on a path the cask named
+		}
+		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) { //fsx:allow brew's FileUtils.rm_f on a path the cask named
+			return err
+		}
+		return nil
+	})
+}
+
+func (in *Installer) gainPermissionsRmdir(ctx context.Context, path string) error {
+	return in.gainPermissions(ctx, path, []string{"-h"}, func(p string) error {
+		if writable(filepath.Dir(p)) {
+			return syscall.Rmdir(p) //fsx:allow brew's FileUtils.rmdir on a path the cask named
+		}
+		return in.sudoIfNeeded(ctx, "rmdir", "--", p)
+	})
 }
 
 func (in *Installer) mkdirPath(ctx context.Context, r *fsx.Root, rel string) error {
