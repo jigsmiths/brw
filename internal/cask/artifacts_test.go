@@ -77,17 +77,23 @@ func TestPlanTargets(t *testing.T) {
 
 func TestPlanRefusesWhatBrwCannotInstall(t *testing.T) {
 	for name, c := range map[string]api.Cask{
-		"pkg":          {Token: "a", Artifacts: raws(t, `[{"pkg":["a.pkg"]}]`)},
-		"suite":        {Token: "b", Artifacts: raws(t, `[{"app":["B.app"]},{"suite":["b"]}]`)},
-		"pkgutil":      {Token: "c", Artifacts: raws(t, `[{"uninstall":[{"pkgutil":"com.c"}]},{"app":["C.app"]}]`)},
-		"rename":       {Token: "d", Artifacts: raws(t, `[{"app":["D.app"]}]`), Rename: raws(t, `[{"from":"a","to":"b"}]`)},
-		"formula deps": {Token: "e", Artifacts: raws(t, `[{"app":["E.app"]}]`), DependsOn: api.CaskDependsOn{Formula: []string{"jq"}}},
-		"cask deps":    {Token: "f", Artifacts: raws(t, `[{"app":["F.app"]}]`), DependsOn: api.CaskDependsOn{Cask: []string{"g"}}},
-		"nothing":      {Token: "h", Artifacts: raws(t, `[{"zap":[{"trash":"~/x"}]}]`)},
+		"pkg":     {Token: "a", Artifacts: raws(t, `[{"pkg":["a.pkg"]}]`)},
+		"suite":   {Token: "b", Artifacts: raws(t, `[{"app":["B.app"]},{"suite":["b"]}]`)},
+		"pkgutil": {Token: "c", Artifacts: raws(t, `[{"uninstall":[{"pkgutil":"com.c"}]},{"app":["C.app"]}]`)},
+		"rename":  {Token: "d", Artifacts: raws(t, `[{"app":["D.app"]}]`), Rename: raws(t, `[{"from":"a","to":"b"}]`)},
+		"nothing": {Token: "h", Artifacts: raws(t, `[{"zap":[{"trash":"~/x"}]}]`)},
 	} {
 		if _, err := plan(c, where); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("%s: err = %v, want ErrUnsupported", name, err)
 		}
+	}
+}
+
+func TestPlanAcceptsDependencies(t *testing.T) {
+	c := api.Cask{Token: "e", Artifacts: raws(t, `[{"app":["E.app"]}]`),
+		DependsOn: api.CaskDependsOn{Formula: []string{"jq"}, Cask: []string{"g"}}}
+	if _, err := plan(c, where); err != nil {
+		t.Errorf("err = %v, want a cask with dependencies planned", err)
 	}
 }
 
