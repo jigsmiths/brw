@@ -61,6 +61,7 @@ type installPlan struct {
 	generators            []generator
 	preflight, postflight []json.RawMessage
 	uninstall             []map[string]json.RawMessage
+	installers            []installerStep
 }
 
 var uninstallDirectives = []string{"quit", "login_item", "launchctl", "delete", "trash", "rmdir"}
@@ -122,6 +123,12 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				} else {
 					p.postflight = append(p.postflight, steps...)
 				}
+			case "installer":
+				steps, err := readInstallers(c.Token, args)
+				if err != nil {
+					return installPlan{}, err
+				}
+				p.installers = append(p.installers, steps...)
 			case "zap":
 			default:
 				return unsupported(kind + " artifacts")
@@ -129,7 +136,7 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 			p.uninstall = append(p.uninstall, map[string]json.RawMessage{kind: args})
 		}
 	}
-	if len(p.apps) == 0 && len(p.links) == 0 {
+	if len(p.apps) == 0 && len(p.links) == 0 && len(p.installers) == 0 {
 		return unsupported("no app or binary")
 	}
 	return p, nil

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -44,6 +43,7 @@ const (
 type Launchctl interface {
 	Print(domain, label string) (string, error)
 	List(label string) (string, error)
+	Jobs() (string, error)
 	Enable(domain, label string) error
 	Bootstrap(domain, file string) error
 	Bootout(domain, label string) error
@@ -54,14 +54,44 @@ func Names(formula string) []string {
 	return []string{canonicalPrefix + formula, legacyPrefix + formula}
 }
 
-func Domain(uid int) string { return "gui/" + strconv.Itoa(uid) }
+const systemDomain = "system"
 
-func Domains(uid int) []string {
-	return []string{Domain(uid), "user/" + strconv.Itoa(uid)}
+func Domain(uid int) string {
+	if uid == 0 {
+		return systemDomain
+	}
+	return "gui/" + strconv.Itoa(uid)
 }
 
+func Domains(uid int) []string { return Candidates(Domain(uid), uid) }
+
+func Candidates(chosen string, uid int) []string {
+	if uid == 0 {
+		return []string{systemDomain}
+	}
+	var out []string
+	for _, d := range []string{chosen, UserDomain(uid), Domain(uid)} {
+		if !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func UserDomain(uid int) string { return "user/" + strconv.Itoa(uid) }
+
+func ToF(s string) float64 { return rubyToF(s) }
+
 func ParseEnvFile(content string) (env map[string]string, skipped []string) {
+	pairs, skipped := ParseEnvPairs(content)
 	env = map[string]string{}
+	for _, kv := range pairs {
+		env[kv[0]] = kv[1]
+	}
+	return env, skipped
+}
+
+func ParseEnvPairs(content string) (pairs [][2]string, skipped []string) {
 	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -73,59 +103,48 @@ func ParseEnvFile(content string) (env map[string]string, skipped []string) {
 			skipped = append(skipped, line)
 			continue
 		}
-		env[key] = strings.TrimSpace(value)
+		value = strings.TrimSpace(value)
+		if i := slices.IndexFunc(pairs, func(kv [2]string) bool { return kv[0] == key }); i >= 0 {
+			pairs[i][1] = value
+			continue
+		}
+		pairs = append(pairs, [2]string{key, value})
 	}
-	return env, skipped
+	return pairs, skipped
 }
 
-var (
-	envDict      = regexp.MustCompile(`(?s)\t<key>EnvironmentVariables</key>\n\t<dict>\n(.*?)\t</dict>\n`)
-	envEntry     = regexp.MustCompile(`\t\t<key>([^<]*)</key>\n\t\t<string>([^<]*)</string>\n`)
-	topLevelKey  = regexp.MustCompile(`(?m)^\t<key>([^<]+)</key>$`)
-	xmlEscaper   = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
-	plistTail    = "</dict>\n</plist>\n"
-	envDictKey   = "EnvironmentVariables"
-	envDictStart = "\t<key>" + envDictKey + "</key>\n\t<dict>\n"
-)
-
-// ApplyEnv sets variables in a plist's EnvironmentVariables as brew's
-// effective_environment_variables does: overrides win, keys stay sorted.
-// False means the plist had no shape it could edit.
-func ApplyEnv(plist []byte, env map[string]string) ([]byte, bool) {
-	s := string(plist)
-	if !strings.HasSuffix(s, plistTail) || !strings.Contains(s, "\n<dict>\n") {
-		return plist, false
+func Program(plist []byte) (path, source string, parsed bool) {
+	root, err := parsePlist(string(plist))
+	if err != nil {
+		return "", "", false
 	}
-	if len(env) == 0 {
-		return plist, true
+	if _, isNil := root.(plistNil); isNil {
+		return "", "", false
 	}
-	vars := map[string]string{}
-	loc := envDict.FindStringSubmatchIndex(s)
-	if loc != nil {
-		for _, m := range envEntry.FindAllStringSubmatch(s[loc[2]:loc[3]], -1) {
-			vars[m[1]] = m[2]
+	dict, _ := root.(*plistDict)
+	if dict == nil {
+		return "", "", true
+	}
+	value := func(key string) (string, bool) {
+		for _, e := range dict.entries {
+			if e.id == "s:"+key {
+				s, ok := e.val.(string)
+				return s, ok
+			}
+		}
+		return "", false
+	}
+	for _, e := range dict.entries {
+		if args, ok := e.val.([]any); ok && e.id == "s:ProgramArguments" && len(args) > 0 {
+			if first, ok := args[0].(string); ok && strings.TrimSpace(first) != "" {
+				return first, "first ProgramArguments value", true
+			}
 		}
 	}
-	for k, v := range env {
-		vars[xmlEscaper.Replace(k)] = xmlEscaper.Replace(v)
+	if program, ok := value("Program"); ok && strings.TrimSpace(program) != "" {
+		return program, "Program", true
 	}
-	var b strings.Builder
-	b.WriteString(envDictStart)
-	for _, k := range slices.Sorted(maps.Keys(vars)) {
-		fmt.Fprintf(&b, "\t\t<key>%s</key>\n\t\t<string>%s</string>\n", k, vars[k])
-	}
-	b.WriteString("\t</dict>\n")
-	if loc != nil {
-		return []byte(s[:loc[0]] + b.String() + s[loc[1]:]), true
-	}
-	at := len(s) - len(plistTail)
-	for _, m := range topLevelKey.FindAllStringSubmatchIndex(s, -1) {
-		if s[m[2]:m[3]] > envDictKey {
-			at = m[0]
-			break
-		}
-	}
-	return []byte(s[:at] + b.String() + s[at:]), true
+	return "", "", true
 }
 
 func FindPlist(kegPath string, names []string) (string, error) {
@@ -145,33 +164,43 @@ func FindPlist(kegPath string, names []string) (string, error) {
 	return "", ErrNoService
 }
 
-var (
-	labelKey    = regexp.MustCompile(`<key>Label</key>\s*<string>([^<]+)</string>`)
-	userNameKey = regexp.MustCompile(`<key>UserName</key>\s*<string>([^<]+)</string>`)
-)
+func FileLabel(plist []byte) (string, bool) { return plistString(plist, "Label") }
 
-func FileLabel(plist []byte) (string, bool) { return firstString(labelKey, plist) }
+func FileUser(plist []byte) (string, bool) { return plistString(plist, userNameKeyName) }
 
-func FileUser(plist []byte) (string, bool) { return firstString(userNameKey, plist) }
-
-func firstString(re *regexp.Regexp, b []byte) (string, bool) {
-	m := re.FindSubmatch(b)
-	if m == nil {
+func plistString(plist []byte, key string) (string, bool) {
+	root, err := parsePlist(string(plist))
+	if err != nil {
 		return "", false
 	}
-	return string(m[1]), true
-}
-
-func Timed(plist []byte) bool {
-	s := string(plist)
-	return strings.Contains(s, "<key>StartInterval</key>") || strings.Contains(s, "<key>StartCalendarInterval</key>")
+	var value any
+	switch x := root.(type) {
+	case *plistDict:
+		for _, e := range x.entries {
+			if e.id == "s:"+key {
+				value = e.val
+			}
+		}
+	case string:
+		if strings.Contains(x, key) {
+			value = key
+		}
+	}
+	s, ok := value.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return "", false
+	}
+	return s, true
 }
 
 type Info struct {
-	Blank       bool
-	PID         int
-	ExitCode    int
-	HasExitCode bool
+	Blank         bool
+	PID           int
+	HasPID        bool
+	ExitCode      int
+	HasExitCode   bool
+	LoadedFile    string
+	HasLoadedFile bool
 }
 
 func (i Info) Running() bool { return i.PID > 0 }
@@ -181,9 +210,16 @@ var (
 	printExit = regexp.MustCompile(`last exit code = ([0-9]+)`)
 	listPID   = regexp.MustCompile(`"PID" = ([0-9]*);`)
 	listExit  = regexp.MustCompile(`"LastExitStatus" = ([0-9]*);`)
+	printPath = regexp.MustCompile(`path = (.*)`)
 )
 
-func ParsePrint(out string) Info { return parse(out, printPID, printExit) }
+func ParsePrint(out string) Info {
+	i := parse(out, printPID, printExit)
+	if m := printPath.FindStringSubmatch(out); m != nil {
+		i.LoadedFile, i.HasLoadedFile = m[1], true
+	}
+	return i
+}
 
 func ParseList(out string) Info { return parse(out, listPID, listExit) }
 
@@ -191,6 +227,7 @@ func parse(out string, pid, exit *regexp.Regexp) Info {
 	i := Info{Blank: strings.TrimSpace(out) == ""}
 	if m := pid.FindStringSubmatch(out); m != nil {
 		i.PID, _ = strconv.Atoi(m[1])
+		i.HasPID = true
 	}
 	if m := exit.FindStringSubmatch(out); m != nil {
 		i.ExitCode, _ = strconv.Atoi(m[1])

@@ -132,6 +132,24 @@ func TestServiceSocketsAndIntervals(t *testing.T) {
 	}
 }
 
+func TestRequiresRoot(t *testing.T) {
+	for service, want := range map[string]bool{
+		"  service do\n    run [\"x\"]\n    require_root true\n  end\n": true,
+		"  service do\n    run [\"x\"]\n  end\n":                        false,
+		"":                                                              false,
+	} {
+		asBrewHost(t, "brewuser")
+		src := "class Tool < Formula\n  url \"https://example.com/tool-1.0.tar.gz\"\n  sha256 \"aa\"\n\n" + service + "end\n"
+		f, err := LoadFormula([]byte(src), "tool", "arm64_golden_gate")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := f.ServiceRequiresRoot("/opt/homebrew"); err != nil || got != want {
+			t.Errorf("%q: RequiresRoot = %v, %v; want %v", service, got, err, want)
+		}
+	}
+}
+
 func TestServiceWithoutRunHasNoFiles(t *testing.T) {
 	if got := serviceFiles(t, "  service do\n    name macos: \"x\"\n  end\n"); len(got) != 0 {
 		t.Errorf("files = %v", keys(got))
