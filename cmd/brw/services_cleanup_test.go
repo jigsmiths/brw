@@ -106,6 +106,41 @@ func TestServicesCleanupRemovesUnusedServiceFiles(t *testing.T) {
 	}
 }
 
+func TestServicesCleanupFailsOnADirectoryThatMatchesTheGlob(t *testing.T) {
+	e, prefix, agents, _ := servicesEnv(t)
+	dir := filepath.Join(agents, "sh.brew.dir.plist")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCmd(t, e, "services", "cleanup", "-prefix", prefix)
+	if want := "Removing unused service file: " + dir + "\n"; out != want {
+		t.Errorf("out %q, want %q", out, want)
+	}
+	if want := "Operation not permitted @ apply2files - " + dir; err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("directory removed: %v", err)
+	}
+}
+
+func TestServicesCleanupReadsTheLabelOfABinaryPlistWithPlutil(t *testing.T) {
+	e, prefix, agents, lc := servicesEnv(t)
+	kept := plistAt(t, filepath.Join(agents, "sh.brew.kept.plist"), "bplist00kept")
+	gone := plistAt(t, filepath.Join(agents, "sh.brew.gone.plist"), "bplist00gone")
+	e.plutil = func(path string) ([]byte, error) {
+		return []byte(plistFor("custom." + strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "sh.brew."), ".plist"))), nil
+	}
+	lc.loaded["custom.kept"] = "\tstate = not running\n\tlast exit code = 0\n"
+	out, err := runCmd(t, e, "services", "cleanup", "-prefix", prefix)
+	if want := "Removing unused service file: " + gone + "\n"; err != nil || out != want {
+		t.Errorf("out %q, err %v, want %q", out, err, want)
+	}
+	if _, err := os.Stat(kept); err != nil {
+		t.Errorf("a loaded service's file was removed: %v", err)
+	}
+}
+
 func TestServicesCleanupUsesTheDaemonsDirectoryAsRoot(t *testing.T) {
 	e, prefix, agents, _ := servicesEnv(t)
 	user := plistAt(t, filepath.Join(agents, "sh.brew.stale.plist"), plistFor("sh.brew.stale"))

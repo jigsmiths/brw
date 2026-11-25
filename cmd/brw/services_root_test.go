@@ -25,6 +25,10 @@ func rootEnvWith(t *testing.T) (*env, string, string, *fakeLaunchctl, *rootFakes
 func rootEnvFor(t *testing.T, plist string) (*env, string, string, *fakeLaunchctl, *rootFakes) {
 	t.Helper()
 	e, prefix, agents, lc := servicesEnvWith(t, "sh.brew.foo.plist", plist)
+	return e, prefix, agents, lc, asRoot(e)
+}
+
+func asRoot(e *env) *rootFakes {
 	e.uid = 0
 	fakes := &rootFakes{}
 	e.takeOwnership = func(paths []string, group string, sticky bool) error {
@@ -32,7 +36,7 @@ func rootEnvFor(t *testing.T, plist string) (*env, string, string, *fakeLaunchct
 		return nil
 	}
 	e.userExists = func(name string) bool { return name == "svc" || name == e.user }
-	return e, prefix, agents, lc, fakes
+	return fakes
 }
 
 func TestOwnerChangerSetsOwnershipAndTheStickyBit(t *testing.T) {
@@ -348,13 +352,14 @@ func TestServicesListShowsRootDaemons(t *testing.T) {
 }
 
 func TestServicesStartAsRootIgnoresTheUserEnvFile(t *testing.T) {
-	e, prefix, agents, _, _ := rootEnvFor(t, envPlist)
+	e, prefix, agents, _ := servicesEnvFiles(t, file(".brew/foo.rb", envFormula, 0o644), file("sh.brew.foo.plist", envPlist, 0o644))
+	asRoot(e)
 	path := writeEnvFile(t, e, 0o600, "FOO=bar\n")
 	if _, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(filepath.Join(e.daemonsDir, "sh.brew.foo.plist"))
-	if string(got) != envPlist {
+	if strings.Contains(string(got), "<key>FOO</key>") {
 		t.Errorf("env was applied to a root service:\n%s", got)
 	}
 	if want := "Warning: Skipping " + path + ": user env overrides are not supported for root services.\n"; !strings.Contains(stderr(e), want) {

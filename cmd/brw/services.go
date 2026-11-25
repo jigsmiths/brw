@@ -60,7 +60,7 @@ func (t serviceTarget) serviceName() string { return t.names()[0] }
 
 func (e *env) ohai(format string, a ...any) {
 	if e.tty {
-		_, _ = fmt.Fprintf(e.out, "%s==>%s %s%s\n", ansiBlue, ansiBold, fmt.Sprintf(format, a...), ansiReset)
+		_, _ = fmt.Fprintf(e.out, "%s==>%s %s%s\n", ansiBlue, ansiBold, e.truncate(fmt.Sprintf(format, a...)), ansiReset)
 		return
 	}
 	_, _ = fmt.Fprintf(e.out, "==> %s\n", fmt.Sprintf(format, a...))
@@ -110,8 +110,7 @@ func (e *env) labels(t serviceTarget) []string {
 		files = append(files, t.source)
 	}
 	for _, f := range files {
-		body, err := os.ReadFile(f)
-		if label, ok := services.FileLabel(body); err == nil && ok && !slices.Contains(labels, label) {
+		if label, ok := e.fileLabel(f); ok && !slices.Contains(labels, label) {
 			labels = append(labels, label)
 		}
 	}
@@ -197,7 +196,7 @@ func servicesList(e *env, o *servicesOpts, prefix string) error {
 	var rows []services.Row
 	for _, name := range uniqueNames(kegs) {
 		t, ok := e.installedService(prefix, kegs, name)
-		if !ok {
+		if !ok || !t.block.Defined {
 			continue
 		}
 		snap, err := e.snapshot(t)
@@ -343,13 +342,17 @@ func serviceTargets(e *env, prefix string, names []string) ([]serviceTarget, err
 	for _, n := range names {
 		rack, err := finder.Find(n)
 		if missing, ok := errors.AsType[*racks.NoSuchKegError](err); ok {
-			targets = append(targets, serviceTarget{name: filepath.Base(missing.Path)})
+			t, _ := e.apiTarget(prefix, filepath.Base(missing.Path))
+			targets = append(targets, t)
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
 		t, _ := e.installedService(prefix, kegs, rack)
+		if !t.installed {
+			t, _ = e.apiTarget(prefix, rack)
+		}
 		targets = append(targets, t)
 	}
 	return targets, nil
@@ -440,7 +443,7 @@ func (e *env) startService(t serviceTarget, o *servicesOpts) error {
 		_, _ = fmt.Fprintf(e.out, "   %s\n\n", strings.ReplaceAll(string(body), "\n", "\n   "))
 	}
 	label := t.serviceName()
-	if l, ok := services.FileLabel(body); ok {
+	if l, ok := e.fileLabel(dst); ok {
 		label = l
 	}
 	if err := e.takeRootOwnership(t, dst, body); err != nil {
@@ -453,9 +456,11 @@ func (e *env) startService(t serviceTarget, o *servicesOpts) error {
 	if err != nil {
 		return err
 	}
+	e.echo("enable", domain+"/"+label)
 	if err := e.launchctl.Enable(domain, label); err != nil {
 		return err
 	}
+	e.echo("bootstrap", domain, dst)
 	if err := e.launchctl.Bootstrap(domain, dst); err != nil {
 		return err
 	}
@@ -491,10 +496,6 @@ func (e *env) runService(t serviceTarget, serviceFile string) error {
 	if err := e.prepareLoad(t, "run"); err != nil {
 		return err
 	}
-	label := t.serviceName()
-	if l, ok := services.FileLabel(body); ok {
-		label = l
-	}
 	if serviceFile == "" && !bytes.Equal(body, original) {
 		tmp, err := os.CreateTemp("", t.serviceName()+"-*.plist") //fsx:allow scratch plist for launchctl
 		if err != nil {
@@ -507,10 +508,15 @@ func (e *env) runService(t serviceTarget, serviceFile string) error {
 		}
 		file = tmp.Name()
 	}
+	label := t.serviceName()
+	if l, ok := e.fileLabel(file); ok {
+		label = l
+	}
 	domain, err := e.domain()
 	if err != nil {
 		return err
 	}
+	e.echo("bootstrap", domain, file)
 	if err := e.launchctl.Bootstrap(domain, file); err != nil {
 		return err
 	}
@@ -523,11 +529,10 @@ func (e *env) serviceBody(t serviceTarget) (body, original []byte, err error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	body = original
-	if t.generated != nil {
-		body = t.generated
+	if t.generated == nil {
+		return original, original, nil
 	}
-	return e.applyUserEnv(t.name, body), original, nil
+	return e.applyUserEnv(t.name, t.generated), original, nil
 }
 
 func (e *env) userEnv(name string) (pairs [][2]string, path string) {
@@ -644,6 +649,7 @@ func (e *env) stopService(t serviceTarget, o *servicesOpts) error {
 			return err
 		}
 		for _, n := range t.names() {
+			e.echoQuiet("bootout", domain+"/"+n)
 			if e.launchctl.Bootout(domain, n) == nil {
 				e.ohai("Successfully stopped `%s` (label: %s)", t.name, n)
 				return nil
@@ -694,6 +700,9 @@ func (e *env) bootoutAll(label string, o *servicesOpts) error {
 		if err != nil || !up {
 			return err
 		}
+		if o.noWait {
+			e.echoQuiet("bootout", domain+"/"+label)
+		}
 		code, err := e.bootout(domain, label)
 		if err != nil {
 			return err
@@ -720,6 +729,7 @@ func (e *env) bootoutAll(label string, o *servicesOpts) error {
 		if up, err := e.running(label); err != nil {
 			return err
 		} else if up {
+			e.echoQuiet("stop", label)
 			_ = e.launchctl.Stop(label)
 		}
 	}

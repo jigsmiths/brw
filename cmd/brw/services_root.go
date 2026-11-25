@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/jigsmiths/brw/internal/rb"
 	"github.com/jigsmiths/brw/internal/services"
 )
 
@@ -99,26 +100,15 @@ func (e *env) prepareLoad(t serviceTarget, function string) error {
 }
 
 func (e *env) makePathDirs(t serviceTarget) error {
-	home, _ := os.UserHomeDir()
-	dir := func(path string) (string, bool) {
-		switch {
-		case strings.HasPrefix(path, "/"):
-		case path == "~" || strings.HasPrefix(path, "~/"):
-			path = home + path[1:]
-		default:
-			return "", false
-		}
-		return filepath.Clean(path), true
-	}
 	var dirs []string
 	for _, field := range []string{"working_dir", "root_dir", "input_path", "log_path", "error_log_path"} {
 		path, set := t.block.Fields[field]
-		if !set {
+		if !set || !strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "~") {
 			continue
 		}
-		d, ok := dir(path)
-		if !ok {
-			continue
+		d, err := rb.ExpandPath(path)
+		if err != nil {
+			return err
 		}
 		if strings.HasSuffix(field, "_path") {
 			d = filepath.Dir(d)

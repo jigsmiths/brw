@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,11 +9,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
 
-	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/fsx"
-	"github.com/jigsmiths/brw/internal/services"
 )
 
 const packageName = `[\w+\-.@]+`
@@ -70,7 +66,6 @@ func (e *env) killOrphanedServices(prefix string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	index := sync.OnceValues(func() (*api.Index, error) { return e.index(context.Background(), prefix) })
 	var orphans []serviceTarget
 	for _, label := range runningLabels(e.launchctl.Jobs()) {
 		m := serviceLabel.FindStringSubmatch(strings.TrimSuffix(label, ".plist"))
@@ -80,10 +75,8 @@ func (e *env) killOrphanedServices(prefix string) (int, error) {
 		}
 		t, _ := e.installedService(prefix, kegs, m[1])
 		if !t.installed {
-			if idx, err := index(); err != nil {
-				e.opoo("Service %s not managed by `brw services` => skipping", label)
-				continue
-			} else if _, ok := idx.Lookup(m[1]); !ok {
+			var known bool
+			if t, known = e.apiTarget(prefix, m[1]); !known {
 				e.opoo("Service %s not managed by `brw services` => skipping", label)
 				continue
 			}
@@ -109,21 +102,23 @@ func (e *env) removeUnusedServiceFiles(journal string) (int, error) {
 	removed := 0
 	for _, pattern := range serviceFilePatterns {
 		for _, entry := range entries {
-			if ok, _ := filepath.Match(pattern, entry.Name()); !ok || entry.IsDir() {
+			if ok, _ := filepath.Match(pattern, entry.Name()); !ok {
 				continue
 			}
 			path := filepath.Join(e.destDir(), entry.Name())
 			name, label := serviceExt.ReplaceAllString(entry.Name(), ""), ""
 			if strings.EqualFold(filepath.Ext(path), ".plist") {
-				if body, err := os.ReadFile(path); err == nil {
-					label, _ = services.FileLabel(body)
-				}
+				label, _ = e.fileLabel(path)
 				if label != "" {
 					name = label
 				}
 			}
 			if slices.Contains(running, name) {
 				continue
+			}
+			if entry.IsDir() {
+				_, _ = fmt.Fprintf(e.out, "Removing unused service file: %s\n", path)
+				return removed, errors.New("Operation not permitted @ apply2files - " + path) //nolint:staticcheck // matches ruby's error text
 			}
 			if label != "" {
 				if up, err := e.running(label); err != nil {

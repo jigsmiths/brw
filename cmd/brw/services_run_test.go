@@ -110,9 +110,10 @@ func TestServicesStartAndRunMakeTheDirectoriesTheServiceNeeds(t *testing.T) {
 }
 
 func TestServicesStartVerbosePrintsTheGeneratedFile(t *testing.T) {
-	e, prefix, _, _ := servicesEnv(t)
+	e, prefix, agents, _ := servicesEnv(t)
 	out, err := runCmd(t, e, "services", "start", "-v", "-prefix", prefix, "foo")
 	want := "==> Generated service file for foo:\n   " + strings.ReplaceAll(testPlist, "\n", "\n   ") + "\n\n" +
+		"/bin/launchctl enable gui/501/sh.brew.foo\n/bin/launchctl bootstrap gui/501 " + filepath.Join(agents, "sh.brew.foo.plist") + "\n" +
 		"==> Successfully started `foo` (label: sh.brew.foo)\n"
 	if err != nil || out != want {
 		t.Errorf("out %q, err %v, want %q", out, err, want)

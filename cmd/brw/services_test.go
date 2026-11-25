@@ -87,7 +87,31 @@ func (f *fakeLaunchctl) Stop(label string) error {
 
 func servicesEnvWith(t *testing.T, plistName, body string) (*env, string, string, *fakeLaunchctl) {
 	t.Helper()
-	return servicesEnvFiles(t, file(plistName, body, 0o644))
+	return servicesEnvFiles(t, file(plistName, body, 0o644), file(".brew/foo.rb", blockOnlyFormula, 0o644))
+}
+
+const blockOnlyFormula = `class Foo < Formula
+  url "https://example.com/foo-1.0.tar.gz"
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+  service do
+    run_at_load true
+  end
+end
+`
+
+func TestServicesListsOnlyFormulaeWithAServiceBlock(t *testing.T) {
+	e, prefix, _, _ := servicesEnvFiles(t, file("sh.brew.foo.plist", testPlist, 0o644))
+	out, err := runCmd(t, e, "services", "list", "-prefix", prefix)
+	if err != nil || out != "" {
+		t.Errorf("list: out %q, err %v", out, err)
+	}
+	for _, sub := range []string{"start", "stop", "run", "kill", "info"} {
+		out, err := runCmd(t, e, "services", sub, "--all", "-prefix", prefix)
+		if err != nil || out != "" {
+			t.Errorf("%s --all: out %q, err %v", sub, out, err)
+		}
+	}
 }
 
 func servicesEnvFiles(t *testing.T, extra ...installtest.File) (*env, string, string, *fakeLaunchctl) {
@@ -96,6 +120,12 @@ func servicesEnvFiles(t *testing.T, extra ...installtest.File) (*env, string, st
 	s.formula(installtest.Bottle{Name: "foo", Version: "1.0", Files: append([]installtest.File{file("bin/foo", "foo", 0o755)}, extra...)}, nil, nil)
 	s.formula(installtest.Bottle{Name: "plain", Version: "1.0", Files: []installtest.File{file("bin/plain", "x", 0o755)}}, nil, nil)
 	s.formula(installtest.Bottle{Name: "ghost", Version: "1.0", Files: []installtest.File{file("bin/ghost", "x", 0o755)}}, nil, nil)
+	s.formula(installtest.Bottle{Name: "daemon", Version: "1.0", Files: []installtest.File{file("bin/daemon", "x", 0o755)}}, nil, map[string]any{
+		"service": map[string]any{
+			"run": []string{"$HOMEBREW_PREFIX/opt/daemon/bin/daemon", "serve"}, "run_type": "immediate",
+			"keep_alive": map[string]any{"always": true}, "working_dir": "$HOMEBREW_PREFIX/var",
+		},
+	})
 	e, prefix := s.env()
 	for _, n := range []string{"foo", "plain"} {
 		if _, err := runCmd(t, e, "install", "-prefix", prefix, n); err != nil {
@@ -497,33 +527,61 @@ func writeEnvFile(t *testing.T, e *env, mode os.FileMode, body string) string {
 	return path
 }
 
+const envFormula = `class Foo < Formula
+  desc "Foo"
+  homepage "https://example.com"
+  url "https://example.com/foo-1.0.tar.gz"
+  sha256 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+  service do
+    run [opt_bin/"foo", "serve"]
+    environment_variables PATH: "/bin"
+  end
+end
+`
+
+func envServicesEnv(t *testing.T) (*env, string, string, *fakeLaunchctl) {
+	t.Helper()
+	return servicesEnvFiles(t, file(".brew/foo.rb", envFormula, 0o644), file("sh.brew.foo.plist", envPlist, 0o644))
+}
+
 func TestServicesStartAppliesTheUserEnvFile(t *testing.T) {
-	e, prefix, agents, _ := servicesEnvWith(t, "sh.brew.foo.plist", envPlist)
+	e, prefix, agents, _ := envServicesEnv(t)
 	writeEnvFile(t, e, 0o600, "# mine\nPATH=/x:/bin\nFOO=bar & baz\n")
 	if _, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(filepath.Join(agents, "sh.brew.foo.plist"))
-	want := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n" +
-		"\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>FOO</key>\n\t\t<string>bar &amp; baz</string>\n\t\t<key>PATH</key>\n\t\t<string>/x:/bin</string>\n\t</dict>\n" +
-		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	if string(got) != want {
-		t.Errorf("plist:\n%s\nwant\n%s", got, want)
+	want := "\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>FOO</key>\n\t\t<string>bar &amp; baz</string>\n\t\t<key>PATH</key>\n\t\t<string>/x:/bin</string>\n\t</dict>\n"
+	if !strings.Contains(string(got), want) {
+		t.Errorf("plist:\n%s\nwant it to contain\n%s", got, want)
 	}
 	if stderr(e) != "" {
 		t.Errorf("stderr = %q", stderr(e))
 	}
 }
 
+func TestServicesStartLeavesAShippedPlistAlone(t *testing.T) {
+	e, prefix, agents, _ := servicesEnvWith(t, "sh.brew.foo.plist", envPlist)
+	writeEnvFile(t, e, 0o600, "FOO=bar\n")
+	if _, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(agents, "sh.brew.foo.plist"))
+	if string(got) != envPlist || stderr(e) != "" {
+		t.Errorf("a plist the formula ships is copied as it is: %q, stderr %q", got, stderr(e))
+	}
+}
+
 func TestServicesStartSkipsAnUnsafeEnvFile(t *testing.T) {
 	for mode, kind := range map[os.FileMode]string{0o666: "world-writable", 0o664: "group-writable"} {
-		e, prefix, agents, _ := servicesEnvWith(t, "sh.brew.foo.plist", envPlist)
+		e, prefix, agents, _ := envServicesEnv(t)
 		path := writeEnvFile(t, e, mode, "FOO=bar\n")
 		if _, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo"); err != nil {
 			t.Fatal(err)
 		}
 		got, _ := os.ReadFile(filepath.Join(agents, "sh.brew.foo.plist"))
-		if string(got) != envPlist {
+		if strings.Contains(string(got), "<key>FOO</key>") {
 			t.Errorf("%s: env was applied:\n%s", kind, got)
 		}
 		if want := "Warning: Skipping " + path + ": file is " + kind + ".\n"; stderr(e) != want {
@@ -533,7 +591,7 @@ func TestServicesStartSkipsAnUnsafeEnvFile(t *testing.T) {
 }
 
 func TestServicesStartWarnsAboutInvalidEnvLines(t *testing.T) {
-	e, prefix, agents, _ := servicesEnvWith(t, "sh.brew.foo.plist", envPlist)
+	e, prefix, agents, _ := envServicesEnv(t)
 	path := writeEnvFile(t, e, 0o600, "nokey\nFOO=1\n")
 	if _, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo"); err != nil {
 		t.Fatal(err)
@@ -588,7 +646,7 @@ func TestServicesRegenerateThePlistFromTheFormulaWithItsExplicitName(t *testing.
 }
 
 func TestServicesRunLoadsAnEditedCopyWhenTheEnvFileChangesIt(t *testing.T) {
-	e, prefix, agents, lc := servicesEnvWith(t, "sh.brew.foo.plist", envPlist)
+	e, prefix, agents, lc := envServicesEnv(t)
 	writeEnvFile(t, e, 0o600, "FOO=bar\n")
 	lc.loaded["sh.brew.foo"] = runningOut
 	if _, err := runCmd(t, e, "services", "restart", "-prefix", prefix, "foo"); err != nil {

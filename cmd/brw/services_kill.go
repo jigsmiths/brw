@@ -25,6 +25,7 @@ func (e *env) servicesKill(targets []serviceTarget) error {
 			names = []string{s.active}
 		}
 		for _, name := range names {
+			e.echoQuiet("stop", name)
 			_ = e.launchctl.Stop(name)
 		}
 		after, err := e.snapshot(t)

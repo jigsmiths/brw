@@ -82,8 +82,13 @@ type env struct {
 	targetErr   error
 	targetKnown bool
 
-	takeOwnership func(paths []string, group string, sticky bool) error
-	userExists    func(name string) bool
+	plutil func(path string) ([]byte, error)
+
+	clipboardBroken func() bool
+	termWidth       func() int
+	verbose, debug  bool
+	takeOwnership   func(paths []string, group string, sticky bool) error
+	userExists      func(name string) bool
 }
 
 func (e *env) kegs(prefix string) ([]cellar.Keg, error) {
@@ -112,7 +117,7 @@ func main() {
 func newEnv(host platform.Host) *env {
 	e := &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host,
 		launchctl: services.NewLaunchctl(), uid: os.Getuid(), daemonsDir: "/Library/LaunchDaemons",
-		takeOwnership: rootOwner.apply, userExists: userExists, consoleUID: consoleOwner}
+		plutil: plutilXML, clipboardBroken: pbpasteBroken, termWidth: stdinWidth, takeOwnership: rootOwner.apply, userExists: userExists, consoleUID: consoleOwner}
 	e.user = os.Getenv("USER")
 	if u, err := user.Current(); e.user == "" && err == nil {
 		e.user = u.Username

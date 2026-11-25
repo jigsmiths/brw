@@ -55,10 +55,10 @@ func findServiceSub(name string) (serviceSub, bool) {
 }
 
 type servicesOpts struct {
-	prefix, journal, file, sudoUser          string
-	dryRun, all, json, keep, noWait, verbose bool
-	maxWait                                  float64
-	names                                    []string
+	prefix, journal, file, sudoUser                 string
+	dryRun, all, json, keep, noWait, verbose, debug bool
+	maxWait                                         float64
+	names                                           []string
 }
 
 func parseServices(e *env, args []string) (serviceSub, *servicesOpts, error) {
@@ -74,6 +74,9 @@ func parseServices(e *env, args []string) (serviceSub, *servicesOpts, error) {
 	}
 	for _, n := range []string{optVerbose, "v"} {
 		flags.BoolVar(&o.verbose, n, false, "show more")
+	}
+	for _, n := range []string{"debug", "d"} {
+		flags.BoolVar(&o.debug, n, false, "show debugging information")
 	}
 	flags.BoolVar(&o.all, optAll, false, "act on all services")
 	flags.BoolVar(&o.json, optJSON, false, "print JSON")
@@ -135,11 +138,19 @@ func servicesCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+	if _, tmux := os.LookupEnv("HOMEBREW_TMUX"); tmux && e.clipboardBroken != nil && e.clipboardBroken() {
+		return errors.New("`brw services` cannot run under tmux!") //nolint:staticcheck // matches brew's error text
+	}
 	if e.host.OS == "linux" {
 		return errors.New("unlike brew, brw services does not support systemd on Linux yet")
 	}
 	if e.launchctl == nil {
 		return errors.New("launchctl is not available")
+	}
+	e.verbose = o.verbose
+	e.debug = o.debug || os.Getenv("HOMEBREW_DEBUG") != ""
+	if e.debug {
+		e.launchctl = debugLaunchctl{Launchctl: e.launchctl, e: e}
 	}
 	e.targetKnown = false
 	if err := e.setSudoUser(o.sudoUser); err != nil {
@@ -199,7 +210,7 @@ func (e *env) allServiceTargets(sub, prefix string) ([]serviceTarget, error) {
 	var out []serviceTarget
 	for _, name := range names {
 		t, ok := e.installedService(prefix, kegs, name)
-		if !ok {
+		if !ok || !t.block.Defined {
 			continue
 		}
 		if sub == "start" || sub == "stop" {

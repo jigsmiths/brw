@@ -66,6 +66,27 @@ func TestServicesKillRefusesAServiceThatKeepsItselfAlive(t *testing.T) {
 	}
 }
 
+func TestServicesKillUsesTheAPIsServiceBlockOfAFormulaThatIsNotInstalled(t *testing.T) {
+	e, prefix, _, lc := servicesEnv(t)
+	lc.loaded["sh.brew.daemon"] = runningOut
+	out, err := runCmd(t, e, "services", "kill", "-prefix", prefix, "daemon")
+	want := "Service `daemon` is set to automatically restart and can't be killed.\n"
+	if err != nil || out != want || len(lc.calls) != 0 {
+		t.Errorf("out %q, err %v, calls %q", out, err, lc.calls)
+	}
+}
+
+func TestServicesInfoUsesTheAPIsServiceBlockOfAFormulaThatIsNotInstalled(t *testing.T) {
+	e, prefix, _, _ := servicesEnv(t)
+	out, err := runCmd(t, e, "services", "info", "-v", "-prefix", prefix, "daemon")
+	want := "daemon (sh.brew.daemon)\nRunning: false\nLoaded: false\nSchedulable: false\n" +
+		"File: " + prefix + "/opt/daemon/sh.brew.daemon.plist true\nRegistered at login: false\n" +
+		"Command: " + prefix + "/opt/daemon/bin/daemon serve\nWorking directory: " + prefix + "/var\n"
+	if err != nil || out != want {
+		t.Errorf("out:\n%s\nwant:\n%s\n%v", out, want, err)
+	}
+}
+
 func TestServicesKillAll(t *testing.T) {
 	e, prefix, _, _ := servicesEnv(t)
 	out, err := runCmd(t, e, "services", "kill", "--all", "-prefix", prefix)
