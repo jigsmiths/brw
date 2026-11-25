@@ -459,6 +459,20 @@ func TestUpgradeOnlyTheNamedCask(t *testing.T) {
 	}
 }
 
+func TestUpgradeAcceptsVerbose(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t, "app")
+	makeCaskOutdated(t, prefix, "app")
+	for _, flag := range []string{"-v", "--verbose"} {
+		if out, err := runCmd(t, e, "upgrade", "-prefix", prefix, flag, "--dry-run"); err != nil || !strings.Contains(out, "app") {
+			t.Errorf("%s: out = %q, err = %v", flag, out, err)
+		}
+	}
+	out, err := runCmd(t, e, "upgrade", "-prefix", prefix, "--verbose", "--cask", "app")
+	if err != nil || !strings.Contains(out, "app was successfully upgraded!\n") {
+		t.Errorf("out = %q, err = %v", out, err)
+	}
+}
+
 func TestUpgradeFormulaFlagLeavesCasksAlone(t *testing.T) {
 	_, e, prefix, _ := installedCasks(t, "app")
 	makeCaskOutdated(t, prefix, "app")

@@ -142,7 +142,7 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt, verb
 	})
 }
 
-func resolveCasks(e *env, prefix, journal string, dryRun bool, tokens []string, o outdated.CaskOptions) *upgradeStep {
+func resolveCasks(e *env, prefix, journal string, dryRun, verbose bool, tokens []string, o outdated.CaskOptions) *upgradeStep {
 	ctx := context.Background()
 	installed, err := caskroom.Installed(prefix)
 	if err != nil || (len(installed) == 0 && len(tokens) == 0) {
@@ -224,7 +224,7 @@ func resolveCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 		}
 		var upgraded []string
 		err := withRoot(prefix, journal, func(root *fsx.Root) (err error) {
-			upgraded, err = runCaskUpgrades(e, root, prefix, journal, idx, o.Tag, upgrade, byToken)
+			upgraded, err = runCaskUpgrades(e, root, prefix, journal, verbose, idx, o.Tag, upgrade, byToken)
 			return err
 		})
 		return upgraded, err
@@ -232,7 +232,7 @@ func resolveCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 }
 
 // brew's cleanup step is skipped: it cleans brew's own download cache.
-func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, idx *api.CaskIndex, tag string, upgrade []outdated.Result, installed map[string]caskroom.Cask) ([]string, error) {
+func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, verbose bool, idx *api.CaskIndex, tag string, upgrade []outdated.Result, installed map[string]caskroom.Cask) ([]string, error) {
 	ctx := context.Background()
 	client, err := e.apiClient()
 	if err != nil {
@@ -259,7 +259,7 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, idx *api.Ca
 	var ready []outdated.Result
 	var failed []string
 	for _, r := range upgrade {
-		u, closeApps, err := prepareCaskUpgrade(ctx, e, root, prefix, journal, home, version, idx, tag, fetcher, installed[r.Name])
+		u, closeApps, err := prepareCaskUpgrade(ctx, e, root, prefix, journal, home, version, verbose, idx, tag, fetcher, installed[r.Name])
 		if err != nil {
 			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 			failed = append(failed, r.Name)
@@ -289,7 +289,7 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, idx *api.Ca
 
 const defaultAppDir = "/Applications"
 
-func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
+func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, verbose bool, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
 	listed, ok := idx.LookupFrom(old.Tap, old.Token)
 	if !ok {
 		return nil, nil, fmt.Errorf("%s is not in the cask listing", old.Token)
@@ -314,6 +314,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 		Version: version,
 		APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json"),
 		Config:  cask.Config{Languages: macLanguages(), ExplicitAppDir: caskroom.ExplicitAppDir(prefix, old.Token)},
+		Verbose: verbose,
 
 		RuntimeDeps: e.runtimeDepsFor(ctx, prefix, tag, idx, nil),
 	}

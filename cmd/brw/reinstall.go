@@ -16,12 +16,15 @@ func reinstallCommand(e *env, args []string) error {
 	fs := newFlagSet("reinstall")
 	var dryRun bool
 	prefixArg, journal := changeFlags(e, fs, &dryRun)
+	var verbose bool
+	fs.BoolVar(&verbose, "verbose", false, "print the installer's verbose output")
+	fs.BoolVar(&verbose, "v", false, "print the installer's verbose output")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw reinstall [--dry-run] FORMULA [FORMULA ...]")
+		return errors.New("usage: brw reinstall [--verbose] [--dry-run] FORMULA [FORMULA ...]")
 	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
