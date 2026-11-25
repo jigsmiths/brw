@@ -127,7 +127,7 @@ func TestServiceFromAPI(t *testing.T) {
 		Env:       [][2]string{{"B", "2"}, {"A", "/opt/homebrew/x"}},
 		Fields:    map[string]string{"working_dir": "/opt/homebrew/var", "log_path": "~/log", "interval": "60"},
 		Cron:      [][2]string{{"Month", "*"}, {"Day", "*"}, {"Weekday", "*"}, {"Hour", "0"}, {"Minute", "0"}},
-		KeepAlive: true, Timed: true, RequiresRoot: true, MacName: "custom.tool",
+		KeepAlive: true, Timed: true, RequiresRoot: true, NamesMac: true, MacName: "custom.tool",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("details = %+v\nwant      %+v", got, want)
@@ -145,7 +145,7 @@ func TestServiceFromAPI(t *testing.T) {
 
 func TestServiceDetailsRequiresRootAndName(t *testing.T) {
 	d := serviceDetails(t, "  service do\n    run [\"x\"]\n    require_root true\n    name macos: \"mac.tool\", linux: \"lin.tool\"\n  end\n")
-	if !d.RequiresRoot || d.MacName != "mac.tool" {
+	if !d.RequiresRoot || !d.NamesMac || d.MacName != "mac.tool" {
 		t.Errorf("details = %+v", d)
 	}
 }

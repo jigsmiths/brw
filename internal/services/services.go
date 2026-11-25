@@ -44,8 +44,7 @@ const (
 type Launchctl interface {
 	Print(domain, label string) (string, error)
 	List(label string) (string, error)
-	// Jobs is the output of `launchctl list`, empty when it fails.
-	Jobs() string
+	Jobs() (string, error)
 	Enable(domain, label string) error
 	Bootstrap(domain, file string) error
 	Bootout(domain, label string) error
@@ -93,7 +92,6 @@ func ParseEnvFile(content string) (env map[string]string, skipped []string) {
 	return env, skipped
 }
 
-// ParseEnvPairs keeps the order of first appearance, as a Ruby hash does.
 func ParseEnvPairs(content string) (pairs [][2]string, skipped []string) {
 	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimSpace(line)

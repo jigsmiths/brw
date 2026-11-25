@@ -8,8 +8,6 @@ import (
 	"github.com/jigsmiths/brw/internal/services"
 )
 
-// apiTarget is a formula that is not installed, with the service block the API lists for it.
-// It is not ok when the API does not know the formula.
 func (e *env) apiTarget(prefix, name string) (t serviceTarget, ok bool) {
 	t = serviceTarget{name: name}
 	idx, client, err := e.indexAndClient(context.Background(), prefix)
@@ -35,7 +33,7 @@ func (e *env) apiTarget(prefix, name string) (t serviceTarget, ok bool) {
 		return t, true
 	}
 	t.block, t.requiresRoot = block, block.RequiresRoot
-	if block.MacName != "" && block.MacName != services.Names(name)[0] {
+	if block.NamesMac && block.MacName != services.Names(name)[0] {
 		t.explicit = block.MacName
 	}
 	return t, true

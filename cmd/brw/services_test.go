@@ -29,9 +29,13 @@ type fakeLaunchctl struct {
 	bootouts  int
 	bootoutOK bool
 	stopKills bool
+	jobsErr   error
 }
 
-func (f *fakeLaunchctl) Jobs() string {
+func (f *fakeLaunchctl) Jobs() (string, error) {
+	if f.jobsErr != nil {
+		return "", f.jobsErr
+	}
 	var b strings.Builder
 	b.WriteString("PID\tStatus\tLabel\n")
 	for _, label := range slices.Sorted(maps.Keys(f.loaded)) {
@@ -41,7 +45,7 @@ func (f *fakeLaunchctl) Jobs() string {
 		}
 		b.WriteString(pid + "\t0\t" + label + "\n")
 	}
-	return b.String()
+	return b.String(), nil
 }
 
 func (f *fakeLaunchctl) Print(domain, label string) (string, error) {

@@ -9,26 +9,23 @@ import (
 	"strings"
 )
 
-// ServiceDetails is what brew keeps on a formula's service block for `brew services info`.
 type ServiceDetails struct {
-	Defined bool
-	Command []string
-	Env     [][2]string
-	// Fields holds working_dir, root_dir, input_path, log_path, error_log_path and interval, as written, when set.
+	Defined      bool
+	Command      []string
+	Env          [][2]string
 	Fields       map[string]string
 	Cron         [][2]string
 	KeepAlive    bool
 	Timed        bool
 	RequiresRoot bool
-	// MacName is the launchd label the block names, empty when it uses brew's default.
-	MacName string
+	NamesMac     bool
+	MacName      string
 }
 
 var detailFields = []string{"working_dir", "root_dir", "input_path", "log_path", "error_log_path", "interval"}
 
 var cronOrder = []string{"Month", "Day", "Weekday", "Hour", "Minute"}
 
-// ServiceDetails reads the service block the way Homebrew::Service does. Cron is in brew's hash order.
 func (f *Formula) ServiceDetails(root string) (d ServiceDetails, err error) {
 	if f.b.serviceBlk == nil {
 		return ServiceDetails{}, nil
@@ -49,7 +46,7 @@ func (f *Formula) ServiceDetails(root string) (d ServiceDetails, err error) {
 	d.Cron = brewCronOrder(s.cron())
 	if h, ok := s.get("name").(*hash); ok {
 		if v, ok := h.get(rstr("macos")); ok && v != nil {
-			d.MacName = str(v)
+			d.NamesMac, d.MacName = true, str(v)
 		}
 	}
 	return d, nil
@@ -70,7 +67,6 @@ func brewCronOrder(fields [][2]string) [][2]string {
 	return out
 }
 
-// ServiceFromAPI reads the service object of a formula.json entry, which is how brew knows the service of a formula that is not installed.
 func ServiceFromAPI(raw []byte, root string) (d ServiceDetails, err error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
@@ -96,7 +92,8 @@ func ServiceFromAPI(raw []byte, root string) (d ServiceDetails, err error) {
 	}
 	sub := func(v string) string { return strings.ReplaceAll(v, "$HOMEBREW_PREFIX", root) }
 	d = ServiceDetails{Defined: true, Fields: map[string]string{}, RequiresRoot: s.RequireRoot,
-		Timed: s.RunType == "cron" || s.RunType == "interval", MacName: s.Name["macos"]}
+		Timed: s.RunType == "cron" || s.RunType == "interval"}
+	d.MacName, d.NamesMac = s.Name["macos"]
 	always, hasAlways := s.KeepAlive["always"]
 	d.KeepAlive = len(s.KeepAlive) > 0 && (!hasAlways || always != false)
 	if d.Command, err = apiCommand(s.Run, sub); err != nil {

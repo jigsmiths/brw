@@ -66,8 +66,12 @@ func (e *env) killOrphanedServices(prefix string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	jobs, err := e.launchctl.Jobs()
+	if err != nil {
+		return 0, err
+	}
 	var orphans []serviceTarget
-	for _, label := range runningLabels(e.launchctl.Jobs()) {
+	for _, label := range runningLabels(jobs) {
 		m := serviceLabel.FindStringSubmatch(strings.TrimSuffix(label, ".plist"))
 		if m == nil {
 			e.opoo("Service %s not managed by `brw services` => skipping", label)
@@ -98,7 +102,11 @@ func (e *env) removeUnusedServiceFiles(journal string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	running := runningLabels(e.launchctl.Jobs())
+	jobs, err := e.launchctl.Jobs()
+	if err != nil {
+		return 0, err
+	}
+	running := runningLabels(jobs)
 	removed := 0
 	for _, pattern := range serviceFilePatterns {
 		for _, entry := range entries {

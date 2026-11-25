@@ -55,9 +55,13 @@ func (l execLaunchctl) Print(domain, label string) (string, error) {
 
 func (l execLaunchctl) List(label string) (string, error) { return l.query("list", label) }
 
-func (l execLaunchctl) Jobs() string {
-	out, _ := l.run("list")
-	return out
+// Like brew, a nonzero exit still yields stdout; only a launchctl that cannot run is an error.
+func (l execLaunchctl) Jobs() (string, error) {
+	out, err := l.run("list")
+	if _, exited := errors.AsType[*ExitError](err); exited {
+		return out, nil
+	}
+	return out, err
 }
 
 func (l execLaunchctl) Enable(domain, label string) error {

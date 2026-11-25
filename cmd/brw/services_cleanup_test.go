@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,14 @@ func TestServicesCleanupKillsRunningServicesWithoutAServiceFile(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(agents); len(entries) != 0 {
 		t.Errorf("wrote %v", entries)
+	}
+}
+
+func TestServicesCleanupReportsALaunchctlThatCannotRun(t *testing.T) {
+	e, prefix, _, lc := servicesEnv(t)
+	lc.jobsErr = errors.New("launchctl: not found")
+	if _, err := runCmd(t, e, "services", "cleanup", "-prefix", prefix); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("err = %v", err)
 	}
 }
 
