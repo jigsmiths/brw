@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -60,6 +61,47 @@ type frags struct {
 	v    map[string]int
 	comp bool
 	bc   bool
+	// yearBig is a year too large for the day arithmetic, kept exact until reduceYear splits it into period count nth and a year in v.
+	yearBig *big.Int
+	nth     *big.Int
+}
+
+const (
+	bigYearDigits = 12
+	// date_core.c's CM_PERIOD days and the Julian years it spans, which decode_year and decode_jd divide by.
+	cmPeriod      = 213447717
+	cmPeriodYears = 584400
+)
+
+func (f *frags) setYear(sign int, digits string) {
+	if len(strings.TrimLeft(digits, "0")) <= bigYearDigits {
+		f.v["year"] = sign * atoi(digits)
+		return
+	}
+	n, _ := new(big.Int).SetString(digits, 10)
+	if sign < 0 {
+		n.Neg(n)
+	}
+	f.yearBig, f.v["year"] = n, 0
+}
+
+func (f *frags) reduceYear() {
+	year, ok := f.v["year"]
+	if !ok {
+		return
+	}
+	y := big.NewInt(int64(year))
+	if f.yearBig != nil {
+		y = f.yearBig
+		if f.bc {
+			y = new(big.Int).Sub(big.NewInt(1), y)
+		}
+	}
+	t := new(big.Int).Add(y, big.NewInt(julianEpochOff))
+	period := big.NewInt(cmPeriodYears)
+	nth, rem := new(big.Int).DivMod(t, period, new(big.Int))
+	f.nth = nth
+	f.v["year"] = int(rem.Int64()) - julianEpochOff
 }
 
 func (f *frags) has(k string) bool { _, ok := f.v[k]; return ok }
@@ -140,11 +182,11 @@ func (f *frags) s3e(y, m, d *string, bc bool) {
 			if g[1] != "" || len(g[2]) > 2 {
 				f.comp = false
 			}
-			n := atoi(g[2])
+			sign := 1
 			if g[1] == "-" {
-				n = -n
+				sign = -1
 			}
-			f.v["year"] = n
+			f.setYear(sign, g[2])
 		}
 	}
 	if bc {
@@ -211,7 +253,7 @@ func rubyDateParse(input string) (*frags, error) {
 		subx(&s, slaRx, func(m match) { f.s3e(ptrIf(m, 1), ptrIf(m, 2), ptrIf(m, 3), false) }) ||
 		subx(&s, dotRx, func(m match) { f.s3e(ptrIf(m, 1), ptrIf(m, 2), ptrIf(m, 3), false) }) ||
 		f.parseISO2(&s) ||
-		subx(&s, yearRx, func(m match) { f.v["year"] = atoi(m.str(1)) }) ||
+		subx(&s, yearRx, func(m match) { f.setYear(1, m.str(1)) }) ||
 		subx(&s, monRx, func(m match) { f.v["mon"] = monthNumber(m.str(1)) }) ||
 		subx(&s, mdayRx, func(m match) { f.v["mday"] = atoi(m.str(1)) }) ||
 		subx(&s, dddRx, f.ddd)
@@ -250,6 +292,7 @@ func rubyDateParse(input string) (*frags, error) {
 			}
 		}
 	}
+	f.reduceYear()
 	return f, nil
 }
 
@@ -415,15 +458,21 @@ func rubyDateTime(input string, today time.Time) (string, error) {
 		hour = 0
 		jd++
 	}
-	year, mon, mday := jdToCivil(jd)
-	return fmt.Sprintf("%s-%02d-%02dT%02d:%02d:%02dZ", yearText(year), mon, mday, hour, min, sec), nil
+	periods := big.NewInt(int64(floorDiv(jd, cmPeriod)))
+	if f.nth != nil {
+		periods.Add(periods, f.nth)
+	}
+	year, mon, mday := jdToCivil(floorMod(jd, cmPeriod))
+	y := new(big.Int).Mul(periods, big.NewInt(cmPeriodYears))
+	y.Add(y, big.NewInt(int64(year)))
+	return fmt.Sprintf("%s-%02d-%02dT%02d:%02d:%02dZ", yearText(y), mon, mday, hour, min, sec), nil
 }
 
-func yearText(y int) string {
-	if y < 0 {
-		return fmt.Sprintf("-%04d", -y)
+func yearText(y *big.Int) string {
+	if y.Sign() < 0 {
+		return fmt.Sprintf("-%04s", new(big.Int).Neg(y).String())
 	}
-	return fmt.Sprintf("%04d", y)
+	return fmt.Sprintf("%04s", y.String())
 }
 
 var errNoDate = errors.New("no date")
