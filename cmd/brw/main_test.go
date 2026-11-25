@@ -60,7 +60,7 @@ func TestWithRootJournalFile(t *testing.T) {
 
 func TestRunHelp(t *testing.T) {
 	commands := []string{"list", "search", "info", "install", "reinstall", "upgrade", "uninstall", "autoremove",
-		"leaves", "link", "unlink", "cleanup", "pin", "unpin", "version", "update", "deps", "uses", "outdated", "tag"}
+		"leaves", "link", "unlink", "cleanup", "pin", "unpin", "services", "version", "update", "deps", "uses", "outdated", "tag"}
 	for _, cmd := range []string{"help", "--help", "-h"} {
 		var out bytes.Buffer
 		if err := run(&env{out: &out}, cmd, nil); err != nil {

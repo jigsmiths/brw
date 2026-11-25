@@ -1,0 +1,12 @@
+{
+	"StandardOutPath" = "/tmp/rift_me.out.log";
+	"LimitLoadToSessionType" = "Aqua";
+	"StandardErrorPath" = "/tmp/rift_me.err.log";
+	"Label" = "homebrew.mxcl.rift";
+	"OnDemand" = false;
+	"LastExitStatus" = 19968;
+	"Program" = "/opt/homebrew/opt/rift/bin/rift";
+	"ProgramArguments" = (
+		"/opt/homebrew/opt/rift/bin/rift";
+	);
+};

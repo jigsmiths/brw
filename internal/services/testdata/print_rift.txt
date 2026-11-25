@@ -1,0 +1,99 @@
+gui/501/homebrew.mxcl.rift = {
+	active count = 0
+	path = /Users/me/Library/LaunchAgents/homebrew.mxcl.rift.plist
+	type = LaunchAgent
+	state = spawn scheduled
+
+	program = /opt/homebrew/opt/rift/bin/rift
+	arguments = {
+		/opt/homebrew/opt/rift/bin/rift
+	}
+
+	stdout path = /tmp/rift_me.out.log
+	stderr path = /tmp/rift_me.err.log
+	inherited environment = {
+		SSH_AUTH_SOCK => /var/run/com.apple.launchd.d2F1rToEsE/Listeners
+	}
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		OSLogRateLimit => 64
+		LANG => en_US.UTF-8
+		PATH => /opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin
+		XPC_SERVICE_NAME => homebrew.mxcl.rift
+	}
+
+	LWCR = {
+		"reqs" => {
+			"cdhash" => {
+				"$in" => [
+					0 = 					1 = 				]
+			}
+		}
+		"vers" => 1
+		"comp" => 1
+		"ccat" => 0
+	}
+
+	domain = gui/501 [100021]
+	asid = 100021
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 1
+	last exit code = 78: EX_CONFIG
+
+	event triggers = {
+		homebrew.mxcl.rift => {
+			keepalive = 0
+			service = homebrew.mxcl.rift
+			stream = com.apple.launchd.helper
+			monitor = com.apple.UserEventAgent-Aqua
+			descriptor = {
+				"Executable" => "/opt/homebrew/opt/rift/bin/rift"
+				"SkipImmediatePoll" => false
+			}
+		}
+	}
+
+	event channels = {
+		"com.apple.launchd.helper" = {
+			port = 0x0
+			active = 0
+			managed = 1
+			reset = 0
+			hide = 0
+			watching = 0
+		}
+	}
+
+	resource coalition = {
+		ID = 1081
+		type = resource
+		state = active
+		active count = 1
+		name = homebrew.mxcl.rift
+	}
+
+	jetsam coalition = {
+		ID = 1082
+		type = jetsam
+		state = active
+		active count = 1
+		name = homebrew.mxcl.rift
+	}
+
+	spawn type = interactive (4)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+	job state = spawn failed
+	sanitizer flags = 0x0
+
+	properties = keepalive | runatload | penalty box | inferred program | managed LWCR | has LWCR
+}
