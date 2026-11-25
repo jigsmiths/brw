@@ -1,7 +1,6 @@
 package cask
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -9,10 +8,10 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 func TestPlanReadsInstallerStanzas(t *testing.T) {
@@ -51,17 +50,17 @@ func TestPlanRejectsBadInstallerStanzas(t *testing.T) {
 }
 
 type fakeScripts struct {
-	runs []ScriptRun
+	runs []sudo.Command
 	err  error
-	seen func(ScriptRun)
+	seen func(sudo.Command)
 }
 
-func (f *fakeScripts) run(_ context.Context, r ScriptRun) error {
-	f.runs = append(f.runs, r)
+func (f *fakeScripts) run(_ context.Context, c sudo.Command) (sudo.Result, error) {
+	f.runs = append(f.runs, c)
 	if f.seen != nil {
-		f.seen(r)
+		f.seen(c)
 	}
-	return f.err
+	return sudo.Result{}, f.err
 }
 
 var installerTarball = func() []byte {
@@ -79,8 +78,8 @@ func TestInstallRunsInstallerScriptBeforeApps(t *testing.T) {
 	t.Setenv("HOMEBREW_COLOR", "")
 	ti := newTestInstall(t, installerTarball)
 	f := &fakeScripts{}
-	ti.in.Script = f.run
-	f.seen = func(ScriptRun) {
+	ti.in.Run = f.run
+	f.seen = func(sudo.Command) {
 		if exists(filepath.Join(ti.appDir, "App.app")) {
 			t.Error("the installer ran after the app was moved")
 		}
@@ -92,10 +91,10 @@ func TestInstallRunsInstallerScriptBeforeApps(t *testing.T) {
 		t.Fatal(err)
 	}
 	staged := filepath.Join(ti.prefix, "Caskroom/app/1.0/setup.sh")
-	want := ScriptRun{
-		Executable: staged, Args: []string{"--quiet"}, Input: "yes\n", MustSucceed: true,
+	want := sudo.Command{
+		Exe: staged, Args: []string{"--quiet"}, Input: "yes\n", MustSucceed: true,
 		Stdout: ti.out, Stderr: ti.warn,
-		Path: ti.prefix + "/bin:" + ti.prefix + "/sbin:/usr/bin:/bin",
+		Env: []string{"PATH=" + ti.prefix + "/bin:" + ti.prefix + "/sbin:/usr/bin:/bin"},
 	}
 	if len(f.runs) == 1 {
 		if !slices.Contains(f.runs[0].Secrets, "s3cr3t") || !slices.Contains(f.runs[0].Secrets, "") || slices.Contains(f.runs[0].Secrets, "ordinary") {
@@ -116,7 +115,7 @@ func TestInstallRunsInstallerScriptBeforeApps(t *testing.T) {
 
 func TestInstallerScriptFailureRollsBack(t *testing.T) {
 	ti := newTestInstall(t, installerTarball)
-	ti.in.Script = (&fakeScripts{err: errors.New("boom")}).run
+	ti.in.Run = (&fakeScripts{err: errors.New("boom")}).run
 	c := ti.cask(t, `[{"installer":[{"script":"setup.sh"}]},{"app":["App.app"]}]`)
 	if err := ti.in.Install(context.Background(), c); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err = %v, want boom", err)
@@ -129,7 +128,7 @@ func TestInstallerScriptFailureRollsBack(t *testing.T) {
 func TestInstallManualInstallerPrintsHowToOpen(t *testing.T) {
 	ti := newTestInstall(t, installerTarball)
 	f := &fakeScripts{}
-	ti.in.Script = f.run
+	ti.in.Run = f.run
 	c := ti.cask(t, `[{"installer":[{"manual":"My Setup.app"}]},{"app":["App.app"]}]`)
 	if err := ti.in.Install(context.Background(), c); err != nil {
 		t.Fatal(err)
@@ -148,7 +147,7 @@ func TestInstallerSudoNeedsSudo(t *testing.T) {
 	t.Setenv("HOMEBREW_NO_SUDO", "1")
 	ti := newTestInstall(t, installerTarball)
 	f := &fakeScripts{}
-	ti.in.Script = f.run
+	ti.in.Run = f.run
 	c := ti.cask(t, `[{"installer":[{"script":{"executable":"setup.sh","sudo":true}}]},{"app":["App.app"]}]`)
 	err := ti.in.Install(context.Background(), c)
 	if err == nil || err.Error() != "app: The installer artifact requires sudo, but HOMEBREW_NO_SUDO is set." {
@@ -161,7 +160,7 @@ func TestInstallerSudoNeedsSudo(t *testing.T) {
 
 func TestInstallerWarnsAboutArgumentsAsBrewDoes(t *testing.T) {
 	ti := newTestInstall(t, installerTarball)
-	ti.in.Script = (&fakeScripts{}).run
+	ti.in.Run = (&fakeScripts{}).run
 	c := ti.cask(t, `[{"installer":[{"script":{"executable":"setup.sh","zeta":1,"print_stdout":false,"alpha":2}}]},{"app":["App.app"]}]`)
 	if err := ti.in.Install(context.Background(), c); err != nil {
 		t.Fatal(err)
@@ -181,7 +180,7 @@ func TestInstallerOutputModes(t *testing.T) {
 		t.Setenv("HOMEBREW_DEBUG", debug)
 		ti := newTestInstall(t, installerTarball)
 		f := &fakeScripts{}
-		ti.in.Script = f.run
+		ti.in.Run = f.run
 		c := ti.cask(t, `[{"installer":[{"script":{"executable":"setup.sh","print_stderr":"debug"}}]},{"app":["App.app"]}]`)
 		if err := ti.in.Install(context.Background(), c); err != nil {
 			t.Fatal(err)
@@ -195,84 +194,18 @@ func TestInstallerOutputModes(t *testing.T) {
 	}
 }
 
-func TestInstallerSudoThroughSudoUser(t *testing.T) {
+func TestInstallerRunsSudoStanzasWithSudo(t *testing.T) {
 	t.Setenv("HOMEBREW_SUDO_CHECKED", "1")
-	t.Setenv("HOMEBREW_SUDO_THROUGH_SUDO_USER", "1")
-	t.Setenv("HOMEBREW_SUDO_USER", "")
+	t.Setenv("HOMEBREW_NO_SUDO", "")
 	ti := newTestInstall(t, installerTarball)
 	f := &fakeScripts{}
-	ti.in.Script = f.run
-	c := ti.cask(t, `[{"installer":[{"script":{"executable":"setup.sh","sudo":true}}]},{"app":["App.app"]}]`)
-	err := ti.in.Install(context.Background(), c)
-	if err == nil || !strings.Contains(err.Error(), "`$HOMEBREW_SUDO_THROUGH_SUDO_USER` set but `$SUDO_USER` unset!") {
-		t.Errorf("err = %v", err)
-	}
-	t.Setenv("HOMEBREW_SUDO_USER", "bob")
-	ti = newTestInstall(t, installerTarball)
-	ti.in.Script = f.run
-	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"installer":[{"script":{"executable":"setup.sh","sudo":true}}]},{"app":["App.app"]}]`)); err != nil {
+	ti.in.Run = f.run
+	c := ti.cask(t, `[{"installer":[{"script":"setup.sh"},{"script":{"executable":"setup.sh","sudo":true}}]},{"app":["App.app"]}]`)
+	if err := ti.in.Install(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.runs[len(f.runs)-1].SudoUser; got != "bob" {
-		t.Errorf("sudo user = %q, want bob", got)
-	}
-}
-
-func fakeSudo(t *testing.T) {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "sudo")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	old := sudoBinary
-	sudoBinary = path
-	t.Cleanup(func() { sudoBinary = old })
-}
-
-func TestSudoAvailable(t *testing.T) {
-	for name, tc := range map[string]struct {
-		noSudo, checked string
-		resetErr, lsErr string
-		want            bool
-		wantCalls       int
-		wantNoSudo      string
-	}{
-		"disabled":          {noSudo: "1", want: false, wantNoSudo: "1"},
-		"already checked":   {checked: "1", want: true},
-		"works":             {want: true, wantCalls: 2},
-		"no new privileges": {resetErr: `The "no new privileges" flag is set`, want: false, wantCalls: 1, wantNoSudo: "1"},
-		"setuid missing":    {resetErr: "sudo: /x must be owned by uid 0 and have the setuid bit set", want: false, wantCalls: 1, wantNoSudo: "1"},
-		"not a sudoer":      {lsErr: "bob is not in the sudoers file.", want: false, wantCalls: 2, wantNoSudo: "1"},
-		"needs a password":  {lsErr: "sudo: a password is required", want: true, wantCalls: 2},
-		"reset is odd":      {resetErr: "sudo: something else", want: true, wantCalls: 2},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Setenv("HOMEBREW_NO_SUDO", tc.noSudo)
-			t.Setenv("HOMEBREW_SUDO_CHECKED", tc.checked)
-			fakeSudo(t)
-			ti := newTestInstall(t, installerTarball)
-			var calls []string
-			ti.in.Exec = func(_ context.Context, name string, args ...string) ([]byte, error) {
-				calls = append(calls, name+" "+strings.Join(args, " "))
-				msg := tc.resetErr
-				if slices.Contains(args, "-l") {
-					msg = tc.lsErr
-				}
-				if msg != "" {
-					return nil, errors.New(msg)
-				}
-				return nil, nil
-			}
-			if got := ti.in.sudoAvailable(context.Background()); got != tc.want {
-				t.Errorf("available = %v, want %v", got, tc.want)
-			}
-			if len(calls) != tc.wantCalls {
-				t.Errorf("calls = %q, want %d", calls, tc.wantCalls)
-			}
-			if got := os.Getenv("HOMEBREW_NO_SUDO"); got != tc.wantNoSudo {
-				t.Errorf("HOMEBREW_NO_SUDO = %q, want %q", got, tc.wantNoSudo)
-			}
-		})
+	if len(f.runs) != 2 || f.runs[0].Privilege != sudo.User || f.runs[1].Privilege != sudo.Sudo {
+		t.Errorf("privileges = %+v", f.runs)
 	}
 }
 
@@ -280,135 +213,5 @@ func TestInstallerOnlyCaskIsPlanned(t *testing.T) {
 	c := api.Cask{Token: "a", Artifacts: raws(t, `[{"installer":[{"manual":"Setup.app"}]}]`)}
 	if _, err := plan(c, where); err != nil {
 		t.Errorf("err = %v, want an installer-only cask planned", err)
-	}
-}
-
-func TestScriptCommand(t *testing.T) {
-	r := ScriptRun{Executable: "/s/i.sh", Args: []string{"--a b"}, Path: "/p/bin:/usr/bin"}
-	if got, want := scriptCommand(r), []string{"/usr/bin/env", "/s/i.sh", "--a b"}; !slices.Equal(got, want) {
-		t.Errorf("command = %q, want %q", got, want)
-	}
-	r.Sudo = true
-	if got, want := scriptCommand(r), []string{"/usr/bin/sudo", "-E", "PATH=/p/bin:/usr/bin", "--", "/s/i.sh", "--a b"}; !slices.Equal(got, want) {
-		t.Errorf("sudo command = %q, want %q", got, want)
-	}
-	r.Askpass = true
-	if got := scriptCommand(r); got[1] != "-A" {
-		t.Errorf("with SUDO_ASKPASS: %q", got)
-	}
-	r.SudoUser = "bob"
-	want := []string{"/usr/bin/sudo", "--prompt", "Password for %p:", "-u", "bob", "-A", "-E", "PATH=/p/bin:/usr/bin", "--", "/usr/bin/sudo",
-		"-A", "-E", "PATH=/p/bin:/usr/bin", "--", "/s/i.sh", "--a b"}
-	if got := scriptCommand(r); !slices.Equal(got, want) {
-		t.Errorf("sudo user command = %q, want %q", got, want)
-	}
-}
-
-func TestLineSinkRedactsSecretsAsBrewDoes(t *testing.T) {
-	var out bytes.Buffer
-	var log outputLog
-	sink := newLineSink([]string{"s3cr3t", "tok"}, &log, &out, false)
-	_, _ = sink.Write([]byte("key=s3cr3t and\npartial s3"))
-	_, _ = sink.Write([]byte("cr3t tok"))
-	sink.Flush()
-	want := "key=****** and\npartial ****** ******"
-	if out.String() != want || log.render(true) != want {
-		t.Errorf("out = %q, log = %q, want %q", out.String(), log.render(true), want)
-	}
-}
-
-func TestEmptySecretRedactsBetweenCharacters(t *testing.T) {
-	if got, want := redact("ab\n", []string{""}), "******a******b******\n******"; got != want {
-		t.Errorf("redact = %q, want %q", got, want)
-	}
-}
-
-func TestOutputLogColoursStderrLines(t *testing.T) {
-	var log outputLog
-	newLineSink(nil, &log, nil, false).emit("out\n")
-	newLineSink(nil, &log, nil, true).emit("err\n")
-	if got, want := log.render(true), "out\n\x1b[31merr\n\x1b[0m"; got != want {
-		t.Errorf("coloured = %q, want %q", got, want)
-	}
-	if got, want := log.render(false), "out\nerr\n"; got != want {
-		t.Errorf("plain = %q, want %q", got, want)
-	}
-}
-
-func TestInstallerColourFollowsBrew(t *testing.T) {
-	for name, tc := range map[string]struct {
-		env  map[string]string
-		want bool
-	}{
-		"plain buffer":      {want: false},
-		"forced":            {env: map[string]string{"HOMEBREW_COLOR": "1"}, want: true},
-		"no colour wins":    {env: map[string]string{"HOMEBREW_COLOR": "1", "HOMEBREW_NO_COLOR": "1"}, want: false},
-		"NO_COLOR fallback": {env: map[string]string{"HOMEBREW_COLOR": "1", "NO_COLOR": "1"}, want: false},
-	} {
-		t.Run(name, func(t *testing.T) {
-			for _, k := range []string{"HOMEBREW_COLOR", "HOMEBREW_NO_COLOR", "NO_COLOR"} {
-				t.Setenv(k, tc.env[k])
-			}
-			ti := newTestInstall(t, installerTarball)
-			f := &fakeScripts{}
-			ti.in.Script = f.run
-			c := ti.cask(t, `[{"installer":[{"script":"setup.sh"}]},{"app":["App.app"]}]`)
-			if err := ti.in.Install(context.Background(), c); err != nil {
-				t.Fatal(err)
-			}
-			if got := f.runs[0].Color; got != tc.want {
-				t.Errorf("colour = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestTerminalColumns(t *testing.T) {
-	size := func(w int, ok bool) func() (int, bool) { return func() (int, bool) { return w, ok } }
-	tput := func(out string) func() string { return func() string { return out } }
-	for name, tc := range map[string]struct {
-		size func() (int, bool)
-		tput func() string
-		want int
-	}{
-		"terminal":      {size(132, true), tput("40\n"), 132},
-		"tput":          {size(0, false), tput("100\n"), 100},
-		"tput is blank": {size(0, false), tput(""), 80},
-		"tput is junk":  {size(0, false), tput("many"), 0},
-	} {
-		if got := columns(tc.size, tc.tput); got != tc.want {
-			t.Errorf("%s: columns = %d, want %d", name, got, tc.want)
-		}
-	}
-}
-
-func TestSignalNames(t *testing.T) {
-	for sig, want := range map[syscall.Signal]string{
-		syscall.SIGINT: "INT", syscall.SIGUSR1: "USR1", syscall.SIGTRAP: "TRAP", syscall.SIGSTOP: "STOP",
-		syscall.SIGWINCH: "WINCH", syscall.SIGCHLD: "CHLD", syscall.SIGSYS: "SYS", syscall.SIGXCPU: "XCPU",
-		syscall.SIGVTALRM: "VTALRM", syscall.SIGIO: "IO", syscall.SIGABRT: "ABRT",
-	} {
-		if got := signalName(sig); got != want {
-			t.Errorf("signalName(%d) = %q, want %q", sig, got, want)
-		}
-	}
-}
-
-func TestFailureMessage(t *testing.T) {
-	got := failureMessage([]string{"/usr/bin/env", "/s/i.sh", "--key=s3cr3t"}, "exited with 3", "oops s3cr3t\n", []string{"s3cr3t"})
-	want := "Failure while executing; `/usr/bin/env /s/i.sh --key=******` exited with 3. Here's the output:\noops s3cr3t\n"
-	if got != want {
-		t.Errorf("message = %q, want %q", got, want)
-	}
-	if got := failureMessage([]string{"x"}, "was terminated by uncaught signal INT", "", nil); got != "Failure while executing; `x` was terminated by uncaught signal INT." {
-		t.Errorf("message = %q", got)
-	}
-}
-
-func TestShellEscape(t *testing.T) {
-	for in, want := range map[string]string{"plain/a-b.c": "plain/a-b.c", "a b": `a\ b`, "": "''", "it's": `it\'s`} {
-		if got := shellEscape(in); got != want {
-			t.Errorf("shellEscape(%q) = %q, want %q", in, got, want)
-		}
 	}
 }

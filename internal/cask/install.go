@@ -17,6 +17,7 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 // Config is what brew records in config.json; env stays empty because brw does not read HOMEBREW_CASK_OPTS.
@@ -39,7 +40,7 @@ type Installer struct {
 	APIPath string
 	Config  Config
 	Exec    Exec
-	Script  ScriptRunner
+	Run     sudo.Runner
 	Adopt   bool
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
@@ -125,7 +126,7 @@ func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]b
 	if err != nil {
 		return installPlan{}, nil, "", err
 	}
-	if p.needsSudo() && !in.sudoAvailable(ctx) {
+	if p.needsSudo() && !sudo.Available(ctx, in.runner()) {
 		return installPlan{}, nil, "", brewError("%s: The installer artifact requires sudo, but HOMEBREW_NO_SUDO is set.", c.Token)
 	}
 	links, err := in.checkTargets(c, p, owned)

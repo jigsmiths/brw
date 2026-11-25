@@ -1,4 +1,4 @@
-package cask
+package sudo
 
 import "syscall"
 

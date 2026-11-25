@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
+
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 const execBit = 0o111
@@ -32,22 +33,6 @@ type installerStep struct {
 	ignored           []string
 	overridden        bool
 }
-
-type ScriptRun struct {
-	Executable        string
-	Args              []string
-	Input             string
-	Path              string
-	MustSucceed, Sudo bool
-	Askpass           bool
-	SudoUser          string
-	Secrets           []string
-	Color             bool
-	Stdout, Stderr    io.Writer
-	Trace             io.Writer
-}
-
-type ScriptRunner func(ctx context.Context, r ScriptRun) error
 
 var scriptKeys = []string{"args", "input", "executable", "must_succeed", "sudo", "print_stdout", "print_stderr"}
 
@@ -158,7 +143,7 @@ func (in *Installer) runInstallers(ctx context.Context, token, staged string, st
 	for _, s := range steps {
 		if s.manual {
 			in.logf("Cask %s only provides a manual installer. To run it and complete the installation:\n  open %s",
-				token, shellEscape(joinName(staged, s.path)))
+				token, sudo.ShellEscape(joinName(staged, s.path)))
 			continue
 		}
 		if len(s.ignored) > 0 {
@@ -173,38 +158,33 @@ func (in *Installer) runInstallers(ctx context.Context, token, staged string, st
 		if err != nil {
 			return fmt.Errorf("%s: %w", token, err)
 		}
-		r := ScriptRun{
-			Executable: exe, Args: s.args, Input: s.input, MustSucceed: s.mustSucceed, Sudo: s.sudo,
-			Path:    strings.Join([]string{filepath.Join(in.Where.Prefix, "bin"), filepath.Join(in.Where.Prefix, "sbin"), os.Getenv("PATH")}, ":"),
-			Secrets: sensitiveValues(),
-			Stdout:  in.Log,
-			Color:   colorEnabled(in.Log),
-		}
-		debug := envEnabled("HOMEBREW_DEBUG")
-		if s.stderr == outputOn || s.stderr == outputDebug && debug {
-			r.Stderr = in.Warn
-		}
-		if debug && envEnabled("HOMEBREW_VERBOSE") {
-			r.Trace = in.Warn
+		path := strings.Join([]string{filepath.Join(in.Where.Prefix, "bin"), filepath.Join(in.Where.Prefix, "sbin"), os.Getenv("PATH")}, ":")
+		c := sudo.Command{
+			Exe: exe, Args: s.args, Input: s.input, Env: []string{"PATH=" + path}, MustSucceed: s.mustSucceed,
+			Secrets: sudo.SensitiveValues(), Stdout: in.Log, Color: sudo.ColorEnabled(in.Log),
 		}
 		if s.sudo {
-			_, r.Askpass = os.LookupEnv("SUDO_ASKPASS")
-			if envEnabled("HOMEBREW_SUDO_THROUGH_SUDO_USER") {
-				if strings.TrimSpace(os.Getenv("HOMEBREW_SUDO_USER")) == "" {
-					return brewError("%s: `$HOMEBREW_SUDO_THROUGH_SUDO_USER` set but `$SUDO_USER` unset!", token)
-				}
-				r.SudoUser = os.Getenv("HOMEBREW_SUDO_USER")
-			}
+			c.Privilege = sudo.Sudo
 		}
-		run := in.Script
-		if run == nil {
-			run = execScript
+		debug := sudo.EnvTrue("HOMEBREW_DEBUG")
+		if s.stderr == outputOn || s.stderr == outputDebug && debug {
+			c.Stderr = in.Warn
 		}
-		if err := run(ctx, r); err != nil {
+		if debug && sudo.EnvTrue("HOMEBREW_VERBOSE") {
+			c.Trace = in.Warn
+		}
+		if _, err := in.runner()(ctx, c); err != nil {
 			return fmt.Errorf("%s: %w", token, err)
 		}
 	}
 	return nil
+}
+
+func (in *Installer) runner() sudo.Runner {
+	if in.Run != nil {
+		return in.Run
+	}
+	return sudo.Exec
 }
 
 func (in *Installer) stagedExecutable(staged, path string) (string, error) {
@@ -236,25 +216,6 @@ func (in *Installer) chmodAll(path string, perm os.FileMode) error {
 		return in.Root.Chmod(rel, perm)
 	}
 	return os.Chmod(path, perm) //fsx:allow brew makes an installer script outside the prefix executable
-}
-
-func shellEscape(s string) string {
-	if s == "" {
-		return "''"
-	}
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r == '\n':
-			b.WriteString("'\n'")
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', strings.ContainsRune("_-.,:+/@", r):
-			b.WriteRune(r)
-		default:
-			b.WriteByte('\\')
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 
 func (p installPlan) needsSudo() bool {

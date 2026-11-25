@@ -1,6 +1,6 @@
 //go:build !darwin && !linux
 
-package cask
+package sudo
 
 import "syscall"
 
