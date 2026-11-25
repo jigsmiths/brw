@@ -50,7 +50,7 @@ func signalName(s syscall.Signal) string {
 	return platformSignalNames[s]
 }
 
-var forbiddenInTests = []string{"/usr/bin/sudo", "/usr/sbin/installer", "/usr/sbin/pkgutil", "/bin/launchctl", "/usr/bin/trash"}
+var forbiddenInTests = []string{"/usr/bin/sudo", "/usr/sbin/installer", "/usr/sbin/pkgutil", "/bin/launchctl", "/usr/bin/trash", "osascript", "/usr/bin/osascript"}
 
 func Guard(exe string) {
 	if testing.Testing() && slices.Contains(forbiddenInTests, exe) {

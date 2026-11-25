@@ -24,6 +24,7 @@ import (
 )
 
 func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool, trace tracing, casks []api.Cask) error {
+	e.setTracing(trace)
 	tag, err := platform.Tag(e.host)
 	if err != nil {
 		return err
@@ -111,6 +112,7 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 			Verbose:     trace.verbose,
 			Debug:       trace.debug,
 			Run:         e.sudoRun,
+			FindService: e.findService,
 			Fetcher:     &cask.Fetcher{Dir: filepath.Join(client.CacheDir, "cask-downloads")},
 			Log:         e.out,
 			Warn:        e.err,
@@ -292,6 +294,7 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, trace traci
 const defaultAppDir = "/Applications"
 
 func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, trace tracing, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
+	e.setTracing(trace)
 	listed, ok := idx.LookupFrom(old.Tap, old.Token)
 	if !ok {
 		return nil, nil, fmt.Errorf("%s is not in the cask listing", old.Token)
@@ -320,6 +323,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 		Debug:   trace.debug,
 		Run:     e.sudoRun,
 
+		FindService: e.findService,
 		RuntimeDeps: e.runtimeDepsFor(ctx, prefix, tag, idx, nil),
 	}
 	in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
@@ -438,8 +442,9 @@ func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask,
 		Where: cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
 		Host:  e.host,
 		Log:   e.out, Warn: e.err,
-		Verbose: trace.verbose, Debug: trace.debug, Run: e.sudoRun,
+		Verbose: trace.verbose, Debug: trace.debug, Run: e.sudoRun, FindService: e.findService,
 	}
+	e.setTracing(trace)
 	if _, err := os.Stat(appDir); err == nil {
 		apps, err := fsx.Open(appDir, nil)
 		if err != nil {

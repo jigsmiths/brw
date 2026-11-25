@@ -45,7 +45,9 @@ type Installer struct {
 	Kill    func(pid int, sig syscall.Signal) error
 	Verbose bool
 	Debug   bool
-	Adopt   bool
+	// FindService is Homebrew::Services::System.launchctl_find_service for the uninstall launchctl directive.
+	FindService func(ctx context.Context, label string, privilege sudo.Privilege) (bool, error)
+	Adopt       bool
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
 	// SatisfyDependencies installs what c needs; nil leaves it to the caller, and Install then fails if it is missing.

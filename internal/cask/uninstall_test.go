@@ -26,6 +26,9 @@ type fakeExec struct {
 	gui                bool
 	hostID, runningIDs string
 	failRun            map[string]bool
+	found              map[sudo.Privilege]bool
+	finds              []sudo.Privilege
+	findErr            error
 }
 
 func (f *fakeExec) run(ctx context.Context, c sudo.Command) (sudo.Result, error) {
@@ -50,6 +53,11 @@ func (f *fakeExec) run(ctx context.Context, c sudo.Command) (sudo.Result, error)
 	}
 	out, err := f.exec(ctx, "/usr/bin/sudo", slices.Concat(prefix, []string{exe}, args)...)
 	return sudo.Result{Stdout: string(out)}, err
+}
+
+func (f *fakeExec) findService(_ context.Context, _ string, privilege sudo.Privilege) (bool, error) {
+	f.finds = append(f.finds, privilege)
+	return f.found[privilege], f.findErr
 }
 
 func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -148,7 +156,7 @@ func installed(t *testing.T, artifacts string) (*testInstall, *fakeExec) {
 	}
 	ti.out.Reset()
 	f := &fakeExec{running: map[string]int{}, fail: map[string]bool{}, gui: true}
-	ti.in.Exec, ti.in.Run = f.exec, f.run
+	ti.in.Exec, ti.in.Run, ti.in.FindService = f.exec, f.run, f.findService
 	return ti, f
 }
 
@@ -222,6 +230,7 @@ func TestUninstallDirectives(t *testing.T) {
 		{"uninstall":[{"launchctl":"com.example.helper","delete":["~/gone","~/missing*","relative"],"trash":"~/old","rmdir":"~/Empty"}]},
 		{"app":["App.app"]}]`)
 	ti.in.Where.Home = home
+	f.handle = map[string]func([]string) ([]byte, error){"osascript": func([]string) ([]byte, error) { return []byte("1\n"), nil }}
 	for _, d := range []string{"gone/sub", "old", "Empty/a/b"} {
 		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
 			t.Fatal(err)
@@ -248,7 +257,7 @@ func TestUninstallDirectives(t *testing.T) {
 	if exists(filepath.Join(home, "gone")) || exists(filepath.Join(home, "Empty")) {
 		t.Error("delete and rmdir should have removed their paths")
 	}
-	if got := f.ran("/usr/bin/trash"); !slices.Equal(got, []string{"/usr/bin/trash " + filepath.Join(home, "old")}) {
+	if got := f.ran("osascript -l JavaScript -e " + trashScript); !slices.Equal(got, []string{"osascript -l JavaScript -e " + trashScript + " " + filepath.Join(home, "old")}) {
 		t.Errorf("trash calls = %q", got)
 	}
 	if got, want := f.ran("/usr/bin/sudo -E --"), []string{"/usr/bin/sudo -E -- /bin/rm -r -f -- " + filepath.Join(home, "gone")}; !slices.Equal(got, want) {
@@ -303,64 +312,89 @@ func launchctlRuns(f *fakeExec, privilege sudo.Privilege) [][]string {
 	return out
 }
 
-func TestUninstallLaunchctlFindsSystemServicesAsRootLikeBrew(t *testing.T) {
-	t.Setenv("HOMEBREW_SUDO_USER", "")
-	t.Setenv("HOMEBREW_SSH_TTY", "")
-	uid := fmt.Sprint(os.Getuid())
+func TestUninstallLaunchctlRemovesWhatTheServiceLookupFinds(t *testing.T) {
 	ti, f := installed(t, `[{"uninstall":[{"launchctl":"com.example.daemon"}]},{"app":["App.app"]}]`)
-	f.handle = map[string]func([]string) ([]byte, error){
-		"/bin/launchctl": func([]string) ([]byte, error) { return nil, errors.New("not found") },
-		"/usr/bin/sudo": func(args []string) ([]byte, error) {
-			if slices.Contains(args, "list") {
-				return []byte("{ \"Label\" = \"com.example.daemon\"; };\n"), nil
-			}
-			return nil, nil
-		},
-	}
+	f.found = map[sudo.Privilege]bool{sudo.User: true, sudo.Root: true}
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	want := [][]string{
-		{"print", "gui/" + uid + "/com.example.daemon"}, {"print", "user/" + uid + "/com.example.daemon"},
-		{"list", "com.example.daemon"}, {"remove", "com.example.daemon"},
+	if want := []sudo.Privilege{sudo.User, sudo.Root}; !slices.Equal(f.finds, want) {
+		t.Errorf("lookups = %v, want %v", f.finds, want)
 	}
-	if got := launchctlRuns(f, sudo.Root); !slices.EqualFunc(got, want, slices.Equal) {
-		t.Errorf("root launchctl runs = %q, want %q", got, want)
+	if got := f.ran("/bin/launchctl remove"); !slices.Equal(got, []string{"/bin/launchctl remove com.example.daemon"}) {
+		t.Errorf("user removals = %q", got)
 	}
-}
-
-func TestUninstallLaunchctlProbesTheUserDomainsInBrewsOrder(t *testing.T) {
-	t.Setenv("HOMEBREW_SUDO_USER", "")
-	t.Setenv("HOMEBREW_SSH_TTY", "")
-	uid := fmt.Sprint(os.Getuid())
-	ti, f := installed(t, `[{"uninstall":[{"launchctl":"com.example.agent"}]},{"app":["App.app"]}]`)
-	t.Setenv("HOMEBREW_NO_SUDO", "1")
-	f.handle = map[string]func([]string) ([]byte, error){"/bin/launchctl": func(args []string) ([]byte, error) {
-		if args[0] == "list" {
-			return []byte("{ };\n"), nil
-		}
-		return nil, errors.New("not found")
-	}}
-	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{
-		"/bin/launchctl print gui/" + uid + "/com.example.agent", "/bin/launchctl print user/" + uid + "/com.example.agent",
-		"/bin/launchctl list com.example.agent", "/bin/launchctl remove com.example.agent",
-	}
-	if got := f.ran("/bin/launchctl"); !slices.Equal(got, want) {
-		t.Errorf("launchctl calls = %q, want %q", got, want)
+	if got := launchctlRuns(f, sudo.Root); !slices.EqualFunc(got, [][]string{{"remove", "com.example.daemon"}}, slices.Equal) {
+		t.Errorf("root removals = %q", got)
 	}
 }
 
 func TestUninstallSkipsSystemLaunchctlWhenSudoIsOff(t *testing.T) {
 	ti, f := installed(t, `[{"uninstall":[{"launchctl":"com.example.daemon"}]},{"app":["App.app"]}]`)
 	t.Setenv("HOMEBREW_NO_SUDO", "1")
+	f.found = map[sudo.Privilege]bool{sudo.User: true, sudo.Root: true}
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	if got := launchctlRuns(f, sudo.Root); len(got) != 0 {
-		t.Errorf("root launchctl ran: %q", got)
+	if want := []sudo.Privilege{sudo.User}; !slices.Equal(f.finds, want) {
+		t.Errorf("lookups = %v, want %v", f.finds, want)
+	}
+}
+
+func TestUninstallLaunchctlRaisesWhenTheLookupFails(t *testing.T) {
+	ti, f := installed(t, `[{"uninstall":[{"launchctl":"com.example.daemon"}]},{"app":["App.app"]}]`)
+	f.findErr = errors.New("no console")
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err == nil || !strings.Contains(err.Error(), "no console") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestUninstallDeleteRaisesAtTheFirstFailingPath(t *testing.T) {
+	home := t.TempDir()
+	ti, f := installed(t, `[{"uninstall":[{"delete":["~/a","~/b"]}]},{"app":["App.app"]}]`)
+	ti.in.Where.Home = home
+	for _, name := range []string{"a", "b"} {
+		if err := os.WriteFile(filepath.Join(home, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.failRun = map[string]bool{"/usr/bin/xargs": true}
+	err := ti.in.Uninstall(context.Background(), "app", "1.0", false)
+	if err == nil || strings.Count(err.Error(), "failed") != 1 {
+		t.Errorf("err = %v, want exactly one failure", err)
+	}
+	var xargs int
+	for _, c := range f.runs {
+		if c.Exe == "/usr/bin/xargs" {
+			xargs++
+		}
+	}
+	if xargs != 1 || strings.Contains(ti.out.String(), "~/b") {
+		t.Errorf("xargs runs = %d, output = %q", xargs, ti.out.String())
+	}
+}
+
+func TestInstallerTracesItsCommandsLikeBrewsSystemCommand(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		verbose, debug bool
+		want           string
+	}{
+		{"both", true, true, "/usr/bin/env /bin/chmod -R u+rwx /a\\ b\n"},
+		{"verbose alone", true, false, ""},
+		{"debug alone", false, true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOMEBREW_DEBUG", "")
+			t.Setenv("HOMEBREW_VERBOSE", "")
+			ti, _ := installed(t, `[{"app":["App.app"]}]`)
+			ti.in.Verbose, ti.in.Debug = tc.verbose, tc.debug
+			ti.warn.Reset()
+			_, _ = ti.in.exec(context.Background(), "/bin/chmod", "-R", "u+rwx", "/a b")
+			if got := ti.warn.String(); got != tc.want {
+				t.Errorf("trace = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -434,26 +468,34 @@ func TestUninstallRmdirRemovesDirectoriesThatSudoSawEmpty(t *testing.T) {
 
 func TestUninstallTrashRetriesWithPermissionsLikeBrew(t *testing.T) {
 	home := t.TempDir()
-	ti, f := installed(t, `[{"uninstall":[{"trash":"~/old"}]},{"app":["App.app"]}]`)
+	ti, f := installed(t, `[{"uninstall":[{"trash":["~/ok","~/old"]}]},{"app":["App.app"]}]`)
 	ti.in.Where.Home = home
-	if err := os.Mkdir(filepath.Join(home, "old"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	attempts := 0
-	f.handle = map[string]func([]string) ([]byte, error){"/usr/bin/trash": func([]string) ([]byte, error) {
-		if attempts++; attempts <= 2 {
-			return nil, errors.New("not permitted")
+	for _, name := range []string{"ok", "old"} {
+		if err := os.Mkdir(filepath.Join(home, name), 0o755); err != nil {
+			t.Fatal(err)
 		}
-		return nil, nil
+	}
+	retries := 0
+	f.handle = map[string]func([]string) ([]byte, error){"osascript": func(args []string) ([]byte, error) {
+		switch paths := args[4:]; {
+		case len(paths) == 2:
+			return []byte("1\n0\n"), nil
+		case retries < 1:
+			retries++
+			return []byte("0\n"), nil
+		}
+		return []byte("1\n"), nil
 	}}
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	old := filepath.Join(home, "old")
-	want := []string{"/usr/bin/trash " + old, "/usr/bin/trash " + old, "/usr/bin/chflags -R -- 000 " + old, "/usr/bin/trash " + old}
+	ok, old := filepath.Join(home, "ok"), filepath.Join(home, "old")
+	want := []string{"osascript " + ok + " " + old, "osascript " + old, "/usr/bin/chflags -R -- 000 " + old, "osascript " + old}
 	var got []string
 	for _, c := range f.calls {
-		if strings.HasPrefix(c, "/usr/bin/trash") || strings.HasPrefix(c, "/usr/bin/chflags") {
+		if after, found := strings.CutPrefix(c, "osascript -l JavaScript -e "+trashScript); found {
+			got = append(got, "osascript"+after)
+		} else if strings.HasPrefix(c, "/usr/bin/chflags") {
 			got = append(got, c)
 		}
 	}
@@ -472,7 +514,7 @@ func TestUninstallTrashWarnsAboutWhatStaysUntrashable(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(home, "old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f.fail["/usr/bin/trash"] = true
+	f.handle = map[string]func([]string) ([]byte, error){"osascript": func([]string) ([]byte, error) { return []byte("0\n"), nil }}
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}

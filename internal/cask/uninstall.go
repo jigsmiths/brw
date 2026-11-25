@@ -37,6 +37,9 @@ func execCommand(ctx context.Context, name string, args ...string) ([]byte, erro
 }
 
 func (in *Installer) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
+	if in.debug() && (in.Verbose || sudo.EnvTrue("HOMEBREW_VERBOSE")) && in.Warn != nil {
+		_, _ = fmt.Fprintln(in.Warn, sudo.Redact(sudo.ShellJoin(append([]string{"/usr/bin/env", name}, args...)), sudo.SensitiveValues()))
+	}
 	if in.Exec != nil {
 		return in.Exec(ctx, name, args...)
 	}
@@ -262,7 +265,9 @@ func (in *Installer) runDirectives(ctx context.Context, token string, step unins
 		return err
 	}
 	if s := d["launchctl"]; len(s) > 0 {
-		in.launchctl(ctx, s)
+		if err := in.launchctl(ctx, s); err != nil {
+			return err
+		}
 	}
 	if s := d["quit"]; len(s) > 0 {
 		in.quit(ctx, s, expand)
@@ -304,7 +309,7 @@ func (in *Installer) runDirectives(ctx context.Context, token string, step unins
 	return nil
 }
 
-func (in *Installer) launchctl(ctx context.Context, services []string) {
+func (in *Installer) launchctl(ctx context.Context, services []string) error {
 	var all []string
 	for _, s := range services {
 		if !strings.Contains(s, "*") {
@@ -323,7 +328,11 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 			if asRoot {
 				privilege = sudo.Root
 			}
-			if in.launchctlFinds(ctx, s, privilege) {
+			found, err := in.FindService(ctx, s, privilege)
+			if err != nil {
+				return err
+			}
+			if found {
 				if err := in.privileged(ctx, privilege, "/bin/launchctl", "remove", s); err == nil {
 					in.sleep(time.Second)
 				}
@@ -344,45 +353,7 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 			}
 		}
 	}
-}
-
-func (in *Installer) launchctlFinds(ctx context.Context, label string, privilege sudo.Privilege) bool {
-	uid := fmt.Sprint(os.Getuid())
-	sshWithoutConsole := false
-	if os.Getenv("HOMEBREW_SSH_TTY") != "" {
-		fi, err := os.Stat("/dev/console")
-		st, ok := fi.Sys().(*syscall.Stat_t)
-		sshWithoutConsole = err == nil && ok && int(st.Uid) != os.Getuid()
-	}
-	domains := []string{"gui/" + uid}
-	if sshWithoutConsole || os.Getenv("HOMEBREW_SUDO_USER") != "" {
-		domains = []string{"user/" + uid}
-	}
-	for _, d := range []string{"user/" + uid, "gui/" + uid} {
-		if !slices.Contains(domains, d) {
-			domains = append(domains, d)
-		}
-	}
-	present := func(args ...string) bool {
-		var out string
-		var err error
-		if privilege == sudo.User {
-			var b []byte
-			b, err = in.exec(ctx, "/bin/launchctl", args...)
-			out = string(b)
-		} else {
-			c := in.command(privilege, "/bin/launchctl", args...)
-			c.Stderr = nil
-			out, err = in.capture(ctx, c)
-		}
-		return err == nil && strings.TrimSpace(out) != ""
-	}
-	for _, d := range domains {
-		if present("print", d+"/"+label) {
-			return true
-		}
-	}
-	return present("list", label)
+	return nil
 }
 
 func (in *Installer) privileged(ctx context.Context, privilege sudo.Privilege, name string, args ...string) error {
@@ -540,6 +511,16 @@ func (in *Installer) resolvePaths(action string, paths []string, each func(path 
 	}
 }
 
+// trashScript is Foundation.trash_paths: one NSFileManager.trashItemAtURL call per path, printing 1 or 0 for each.
+const trashScript = `'use strict';
+ObjC.import('Foundation')
+function run(argv) {
+  var fm = $.NSFileManager.defaultManager
+  return argv.map(function (p) {
+    return fm.trashItemAtURLResultingItemURLError($.NSURL.fileURLWithPath(p), null, null) ? '1' : '0'
+  }).join('\n')
+}`
+
 const (
 	accessWrite = 0x2
 	accessRead  = 0x4
@@ -553,15 +534,16 @@ func (in *Installer) deletePaths(ctx context.Context, paths []string) error {
 	in.logf("==> Removing files:")
 	var err error
 	in.resolvePaths("delete", paths, func(p string, resolved []string) {
+		if err != nil {
+			return
+		}
 		in.logf("%s", p)
 		if len(resolved) == 0 {
 			return
 		}
 		rm := in.command(sudo.Sudo, xargsPath, "-0", "--", "/bin/rm", "-r", "-f", "--")
 		rm.Input = strings.Join(resolved, "\x00")
-		if _, e := in.capture(ctx, rm); e != nil {
-			err = errors.Join(err, e)
-		}
+		_, err = in.capture(ctx, rm)
 	})
 	return err
 }
@@ -576,16 +558,19 @@ func (in *Installer) trash(ctx context.Context, paths []string) {
 	for _, p := range shown {
 		in.logf("%s", p)
 	}
+	trashed := in.trashItems(ctx, all)
 	var failed []string
-	for _, p := range all {
-		trash := func(p string) error {
-			_, err := in.exec(ctx, "/usr/bin/trash", p)
-			return err
-		}
-		if trash(p) == nil {
+	for i, p := range all {
+		if trashed[i] {
 			continue
 		}
-		if in.gainPermissions(ctx, p, []string{"-R"}, trash) != nil {
+		retry := func(p string) error {
+			if !in.trashItems(ctx, []string{p})[0] {
+				return errors.New("not trashed")
+			}
+			return nil
+		}
+		if in.gainPermissions(ctx, p, []string{"-R"}, retry) != nil {
 			failed = append(failed, p)
 		}
 	}
@@ -595,6 +580,22 @@ func (in *Installer) trash(ctx context.Context, paths []string) {
 			_, _ = fmt.Fprintln(in.Warn, strings.Join(failed, "\n"))
 		}
 	}
+}
+
+func (in *Installer) trashItems(ctx context.Context, paths []string) []bool {
+	trashed := make([]bool, len(paths))
+	if len(paths) == 0 {
+		return trashed
+	}
+	out, err := in.exec(ctx, "osascript", append([]string{"-l", "JavaScript", "-e", trashScript}, paths...)...)
+	results := strings.Fields(string(out))
+	if err != nil || len(results) != len(paths) {
+		return trashed
+	}
+	for i, r := range results {
+		trashed[i] = r == "1"
+	}
+	return trashed
 }
 
 func (in *Installer) rmdirs(ctx context.Context, dirs []string) error {
