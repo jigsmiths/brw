@@ -1,45 +1,50 @@
 package cask
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"syscall"
 )
 
+const execBit = 0o111
+
+type outputMode int
+
 const (
-	execBit     = 0o111
-	envCommand  = "/usr/bin/env"
-	sudoCommand = "/usr/bin/sudo"
+	outputOff outputMode = iota
+	outputOn
+	outputDebug
 )
 
 type installerStep struct {
-	manual                   bool
-	path                     string
-	args                     []string
-	input                    string
-	mustSucceed, sudo        bool
-	printStdout, printStderr bool
-	ignored                  []string
+	manual            bool
+	path              string
+	args              []string
+	input             string
+	mustSucceed, sudo bool
+	stderr            outputMode
+	ignored           []string
+	overridden        bool
 }
 
+// ScriptRun is one command for SystemCommand-style execution; a nil Stdout or Stderr discards that stream.
 type ScriptRun struct {
-	Executable               string
-	Args                     []string
-	Input                    string
-	Path                     string
-	MustSucceed, Sudo        bool
-	PrintStdout, PrintStderr bool
-	Stdout, Stderr           io.Writer
+	Executable        string
+	Args              []string
+	Input             string
+	Path              string
+	MustSucceed, Sudo bool
+	Askpass           bool
+	SudoUser          string
+	Secrets           []string
+	Stdout, Stderr    io.Writer
+	Trace             io.Writer
 }
 
 type ScriptRunner func(ctx context.Context, r ScriptRun) error
@@ -71,7 +76,7 @@ func readInstallers(token string, args json.RawMessage) ([]installerStep, error)
 		if !ok {
 			return nil, fmt.Errorf("%s: installer %s: %w", token, args, ErrUnsupported)
 		}
-		s := installerStep{mustSucceed: true, printStdout: true, printStderr: true}
+		s := installerStep{mustSucceed: true, stderr: outputOn}
 		var fields map[string]json.RawMessage
 		var executable string
 		if json.Unmarshal(raw, &executable) == nil {
@@ -82,15 +87,18 @@ func readInstallers(token string, args json.RawMessage) ([]installerStep, error)
 		if err := json.Unmarshal(raw, &fields); err != nil {
 			return nil, fmt.Errorf("%s: installer %s: %w", token, args, ErrUnsupported)
 		}
-		for key, v := range fields {
+		keys, err := keyOrder(raw)
+		if err != nil {
+			return nil, fmt.Errorf("%s: installer %s: %w", token, args, ErrUnsupported)
+		}
+		for _, key := range keys {
 			if !slices.Contains(scriptKeys, key) {
 				s.ignored = append(s.ignored, key)
 			}
-			if err := s.set(key, v); err != nil {
+			if err := s.set(key, fields[key]); err != nil {
 				return nil, fmt.Errorf("%s: installer %s: %w", token, args, ErrUnsupported)
 			}
 		}
-		slices.Sort(s.ignored)
 		if s.path == "" {
 			return nil, invalid("installer missing executable")
 		}
@@ -108,9 +116,21 @@ func (s *installerStep) set(key string, v json.RawMessage) error {
 	case "sudo":
 		return json.Unmarshal(v, &s.sudo)
 	case "print_stdout":
-		return json.Unmarshal(v, &s.printStdout)
+		s.overridden = true
 	case "print_stderr":
-		return json.Unmarshal(v, &s.printStderr)
+		var on bool
+		if json.Unmarshal(v, &on) == nil {
+			s.stderr = outputOff
+			if on {
+				s.stderr = outputOn
+			}
+			return nil
+		}
+		var mode string
+		if json.Unmarshal(v, &mode) != nil || mode != "debug" {
+			return fmt.Errorf("print_stderr %s", v)
+		}
+		s.stderr = outputDebug
 	case "args":
 		var list []any
 		if err := json.Unmarshal(v, &list); err != nil {
@@ -142,12 +162,11 @@ func (in *Installer) runInstallers(ctx context.Context, token, staged string, st
 			continue
 		}
 		if len(s.ignored) > 0 {
-			symbols := make([]string, len(s.ignored))
-			for i, k := range s.ignored {
-				symbols[i] = ":" + k
-			}
-			in.warnf("Unknown arguments to installer -- [%s] (ignored). Running `brew update; brew cleanup` will likely fix it.",
-				strings.Join(symbols, ", "))
+			in.warnf("Unknown arguments to installer -- %s (ignored). Running `brew update; brew cleanup` will likely fix it.",
+				rubySymbols(s.ignored))
+		}
+		if s.overridden && in.Warn != nil {
+			_, _ = fmt.Fprintf(in.Warn, "Error: Some arguments to installer will be ignored -- :%s (overridden).\n", rubySymbols(s.ignored))
 		}
 		in.logf("==> Running installer script '%s'", s.path)
 		exe, err := in.stagedExecutable(staged, s.path)
@@ -156,14 +175,25 @@ func (in *Installer) runInstallers(ctx context.Context, token, staged string, st
 		}
 		r := ScriptRun{
 			Executable: exe, Args: s.args, Input: s.input, MustSucceed: s.mustSucceed, Sudo: s.sudo,
-			PrintStdout: s.printStdout, PrintStderr: s.printStderr,
-			Path: strings.Join([]string{filepath.Join(in.Where.Prefix, "bin"), filepath.Join(in.Where.Prefix, "sbin"), os.Getenv("PATH")}, ":"),
+			Path:    strings.Join([]string{filepath.Join(in.Where.Prefix, "bin"), filepath.Join(in.Where.Prefix, "sbin"), os.Getenv("PATH")}, ":"),
+			Secrets: sensitiveValues(),
+			Stdout:  in.Log,
 		}
-		if s.printStdout {
-			r.Stdout = in.Log
-		}
-		if s.printStderr {
+		debug := envEnabled("HOMEBREW_DEBUG")
+		if s.stderr == outputOn || s.stderr == outputDebug && debug {
 			r.Stderr = in.Warn
+		}
+		if debug && envEnabled("HOMEBREW_VERBOSE") {
+			r.Trace = in.Warn
+		}
+		if s.sudo {
+			_, r.Askpass = os.LookupEnv("SUDO_ASKPASS")
+			if envEnabled("HOMEBREW_SUDO_THROUGH_SUDO_USER") {
+				if strings.TrimSpace(os.Getenv("HOMEBREW_SUDO_USER")) == "" {
+					return brewError("%s: `$HOMEBREW_SUDO_THROUGH_SUDO_USER` set but `$SUDO_USER` unset!", token)
+				}
+				r.SudoUser = os.Getenv("HOMEBREW_SUDO_USER")
+			}
 		}
 		run := in.Script
 		if run == nil {
@@ -205,63 +235,6 @@ func (in *Installer) chmodAll(path string, perm os.FileMode) error {
 		return in.Root.Chmod(rel, perm)
 	}
 	return os.Chmod(path, perm) //fsx:allow brew makes an installer script outside the prefix executable
-}
-
-func scriptCommand(r ScriptRun, askpass string) []string {
-	if !r.Sudo {
-		return append([]string{envCommand, r.Executable}, r.Args...)
-	}
-	cmd := []string{sudoCommand}
-	if askpass != "" {
-		cmd = append(cmd, "-A")
-	}
-	cmd = append(cmd, "-E", "PATH="+shellEscape(r.Path), "--", r.Executable)
-	return append(cmd, r.Args...)
-}
-
-type lockedWriter struct {
-	mu sync.Mutex
-	w  io.Writer
-}
-
-func (l *lockedWriter) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.w.Write(p)
-}
-
-func execScript(ctx context.Context, r ScriptRun) error {
-	argv := scriptCommand(r, os.Getenv("SUDO_ASKPASS"))
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Env = append(os.Environ(), "PATH="+r.Path)
-	if r.Input != "" {
-		cmd.Stdin = strings.NewReader(r.Input)
-	}
-	var captured bytes.Buffer
-	log := &lockedWriter{w: &captured}
-	cmd.Stdout, cmd.Stderr = log, log
-	if r.PrintStdout && r.Stdout != nil {
-		cmd.Stdout = io.MultiWriter(log, &lockedWriter{w: r.Stdout})
-	}
-	if r.PrintStderr && r.Stderr != nil {
-		cmd.Stderr = io.MultiWriter(log, &lockedWriter{w: r.Stderr})
-	}
-	err := cmd.Run()
-	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-		if !r.MustSucceed {
-			return nil
-		}
-		parts := make([]string, len(argv))
-		for i, a := range argv {
-			parts[i] = shellEscape(a)
-		}
-		msg := fmt.Sprintf("Failure while executing; `%s` exited with %d.", strings.ReplaceAll(strings.Join(parts, " "), `\=`, "="), exitErr.ExitCode())
-		if captured.Len() > 0 {
-			msg += " Here's the output:\n" + strings.TrimSuffix(captured.String(), "\n") + "\n"
-		}
-		return brewMessage(msg)
-	}
-	return err
 }
 
 func shellEscape(s string) string {

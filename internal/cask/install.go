@@ -125,7 +125,7 @@ func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]b
 	if err != nil {
 		return installPlan{}, nil, "", err
 	}
-	if p.needsSudo() && os.Getenv("HOMEBREW_NO_SUDO") != "" {
+	if p.needsSudo() && !in.sudoAvailable(ctx) {
 		return installPlan{}, nil, "", brewError("%s: The installer artifact requires sudo, but HOMEBREW_NO_SUDO is set.", c.Token)
 	}
 	links, err := in.checkTargets(c, p, owned)
