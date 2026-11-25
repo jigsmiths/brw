@@ -40,7 +40,12 @@ const usage = `Example usage:
   brw cleanup [FORMULA|CASK...]
   brw tap [USER/REPO [URL]]
   brw untap USER/REPO...
-  brw services [list|start|stop|restart] [FORMULA...]
+  brw services [list] [--json]
+  brw services run|start|restart (FORMULA...|--all) [--file=PATH]
+  brw services stop (FORMULA...|--all) [--keep] [--no-wait|--max-wait=SECONDS]
+  brw services kill (FORMULA...|--all)
+  brw services info (FORMULA...|--all) [--json] [--verbose]
+  brw services cleanup
   brw trust [TAP|CASK...]
   brw untrust TAP|CASK...
   brw version

@@ -211,7 +211,11 @@ func TestServicesSudoServiceUserMustExist(t *testing.T) {
 func TestServicesSudoServiceUserNeedsRoot(t *testing.T) {
 	e, prefix, _, lc := servicesEnv(t)
 	for _, sub := range []string{"list", "start", "stop", "restart"} {
-		_, err := runCmd(t, e, "services", sub, "-prefix", prefix, "--sudo-service-user", "svc", "foo")
+		args := []string{sub, "-prefix", prefix, "--sudo-service-user", "svc"}
+		if sub != "list" {
+			args = append(args, "foo")
+		}
+		_, err := runCmd(t, e, "services", args...)
 		if err == nil || !strings.Contains(err.Error(), "`brw services --sudo-service-user` is supported only when running as root!") {
 			t.Errorf("%s: %v", sub, err)
 		}
@@ -340,6 +344,24 @@ func TestServicesListShowsRootDaemons(t *testing.T) {
 	out, _ = runCmd(t, e, "services", "list", "-prefix", prefix)
 	if want := "Name Status User File\nfoo  started         root " + dst + "\n"; out != want {
 		t.Errorf("as root: %q, want %q", out, want)
+	}
+}
+
+func TestServicesStartAsRootIgnoresTheUserEnvFile(t *testing.T) {
+	e, prefix, agents, _, _ := rootEnvFor(t, envPlist)
+	path := writeEnvFile(t, e, 0o600, "FOO=bar\n")
+	if _, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(e.daemonsDir, "sh.brew.foo.plist"))
+	if string(got) != envPlist {
+		t.Errorf("env was applied to a root service:\n%s", got)
+	}
+	if want := "Warning: Skipping " + path + ": user env overrides are not supported for root services.\n"; !strings.Contains(stderr(e), want) {
+		t.Errorf("stderr = %q, want it to contain %q", stderr(e), want)
+	}
+	if entries, _ := os.ReadDir(agents); len(entries) != 0 {
+		t.Errorf("wrote %v", entries)
 	}
 }
 

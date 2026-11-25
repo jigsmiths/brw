@@ -85,7 +85,7 @@ func (e *env) setSudoUser(name string) error {
 	return nil
 }
 
-func (e *env) checkLoad(t serviceTarget, function string) error {
+func (e *env) prepareLoad(t serviceTarget, function string) error {
 	switch {
 	case e.root() && !t.requiresRoot && e.sudoUser == "":
 		e.opoo("`%s` must be run as non-root to start at user login!\nThe service will run as root unless configured otherwise.", t.name)
@@ -94,6 +94,43 @@ func (e *env) checkLoad(t serviceTarget, function string) error {
 	}
 	if e.sudoUser != "" && e.sudoUser != e.user && !e.userExists(e.sudoUser) {
 		return fmt.Errorf("Cannot %s `%s` as `%s` is not a user!", function, t.name, e.sudoUser) //nolint:staticcheck // matches brew's error text
+	}
+	return e.makePathDirs(t)
+}
+
+func (e *env) makePathDirs(t serviceTarget) error {
+	home, _ := os.UserHomeDir()
+	dir := func(path string) (string, bool) {
+		switch {
+		case strings.HasPrefix(path, "/"):
+		case path == "~" || strings.HasPrefix(path, "~/"):
+			path = home + path[1:]
+		default:
+			return "", false
+		}
+		return filepath.Clean(path), true
+	}
+	var dirs []string
+	for _, field := range []string{"working_dir", "root_dir", "input_path", "log_path", "error_log_path"} {
+		path, set := t.block.Fields[field]
+		if !set {
+			continue
+		}
+		d, ok := dir(path)
+		if !ok {
+			continue
+		}
+		if strings.HasSuffix(field, "_path") {
+			d = filepath.Dir(d)
+		}
+		if !slices.Contains(dirs, d) {
+			dirs = append(dirs, d)
+		}
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0o755); err != nil { //fsx:allow directories the service writes to, as brew's path_dirs
+			return err
+		}
 	}
 	return nil
 }

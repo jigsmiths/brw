@@ -2,8 +2,11 @@ package main
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +28,20 @@ type fakeLaunchctl struct {
 	stubborn  int
 	bootouts  int
 	bootoutOK bool
+	stopKills bool
+}
+
+func (f *fakeLaunchctl) Jobs() string {
+	var b strings.Builder
+	b.WriteString("PID\tStatus\tLabel\n")
+	for _, label := range slices.Sorted(maps.Keys(f.loaded)) {
+		pid := "-"
+		if p := services.ParsePrint(f.loaded[label]); p.Running() {
+			pid = strconv.Itoa(p.PID)
+		}
+		b.WriteString(pid + "\t0\t" + label + "\n")
+	}
+	return b.String()
 }
 
 func (f *fakeLaunchctl) Print(domain, label string) (string, error) {
@@ -62,6 +79,9 @@ func (f *fakeLaunchctl) Bootout(domain, label string) error {
 
 func (f *fakeLaunchctl) Stop(label string) error {
 	f.calls = append(f.calls, "stop "+label)
+	if _, ok := f.loaded[label]; ok && f.stopKills {
+		f.loaded[label] = "\tstate = not running\n\tlast exit code = 0\n"
+	}
 	return nil
 }
 

@@ -55,6 +55,11 @@ func (l execLaunchctl) Print(domain, label string) (string, error) {
 
 func (l execLaunchctl) List(label string) (string, error) { return l.query("list", label) }
 
+func (l execLaunchctl) Jobs() string {
+	out, _ := l.run("list")
+	return out
+}
+
 func (l execLaunchctl) Enable(domain, label string) error {
 	_, err := l.run("enable", domain+"/"+label)
 	return err

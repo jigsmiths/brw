@@ -44,6 +44,8 @@ const (
 type Launchctl interface {
 	Print(domain, label string) (string, error)
 	List(label string) (string, error)
+	// Jobs is the output of `launchctl list`, empty when it fails.
+	Jobs() string
 	Enable(domain, label string) error
 	Bootstrap(domain, file string) error
 	Bootout(domain, label string) error
@@ -80,8 +82,19 @@ func Candidates(chosen string, uid int) []string {
 
 func UserDomain(uid int) string { return "user/" + strconv.Itoa(uid) }
 
+func ToF(s string) float64 { return rubyToF(s) }
+
 func ParseEnvFile(content string) (env map[string]string, skipped []string) {
+	pairs, skipped := ParseEnvPairs(content)
 	env = map[string]string{}
+	for _, kv := range pairs {
+		env[kv[0]] = kv[1]
+	}
+	return env, skipped
+}
+
+// ParseEnvPairs keeps the order of first appearance, as a Ruby hash does.
+func ParseEnvPairs(content string) (pairs [][2]string, skipped []string) {
 	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -93,9 +106,14 @@ func ParseEnvFile(content string) (env map[string]string, skipped []string) {
 			skipped = append(skipped, line)
 			continue
 		}
-		env[key] = strings.TrimSpace(value)
+		value = strings.TrimSpace(value)
+		if i := slices.IndexFunc(pairs, func(kv [2]string) bool { return kv[0] == key }); i >= 0 {
+			pairs[i][1] = value
+			continue
+		}
+		pairs = append(pairs, [2]string{key, value})
 	}
-	return env, skipped
+	return pairs, skipped
 }
 
 var (
@@ -208,10 +226,13 @@ func Timed(plist []byte) bool {
 }
 
 type Info struct {
-	Blank       bool
-	PID         int
-	ExitCode    int
-	HasExitCode bool
+	Blank         bool
+	PID           int
+	HasPID        bool
+	ExitCode      int
+	HasExitCode   bool
+	LoadedFile    string
+	HasLoadedFile bool
 }
 
 func (i Info) Running() bool { return i.PID > 0 }
@@ -221,9 +242,16 @@ var (
 	printExit = regexp.MustCompile(`last exit code = ([0-9]+)`)
 	listPID   = regexp.MustCompile(`"PID" = ([0-9]*);`)
 	listExit  = regexp.MustCompile(`"LastExitStatus" = ([0-9]*);`)
+	printPath = regexp.MustCompile(`path = (.*)`)
 )
 
-func ParsePrint(out string) Info { return parse(out, printPID, printExit) }
+func ParsePrint(out string) Info {
+	i := parse(out, printPID, printExit)
+	if m := printPath.FindStringSubmatch(out); m != nil {
+		i.LoadedFile, i.HasLoadedFile = m[1], true
+	}
+	return i
+}
 
 func ParseList(out string) Info { return parse(out, listPID, listExit) }
 
@@ -231,6 +259,7 @@ func parse(out string, pid, exit *regexp.Regexp) Info {
 	i := Info{Blank: strings.TrimSpace(out) == ""}
 	if m := pid.FindStringSubmatch(out); m != nil {
 		i.PID, _ = strconv.Atoi(m[1])
+		i.HasPID = true
 	}
 	if m := exit.FindStringSubmatch(out); m != nil {
 		i.ExitCode, _ = strconv.Atoi(m[1])

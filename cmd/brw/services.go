@@ -26,8 +26,6 @@ const (
 	plistMode     = 0o644
 	worldWritable = 0o002
 	groupWritable = 0o020
-	maxStopWait   = 60
-	servicesUsage = "usage: [sudo] brw services [list [--json]] | start|stop|restart [--dry-run] [--sudo-service-user USER] FORMULA [FORMULA ...]"
 
 	ansiBlue   = "\x1b[34m"
 	ansiBold   = "\x1b[1m"
@@ -48,6 +46,7 @@ type serviceTarget struct {
 	prefix       string
 	keg          string
 	requiresRoot bool
+	block        rb.ServiceDetails
 }
 
 func (t serviceTarget) names() []string {
@@ -58,27 +57,6 @@ func (t serviceTarget) names() []string {
 }
 
 func (t serviceTarget) serviceName() string { return t.names()[0] }
-
-func servicesCommand(e *env, args []string) error {
-	sub := "list"
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		sub, args = args[0], args[1:]
-	}
-	if e.host.OS == "linux" {
-		return errors.New("unlike brew, brw services does not support systemd on Linux yet")
-	}
-	if e.launchctl == nil {
-		return errors.New("launchctl is not available")
-	}
-	e.targetKnown = false
-	switch sub {
-	case "list":
-		return servicesList(e, args)
-	case "start", "stop", "restart":
-		return servicesChange(e, sub, args)
-	}
-	return errors.New(servicesUsage)
-}
 
 func (e *env) ohai(format string, a ...any) {
 	if e.tty {
@@ -208,28 +186,10 @@ func (e *env) serviceFile(t serviceTarget, s serviceSnap, prefix string) string 
 		}
 		return e.dests(t)[0]
 	}
-	return filepath.Join(prefix, "opt", t.name, filepath.Base(t.source))
+	return filepath.Join(prefix, "opt", t.name, e.serviceFileBase(t))
 }
 
-func servicesList(e *env, args []string) error {
-	flags := newFlagSet("services list")
-	prefixArg := prefixFlag(e, flags)
-	asJSON := flags.Bool("json", false, "print JSON")
-	sudoUser := flags.String("sudo-service-user", "", "when run as root, run the service as this user")
-	rest, err := parse(flags, args)
-	if err != nil {
-		return errors.Join(err, errors.New(servicesUsage))
-	}
-	if err := e.setSudoUser(*sudoUser); err != nil {
-		return err
-	}
-	if len(rest) > 0 {
-		return errors.New(servicesUsage)
-	}
-	prefix, err := filepath.Abs(*prefixArg)
-	if err != nil {
-		return err
-	}
+func servicesList(e *env, o *servicesOpts, prefix string) error {
 	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
@@ -263,14 +223,14 @@ func servicesList(e *env, args []string) error {
 	}
 	slices.SortFunc(rows, func(a, b services.Row) int { return strings.Compare(a.Name, b.Name) })
 	if len(rows) == 0 {
-		if *asJSON {
+		if o.json {
 			_, err = fmt.Fprintln(e.out, "[]")
 		} else if e.tty {
 			e.opoo("No services available to control with `brw services`")
 		}
 		return err
 	}
-	if *asJSON {
+	if o.json {
 		out, err := services.FormatJSON(rows)
 		if err != nil {
 			return err
@@ -306,11 +266,7 @@ func (e *env) keptFormula(kegPath, name string) (*rb.Formula, bool) {
 	return f, err == nil
 }
 
-func (e *env) generatedService(prefix, kegPath, name string) (plistName string, body []byte, ok bool) {
-	f, ok := e.keptFormula(kegPath, name)
-	if !ok {
-		return "", nil, false
-	}
+func generatedService(f *rb.Formula, prefix string) (plistName string, body []byte, ok bool) {
 	files, err := f.ServiceFiles(prefix)
 	if err != nil {
 		return "", nil, false
@@ -323,13 +279,17 @@ func (e *env) generatedService(prefix, kegPath, name string) (plistName string, 
 	return "", nil, false
 }
 
-func (e *env) serviceRequiresRoot(prefix, kegPath, name string) bool {
-	f, ok := e.keptFormula(kegPath, name)
-	if !ok {
-		return false
-	}
+func serviceRequiresRoot(f *rb.Formula, prefix string) bool {
 	requires, err := f.ServiceRequiresRoot(prefix)
 	return err == nil && requires
+}
+
+func serviceBlock(f *rb.Formula, prefix string) rb.ServiceDetails {
+	d, err := f.ServiceDetails(prefix)
+	if err != nil {
+		return rb.ServiceDetails{}
+	}
+	return d
 }
 
 func (e *env) installedService(prefix string, kegs []cellar.Keg, name string) (serviceTarget, bool) {
@@ -343,11 +303,15 @@ func (e *env) installedService(prefix string, kegs []cellar.Keg, name string) (s
 		return serviceTarget{name: name}, false
 	}
 	keg := cellar.Latest(own).Path
-	t := serviceTarget{name: name, installed: true, prefix: prefix, keg: keg, requiresRoot: e.serviceRequiresRoot(prefix, keg, name)}
-	if plistName, body, ok := e.generatedService(prefix, keg, name); ok {
-		t.generated = body
-		if plistName != t.serviceName() {
-			t.explicit = plistName
+	t := serviceTarget{name: name, installed: true, prefix: prefix, keg: keg}
+	if f, ok := e.keptFormula(keg, name); ok {
+		t.requiresRoot = serviceRequiresRoot(f, prefix)
+		t.block = serviceBlock(f, prefix)
+		if plistName, body, ok := generatedService(f, prefix); ok {
+			t.generated = body
+			if plistName != t.serviceName() {
+				t.explicit = plistName
+			}
 		}
 	}
 	plist, err := services.FindPlist(keg, t.names())
@@ -356,56 +320,6 @@ func (e *env) installedService(prefix string, kegs []cellar.Keg, name string) (s
 		t.source = plist
 	}
 	return t, t.hasService
-}
-
-func servicesChange(e *env, verb string, args []string) error {
-	flags := newFlagSet("services " + verb)
-	var dryRun bool
-	prefixArg, journal := changeFlags(e, flags, &dryRun)
-	sudoUser := flags.String("sudo-service-user", "", "when run as root, run the service as this user")
-	names, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	if err := e.setSudoUser(*sudoUser); err != nil {
-		return err
-	}
-	if len(names) == 0 {
-		return errors.New("formula(e) missing, please provide a formula name")
-	}
-	prefix, err := filepath.Abs(*prefixArg)
-	if err != nil {
-		return err
-	}
-	targets, err := serviceTargets(e, prefix, names)
-	if err != nil {
-		return err
-	}
-	if dryRun {
-		for _, t := range targets {
-			if err := e.planService(verb, t); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	switch verb {
-	case "start":
-		for _, t := range targets {
-			if err := e.startService(t, *journal); err != nil {
-				return err
-			}
-		}
-	case "stop":
-		for _, t := range targets {
-			if err := e.stopService(t, *journal); err != nil {
-				return err
-			}
-		}
-	default:
-		return e.restartServices(targets, *journal)
-	}
-	return nil
 }
 
 func serviceTargets(e *env, prefix string, names []string) ([]serviceTarget, error) {
@@ -482,7 +396,10 @@ func (e *env) reportRunningOrLoaded(t serviceTarget, s serviceSnap, status strin
 	return true
 }
 
-func (e *env) startService(t serviceTarget, journal string) error {
+func (e *env) startService(t serviceTarget, o *servicesOpts) error {
+	if err := checkServiceFile(o.file); err != nil {
+		return err
+	}
 	s, err := e.snapshot(t)
 	if err != nil {
 		return err
@@ -496,21 +413,31 @@ func (e *env) startService(t serviceTarget, journal string) error {
 	if !t.hasService {
 		return fmt.Errorf("formula `%s` has not implemented #plist, #service or provided a locatable service file", t.name)
 	}
-	body, _, err := e.serviceBody(t)
-	if err != nil {
-		return err
-	}
-	if e.sudoUser != "" {
-		e.ohai("Setting username in %s to: %s", t.serviceName(), e.sudoUser)
-		edited, err := services.ApplyUserName(body, e.sudoUser)
-		if err != nil {
-			return fmt.Errorf("cannot set the username in the service file for `%s`: %w", t.name, err)
+	var body []byte
+	if o.file != "" {
+		if body, err = os.ReadFile(o.file); err != nil {
+			return err
 		}
-		body = edited
+	} else {
+		if body, _, err = e.serviceBody(t); err != nil {
+			return err
+		}
+		if e.sudoUser != "" {
+			e.ohai("Setting username in %s to: %s", t.serviceName(), e.sudoUser)
+			edited, err := services.ApplyUserName(body, e.sudoUser)
+			if err != nil {
+				return fmt.Errorf("cannot set the username in the service file for `%s`: %w", t.name, err)
+			}
+			body = edited
+		}
 	}
 	dst := e.dests(t)[0]
-	if err := e.replaceServiceFile(t, filepath.Base(dst), body, journal); err != nil {
+	if err := e.replaceServiceFile(t, filepath.Base(dst), body, o.journal); err != nil {
 		return err
+	}
+	if o.file == "" && o.verbose {
+		e.ohai("Generated service file for %s:", t.name)
+		_, _ = fmt.Fprintf(e.out, "   %s\n\n", strings.ReplaceAll(string(body), "\n", "\n   "))
 	}
 	label := t.serviceName()
 	if l, ok := services.FileLabel(body); ok {
@@ -519,7 +446,7 @@ func (e *env) startService(t serviceTarget, journal string) error {
 	if err := e.takeRootOwnership(t, dst, body); err != nil {
 		return err
 	}
-	if err := e.checkLoad(t, "start"); err != nil {
+	if err := e.prepareLoad(t, "start"); err != nil {
 		return err
 	}
 	domain, err := e.domain()
@@ -536,7 +463,10 @@ func (e *env) startService(t serviceTarget, journal string) error {
 	return nil
 }
 
-func (e *env) runService(t serviceTarget) error {
+func (e *env) runService(t serviceTarget, serviceFile string) error {
+	if err := checkServiceFile(serviceFile); err != nil {
+		return err
+	}
 	s, err := e.snapshot(t)
 	if err != nil {
 		return err
@@ -548,19 +478,24 @@ func (e *env) runService(t serviceTarget) error {
 		_, _ = fmt.Fprintf(e.out, "Service `%s` cannot be run (but can be started) as root.\n", t.name)
 		return nil
 	}
-	body, original, err := e.serviceBody(t)
-	if err != nil {
+	var body, original []byte
+	file := serviceFile
+	if file == "" {
+		file = t.source
+		if body, original, err = e.serviceBody(t); err != nil {
+			return err
+		}
+	} else if body, err = os.ReadFile(file); err != nil {
 		return err
 	}
-	if err := e.checkLoad(t, "run"); err != nil {
+	if err := e.prepareLoad(t, "run"); err != nil {
 		return err
 	}
 	label := t.serviceName()
 	if l, ok := services.FileLabel(body); ok {
 		label = l
 	}
-	file := t.source
-	if !bytes.Equal(body, original) {
+	if serviceFile == "" && !bytes.Equal(body, original) {
 		tmp, err := os.CreateTemp("", t.serviceName()+"-*.plist") //fsx:allow scratch plist for launchctl
 		if err != nil {
 			return err
@@ -595,27 +530,42 @@ func (e *env) serviceBody(t serviceTarget) (body, original []byte, err error) {
 	return e.applyUserEnv(t.name, body), original, nil
 }
 
-func (e *env) applyUserEnv(name string, body []byte) []byte {
-	path := filepath.Join(e.configHome, "services", name+".env")
+func (e *env) userEnv(name string) (pairs [][2]string, path string) {
+	path = filepath.Join(e.configHome, "services", name+".env")
 	fi, err := os.Stat(path)
 	if err != nil || !fi.Mode().IsRegular() {
-		return body
+		return nil, path
 	}
 	switch perm := fi.Mode().Perm(); {
+	case e.root():
+		e.opoo("Skipping %s: user env overrides are not supported for root services.", path)
+		return nil, path
 	case perm&worldWritable != 0:
 		e.opoo("Skipping %s: file is world-writable.", path)
-		return body
+		return nil, path
 	case perm&groupWritable != 0:
 		e.opoo("Skipping %s: file is group-writable.", path)
-		return body
+		return nil, path
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return body
+		return nil, path
 	}
-	vars, skipped := services.ParseEnvFile(string(content))
+	pairs, skipped := services.ParseEnvPairs(string(content))
 	for _, line := range skipped {
 		e.opoo("Skipping invalid line in %s: %s", path, line)
+	}
+	return pairs, path
+}
+
+func (e *env) applyUserEnv(name string, body []byte) []byte {
+	pairs, path := e.userEnv(name)
+	if len(pairs) == 0 {
+		return body
+	}
+	vars := map[string]string{}
+	for _, kv := range pairs {
+		vars[kv[0]] = kv[1]
 	}
 	out, ok := services.ApplyEnv(body, vars)
 	if !ok {
@@ -671,14 +621,16 @@ func (e *env) running(label string) (bool, error) {
 	return loaded, err
 }
 
-func (e *env) stopService(t serviceTarget, journal string) error {
+func (e *env) stopService(t serviceTarget, o *servicesOpts) error {
 	s, err := e.snapshot(t)
 	if err != nil {
 		return err
 	}
 	if !s.loaded {
-		if err := e.removeServiceFiles(t, journal); err != nil {
-			return err
+		if !o.keep {
+			if err := e.removeServiceFiles(t, o.journal); err != nil {
+				return err
+			}
 		}
 		if e.registeredInEitherDir(t) {
 			sudo := "sudo "
@@ -700,9 +652,13 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 		e.opoo("Service `%s` is not started.", t.name)
 		return nil
 	}
-	_, _ = fmt.Fprintf(e.out, "Stopping `%s`... (might take a while)\n", t.name)
+	if o.noWait {
+		_, _ = fmt.Fprintf(e.out, "Stopping `%s`...\n", t.name)
+	} else {
+		_, _ = fmt.Fprintf(e.out, "Stopping `%s`... (might take a while)\n", t.name)
+	}
 	for _, label := range s.loadedNames {
-		if err := e.bootoutAll(label); err != nil {
+		if err := e.bootoutAll(label, o); err != nil {
 			return err
 		}
 	}
@@ -714,8 +670,8 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 		}
 		still = still || up
 	}
-	if !still {
-		if err := e.removeServiceFiles(t, journal); err != nil {
+	if !o.keep && !still {
+		if err := e.removeServiceFiles(t, o.journal); err != nil {
 			return err
 		}
 	}
@@ -728,7 +684,7 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 	return nil
 }
 
-func (e *env) bootoutAll(label string) error {
+func (e *env) bootoutAll(label string, o *servicesOpts) error {
 	domains, err := e.domains()
 	if err != nil {
 		return err
@@ -742,7 +698,7 @@ func (e *env) bootoutAll(label string) error {
 		if err != nil {
 			return err
 		}
-		for range maxStopWait {
+		for slept := 0.0; !o.noWait; slept++ {
 			if code == services.StatusESRCH || code == services.StatusDomainNotSupported {
 				break
 			}
@@ -751,6 +707,9 @@ func (e *env) bootoutAll(label string) error {
 				return err
 			}
 			if code != services.StatusEINPROGRESS && !up {
+				break
+			}
+			if o.maxWait != 0 && slept >= o.maxWait {
 				break
 			}
 			e.sleepFor(time.Second)
@@ -778,31 +737,36 @@ func (e *env) bootout(domain, label string) (int, error) {
 	return 0, err
 }
 
-func (e *env) restartServices(targets []serviceTarget, journal string) error {
-	var ran, started []serviceTarget
+func (e *env) restartServices(targets []serviceTarget, o *servicesOpts) error {
+	stopOpts := &servicesOpts{journal: o.journal, maxWait: defaultMaxWait, verbose: o.verbose}
+	var started []serviceTarget
+	ran := false
 	for _, t := range targets {
 		s, err := e.snapshot(t)
 		if err != nil {
 			return err
 		}
 		if s.loaded && len(e.presentDests(t)) == 0 {
-			ran = append(ran, t)
+			ran = true
 		} else {
 			started = append(started, t)
 		}
 		if s.loaded {
-			if err := e.stopService(t, journal); err != nil {
+			if err := e.stopService(t, stopOpts); err != nil {
 				return err
 			}
 		}
 	}
-	for _, t := range ran {
-		if err := e.runService(t); err != nil {
-			return err
+	if ran {
+		// brew runs every target here, not only the ones that were loaded without a file.
+		for _, t := range targets {
+			if err := e.runService(t, o.file); err != nil {
+				return err
+			}
 		}
 	}
 	for _, t := range started {
-		if err := e.startService(t, journal); err != nil {
+		if err := e.startService(t, o); err != nil {
 			return err
 		}
 	}

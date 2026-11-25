@@ -20,10 +20,11 @@ func fixture(t *testing.T, name string) string {
 
 func TestParseRealPrint(t *testing.T) {
 	got := ParsePrint(fixture(t, "print_rift.txt"))
-	if got != (Info{ExitCode: 78, HasExitCode: true}) {
+	want := Info{ExitCode: 78, HasExitCode: true, LoadedFile: "/Users/me/Library/LaunchAgents/homebrew.mxcl.rift.plist", HasLoadedFile: true}
+	if got != want {
 		t.Errorf("print: %+v", got)
 	}
-	if got := ParsePrint("\tstate = running\n\tpid = 42\n"); got.PID != 42 || !got.Running() || got.HasExitCode {
+	if got := ParsePrint("\tstate = running\n\tpid = 42\n"); got.PID != 42 || !got.HasPID || !got.Running() || got.HasExitCode || got.HasLoadedFile {
 		t.Errorf("running: %+v", got)
 	}
 	if got := ParsePrint("\tstate = not running\n\tlast exit code = (never exited)\n"); got.HasExitCode {
@@ -36,7 +37,7 @@ func TestParseRealList(t *testing.T) {
 	if got != (Info{ExitCode: 19968, HasExitCode: true}) {
 		t.Errorf("list: %+v", got)
 	}
-	if got := ParseList("{\n\t\"PID\" = 7;\n\t\"LastExitStatus\" = 0;\n};\n"); got.PID != 7 || !got.HasExitCode {
+	if got := ParseList("{\n\t\"PID\" = 7;\n\t\"LastExitStatus\" = 0;\n\t\"Program\" = \"path = x\";\n};\n"); got.PID != 7 || !got.HasPID || !got.HasExitCode || got.HasLoadedFile {
 		t.Errorf("list with pid: %+v", got)
 	}
 }
