@@ -359,26 +359,10 @@ func TestServicesErrors(t *testing.T) {
 	if len(lc.calls) != 0 {
 		t.Errorf("errors ran %q", lc.calls)
 	}
-	e.uid = 0
-	_, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo")
-	if err == nil || !strings.Contains(err.Error(), "unlike brew, brw services does not manage root daemons yet") {
-		t.Errorf("as root: %v", err)
-	}
-	e.uid, e.host = 501, platform.Host{OS: "linux", Arch: "amd64"}
-	_, err = runCmd(t, e, "services", "list", "-prefix", prefix)
+	e.host = platform.Host{OS: "linux", Arch: "amd64"}
+	_, err := runCmd(t, e, "services", "list", "-prefix", prefix)
 	if err == nil || !strings.Contains(err.Error(), "unlike brew, brw services does not support systemd on Linux yet") {
 		t.Errorf("on linux: %v", err)
-	}
-}
-
-func TestServicesRefusesRootDaemons(t *testing.T) {
-	e, prefix, _, lc := servicesEnv(t)
-	if err := os.WriteFile(filepath.Join(e.daemonsDir, "sh.brew.foo.plist"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	_, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo")
-	if err == nil || !strings.Contains(err.Error(), "root daemons") || len(lc.calls) != 0 {
-		t.Errorf("err = %v, calls = %q", err, lc.calls)
 	}
 }
 

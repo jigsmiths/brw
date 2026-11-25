@@ -27,7 +27,7 @@ const (
 	worldWritable = 0o002
 	groupWritable = 0o020
 	maxStopWait   = 60
-	servicesUsage = "usage: brw services [list [--json]] | start|stop|restart [--dry-run] FORMULA [FORMULA ...]"
+	servicesUsage = "usage: [sudo] brw services [list [--json]] | start|stop|restart [--dry-run] [--sudo-service-user USER] FORMULA [FORMULA ...]"
 
 	ansiBlue   = "\x1b[34m"
 	ansiBold   = "\x1b[1m"
@@ -44,6 +44,10 @@ type serviceTarget struct {
 
 	explicit  string
 	generated []byte
+
+	prefix       string
+	keg          string
+	requiresRoot bool
 }
 
 func (t serviceTarget) names() []string {
@@ -62,9 +66,6 @@ func servicesCommand(e *env, args []string) error {
 	}
 	if e.host.OS == "linux" {
 		return errors.New("unlike brew, brw services does not support systemd on Linux yet")
-	}
-	if e.uid == 0 {
-		return errors.New("unlike brew, brw services does not manage root daemons yet")
 	}
 	if e.launchctl == nil {
 		return errors.New("launchctl is not available")
@@ -94,16 +95,34 @@ func (e *env) opoo(format string, a ...any) {
 	_, _ = fmt.Fprintf(e.err, "Warning: %s\n", fmt.Sprintf(format, a...))
 }
 
-func (e *env) dests(t serviceTarget) []string {
+func (e *env) root() bool { return e.uid == 0 }
+
+func (e *env) destDir() string {
+	if e.root() {
+		return e.daemonsDir
+	}
+	return e.agentsDir
+}
+
+func (e *env) destsIn(dir string, t serviceTarget) []string {
 	var out []string
 	for _, n := range t.names() {
-		out = append(out, filepath.Join(e.agentsDir, n+".plist"))
+		out = append(out, filepath.Join(dir, n+".plist"))
 	}
 	return out
 }
 
-func (e *env) presentDests(t serviceTarget) []string {
-	return slices.DeleteFunc(e.dests(t), func(p string) bool { _, err := os.Stat(p); return err != nil })
+func (e *env) dests(t serviceTarget) []string { return e.destsIn(e.destDir(), t) }
+
+func existing(paths []string) []string {
+	return slices.DeleteFunc(paths, func(p string) bool { _, err := os.Stat(p); return err != nil })
+}
+
+func (e *env) presentDests(t serviceTarget) []string { return existing(e.dests(t)) }
+
+// registeredInEitherDir is brew's service_file_present?.
+func (e *env) registeredInEitherDir(t serviceTarget) bool {
+	return len(existing(e.destsIn(e.daemonsDir, t))) > 0 || len(existing(e.destsIn(e.agentsDir, t))) > 0
 }
 
 func (e *env) labels(t serviceTarget) []string {
@@ -147,29 +166,44 @@ func (e *env) snapshot(t serviceTarget) (serviceSnap, error) {
 }
 
 func (e *env) owner(t serviceTarget, s serviceSnap) *string {
-	registered := filepath.Join(e.agentsDir, s.active+".plist")
-	if _, err := os.Stat(registered); err != nil {
-		present := e.presentDests(t)
-		if len(present) == 0 {
-			return nil
+	if registered, ok := e.registered(t, s); ok {
+		if body, err := os.ReadFile(registered); err == nil {
+			if u, ok := services.FileUser(body); ok {
+				return &u
+			}
 		}
-		registered = present[0]
-	}
-	user := e.user
-	if body, err := os.ReadFile(registered); err == nil {
-		if u, ok := services.FileUser(body); ok {
-			user = u
+		if filepath.Dir(registered) == e.daemonsDir {
+			return new("root")
 		}
+		return &e.user
 	}
-	return &user
+	if len(existing(e.destsIn(e.daemonsDir, t))) > 0 {
+		return new("root")
+	}
+	if len(existing(e.destsIn(e.agentsDir, t))) > 0 {
+		return &e.user
+	}
+	return nil
+}
+
+// registered is brew's registered_destination, in the directory this run manages.
+func (e *env) registered(t serviceTarget, s serviceSnap) (string, bool) {
+	present := e.presentDests(t)
+	if len(present) == 0 {
+		return "", false
+	}
+	if active := filepath.Join(e.destDir(), s.active+".plist"); slices.Contains(present, active) {
+		return active, true
+	}
+	return present[0], true
 }
 
 func (e *env) serviceFile(t serviceTarget, s serviceSnap, prefix string) string {
-	if present := e.presentDests(t); len(present) > 0 {
-		if active := filepath.Join(e.agentsDir, s.active+".plist"); slices.Contains(present, active) {
-			return active
+	if e.registeredInEitherDir(t) {
+		if registered, ok := e.registered(t, s); ok {
+			return registered
 		}
-		return present[0]
+		return e.dests(t)[0]
 	}
 	return filepath.Join(prefix, "opt", t.name, filepath.Base(t.source))
 }
@@ -178,8 +212,16 @@ func servicesList(e *env, args []string) error {
 	flags := newFlagSet("services list")
 	prefixArg := prefixFlag(e, flags)
 	asJSON := flags.Bool("json", false, "print JSON")
-	if rest, err := parse(flags, args); err != nil || len(rest) > 0 {
+	sudoUser := flags.String("sudo-service-user", "", "when run as root, run the service as this user")
+	rest, err := parse(flags, args)
+	if err != nil {
 		return errors.Join(err, errors.New(servicesUsage))
+	}
+	if err := e.setSudoUser(*sudoUser); err != nil {
+		return err
+	}
+	if len(rest) > 0 {
+		return errors.New(servicesUsage)
 	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
@@ -248,17 +290,22 @@ func uniqueNames(kegs []cellar.Keg) []string {
 	return names
 }
 
-func (e *env) generatedService(prefix, kegPath, name string) (plistName string, body []byte, ok bool) {
+func (e *env) keptFormula(kegPath, name string) (*rb.Formula, bool) {
 	src, err := os.ReadFile(filepath.Join(kegPath, ".brew", name+".rb"))
 	if err != nil {
-		return "", nil, false
+		return nil, false
 	}
 	tag, err := platform.Tag(e.host)
 	if err != nil {
-		return "", nil, false
+		return nil, false
 	}
 	f, err := rb.LoadFormula(src, name, tag)
-	if err != nil {
+	return f, err == nil
+}
+
+func (e *env) generatedService(prefix, kegPath, name string) (plistName string, body []byte, ok bool) {
+	f, ok := e.keptFormula(kegPath, name)
+	if !ok {
 		return "", nil, false
 	}
 	files, err := f.ServiceFiles(prefix)
@@ -273,6 +320,15 @@ func (e *env) generatedService(prefix, kegPath, name string) (plistName string, 
 	return "", nil, false
 }
 
+func (e *env) serviceRequiresRoot(prefix, kegPath, name string) bool {
+	f, ok := e.keptFormula(kegPath, name)
+	if !ok {
+		return false
+	}
+	requires, err := f.ServiceRequiresRoot(prefix)
+	return err == nil && requires
+}
+
 func (e *env) installedService(prefix string, kegs []cellar.Keg, name string) (serviceTarget, bool) {
 	var own []cellar.Keg
 	for _, k := range kegs {
@@ -283,8 +339,8 @@ func (e *env) installedService(prefix string, kegs []cellar.Keg, name string) (s
 	if len(own) == 0 {
 		return serviceTarget{name: name}, false
 	}
-	t := serviceTarget{name: name, installed: true}
 	keg := cellar.Latest(own).Path
+	t := serviceTarget{name: name, installed: true, prefix: prefix, keg: keg, requiresRoot: e.serviceRequiresRoot(prefix, keg, name)}
 	if plistName, body, ok := e.generatedService(prefix, keg, name); ok {
 		t.generated = body
 		if plistName != t.serviceName() {
@@ -303,8 +359,12 @@ func servicesChange(e *env, verb string, args []string) error {
 	flags := newFlagSet("services " + verb)
 	var dryRun bool
 	prefixArg, journal := changeFlags(e, flags, &dryRun)
+	sudoUser := flags.String("sudo-service-user", "", "when run as root, run the service as this user")
 	names, err := parse(flags, args)
 	if err != nil {
+		return err
+	}
+	if err := e.setSudoUser(*sudoUser); err != nil {
 		return err
 	}
 	if len(names) == 0 {
@@ -371,13 +431,6 @@ func serviceTargets(e *env, prefix string, names []string) ([]serviceTarget, err
 			return nil, err
 		}
 		t, _ := e.installedService(prefix, kegs, rack)
-		if e.daemonsDir != "" {
-			for _, n := range t.names() {
-				if _, err := os.Stat(filepath.Join(e.daemonsDir, n+".plist")); err == nil {
-					return nil, fmt.Errorf("%s: unlike brew, brw services does not manage root daemons yet", rack)
-				}
-			}
-		}
 		targets = append(targets, t)
 	}
 	return targets, nil
@@ -438,13 +491,27 @@ func (e *env) startService(t serviceTarget, journal string) error {
 	if err != nil {
 		return err
 	}
+	if e.sudoUser != "" {
+		e.ohai("Setting username in %s to: %s", t.serviceName(), e.sudoUser)
+		edited, ok := services.ApplyUserName(body, e.sudoUser)
+		if !ok {
+			return fmt.Errorf("the service file for `%s` is not an XML plist brw can set a username in", t.name)
+		}
+		body = edited
+	}
 	dst := e.dests(t)[0]
-	if err := e.replaceAgentFile(t, filepath.Base(dst), body, journal); err != nil {
+	if err := e.replaceServiceFile(t, filepath.Base(dst), body, journal); err != nil {
 		return err
 	}
 	label := t.serviceName()
 	if l, ok := services.FileLabel(body); ok {
 		label = l
+	}
+	if err := e.takeRootOwnership(t, dst, body); err != nil {
+		return err
+	}
+	if err := e.checkLoad(t, "start"); err != nil {
+		return err
 	}
 	domain := services.Domain(e.uid)
 	if err := e.launchctl.Enable(domain, label); err != nil {
@@ -465,8 +532,15 @@ func (e *env) runService(t serviceTarget) error {
 	if e.reportRunningOrLoaded(t, s, "running") {
 		return nil
 	}
+	if e.root() {
+		_, _ = fmt.Fprintf(e.out, "Service `%s` cannot be run (but can be started) as root.\n", t.name)
+		return nil
+	}
 	body, original, err := e.serviceBody(t)
 	if err != nil {
+		return err
+	}
+	if err := e.checkLoad(t, "run"); err != nil {
 		return err
 	}
 	label := t.serviceName()
@@ -535,11 +609,11 @@ func (e *env) applyUserEnv(name string, body []byte) []byte {
 	return out
 }
 
-func (e *env) replaceAgentFile(t serviceTarget, name string, body []byte, journal string) error {
-	if err := os.MkdirAll(e.agentsDir, 0o755); err != nil { //fsx:allow launch agents dir
+func (e *env) replaceServiceFile(t serviceTarget, name string, body []byte, journal string) error {
+	if err := os.MkdirAll(e.destDir(), 0o755); err != nil { //fsx:allow launch agents or daemons dir
 		return err
 	}
-	return withRoot(e.agentsDir, journal, func(root *fsx.Root) error {
+	return withRoot(e.destDir(), journal, func(root *fsx.Root) error {
 		for _, p := range e.presentDests(t) {
 			if err := root.Remove(filepath.Base(p)); err != nil {
 				return err
@@ -549,12 +623,12 @@ func (e *env) replaceAgentFile(t serviceTarget, name string, body []byte, journa
 	})
 }
 
-func (e *env) removeAgentFiles(t serviceTarget, journal string) error {
+func (e *env) removeServiceFiles(t serviceTarget, journal string) error {
 	present := e.presentDests(t)
 	if len(present) == 0 {
 		return nil
 	}
-	return withRoot(e.agentsDir, journal, func(root *fsx.Root) error {
+	return withRoot(e.destDir(), journal, func(root *fsx.Root) error {
 		for _, p := range present {
 			if err := root.Remove(filepath.Base(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return err
@@ -583,8 +657,15 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 		return err
 	}
 	if !s.loaded {
-		if err := e.removeAgentFiles(t, journal); err != nil {
+		if err := e.removeServiceFiles(t, journal); err != nil {
 			return err
+		}
+		if e.registeredInEitherDir(t) {
+			sudo := "sudo "
+			if e.root() {
+				sudo = ""
+			}
+			return fmt.Errorf("service `%s` is started as `%s`. Try:\n  %sbrw services stop %s", t.name, *e.owner(t, s), sudo, t.name)
 		}
 		for _, n := range t.names() {
 			if e.launchctl.Bootout(services.Domain(e.uid), n) == nil {
@@ -610,7 +691,7 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 		still = still || up
 	}
 	if !still {
-		if err := e.removeAgentFiles(t, journal); err != nil {
+		if err := e.removeServiceFiles(t, journal); err != nil {
 			return err
 		}
 	}

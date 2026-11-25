@@ -16,10 +16,7 @@ func (f *Formula) ServiceFiles(root string) (files map[string]string, err error)
 		return nil, nil
 	}
 	defer catch(f.b.name, &err)
-	sv := &serviceB{f: f.b}
-	in := &interp{plat: f.b.plat, ctx: []dsl{&instanceDSL{f: f.b, root: root, linked: true}, sv}}
-	in.run(f.b.serviceBlk.body, &scope{vars: map[string]value{}, parent: f.b.serviceScope})
-	s := renderedService{sv: sv, root: root, os: f.b.plat.real().os}
+	s := f.renderService(root)
 	cmd := s.command()
 	if len(cmd) == 0 {
 		return nil, nil
@@ -30,6 +27,22 @@ func (f *Formula) ServiceFiles(root string) (files map[string]string, err error)
 		files[unit+".timer"] = s.timer(unit)
 	}
 	return files, nil
+}
+
+// ServiceRequiresRoot is brew's service.requires_root?, which makes a service start at boot.
+func (f *Formula) ServiceRequiresRoot(root string) (requires bool, err error) {
+	if f.b.serviceBlk == nil {
+		return false, nil
+	}
+	defer catch(f.b.name, &err)
+	return f.renderService(root).get("require_root") == rbool(true), nil
+}
+
+func (f *Formula) renderService(root string) renderedService {
+	sv := &serviceB{f: f.b}
+	in := &interp{plat: f.b.plat, ctx: []dsl{&instanceDSL{f: f.b, root: root, linked: true}, sv}}
+	in.run(f.b.serviceBlk.body, &scope{vars: map[string]value{}, parent: f.b.serviceScope})
+	return renderedService{sv: sv, root: root, os: f.b.plat.real().os}
 }
 
 func catch(name string, err *error) {

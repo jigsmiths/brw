@@ -70,6 +70,10 @@ type env struct {
 	daemonsDir string
 	configHome string
 	sleep      func(time.Duration)
+	sudoUser   string
+
+	takeOwnership func(paths []string, group string, sticky bool) error
+	userExists    func(name string) bool
 }
 
 func (e *env) kegs(prefix string) ([]cellar.Keg, error) {
@@ -97,7 +101,8 @@ func main() {
 
 func newEnv(host platform.Host) *env {
 	e := &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host,
-		launchctl: services.NewLaunchctl(), uid: os.Getuid(), daemonsDir: "/Library/LaunchDaemons"}
+		launchctl: services.NewLaunchctl(), uid: os.Getuid(), daemonsDir: "/Library/LaunchDaemons",
+		takeOwnership: chownToRoot, userExists: userExists}
 	e.user = os.Getenv("USER")
 	if u, err := user.Current(); e.user == "" && err == nil {
 		e.user = u.Username

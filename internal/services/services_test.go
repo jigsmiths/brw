@@ -265,3 +265,44 @@ func TestQueryTreatsEmptyOutputAsNotLoaded(t *testing.T) {
 		t.Error("blank print output is not a loaded service")
 	}
 }
+
+func TestRootUsesTheSystemDomainOnly(t *testing.T) {
+	if got := Domain(0); got != "system" {
+		t.Errorf("Domain(0) = %q", got)
+	}
+	if got := Domains(0); !reflect.DeepEqual(got, []string{"system"}) {
+		t.Errorf("Domains(0) = %v", got)
+	}
+}
+
+func TestApplyUserNameInsertsSortedOrReplaces(t *testing.T) {
+	in := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n" +
+		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>RunAtLoad</key>\n\t<true/>\n</dict>\n</plist>\n"
+	got, ok := ApplyUserName([]byte(in), "svc")
+	want := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n" +
+		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>RunAtLoad</key>\n\t<true/>\n" +
+		"\t<key>UserName</key>\n\t<string>svc</string>\n</dict>\n</plist>\n"
+	if !ok || string(got) != want {
+		t.Fatalf("insert = %v\n%s\nwant\n%s", ok, got, want)
+	}
+	again, ok := ApplyUserName(got, "other")
+	if !ok || string(again) != strings.Replace(want, ">svc<", ">other<", 1) {
+		t.Errorf("replace = %v\n%s", ok, again)
+	}
+	if _, ok := ApplyUserName([]byte("not a plist"), "svc"); ok {
+		t.Error("a file that is not a plist cannot be edited")
+	}
+}
+
+func TestProgram(t *testing.T) {
+	args := "<dict>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/opt/x/bin/x</string>\n\t\t<string>serve</string>\n\t</array>\n</dict>"
+	if got, key := Program([]byte(args)); got != "/opt/x/bin/x" || key != "first ProgramArguments value" {
+		t.Errorf("args: %q %q", got, key)
+	}
+	if got, key := Program([]byte("<dict>\n\t<key>Program</key>\n\t<string>/bin/y</string>\n</dict>")); got != "/bin/y" || key != "Program" {
+		t.Errorf("program: %q %q", got, key)
+	}
+	if got, _ := Program([]byte("<dict></dict>")); got != "" {
+		t.Errorf("none: %q", got)
+	}
+}

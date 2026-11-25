@@ -54,9 +54,19 @@ func Names(formula string) []string {
 	return []string{canonicalPrefix + formula, legacyPrefix + formula}
 }
 
-func Domain(uid int) string { return "gui/" + strconv.Itoa(uid) }
+const systemDomain = "system"
+
+func Domain(uid int) string {
+	if uid == 0 {
+		return systemDomain
+	}
+	return "gui/" + strconv.Itoa(uid)
+}
 
 func Domains(uid int) []string {
+	if uid == 0 {
+		return []string{systemDomain}
+	}
 	return []string{Domain(uid), "user/" + strconv.Itoa(uid)}
 }
 
@@ -118,14 +128,54 @@ func ApplyEnv(plist []byte, env map[string]string) ([]byte, bool) {
 	if loc != nil {
 		return []byte(s[:loc[0]] + b.String() + s[loc[1]:]), true
 	}
+	return []byte(insertTopLevel(s, envDictKey, b.String())), true
+}
+
+func insertTopLevel(s, key, block string) string {
 	at := len(s) - len(plistTail)
 	for _, m := range topLevelKey.FindAllStringSubmatchIndex(s, -1) {
-		if s[m[2]:m[3]] > envDictKey {
+		if s[m[2]:m[3]] > key {
 			at = m[0]
 			break
 		}
 	}
-	return []byte(s[:at] + b.String() + s[at:]), true
+	return s[:at] + block + s[at:]
+}
+
+const userNameKeyName = "UserName"
+
+var userNameEntry = regexp.MustCompile(`\t<key>` + userNameKeyName + `</key>\n\t<string>[^<]*</string>\n`)
+
+// ApplyUserName sets a plist's UserName as brew's --sudo-service-user does.
+// False means the plist had no shape it could edit.
+func ApplyUserName(plist []byte, user string) ([]byte, bool) {
+	s := string(plist)
+	if !strings.HasSuffix(s, plistTail) || !strings.Contains(s, "\n<dict>\n") {
+		return plist, false
+	}
+	block := "\t<key>" + userNameKeyName + "</key>\n\t<string>" + xmlEscaper.Replace(user) + "</string>\n"
+	if loc := userNameEntry.FindStringIndex(s); loc != nil {
+		return []byte(s[:loc[0]] + block + s[loc[1]:]), true
+	}
+	return []byte(insertTopLevel(s, userNameKeyName, block)), true
+}
+
+var (
+	programArgs = regexp.MustCompile(`<key>ProgramArguments</key>\s*<array>\s*<string>([^<]*)</string>`)
+	programKey  = regexp.MustCompile(`<key>Program</key>\s*<string>([^<]*)</string>`)
+	xmlUnescape = strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&")
+)
+
+// Program is the executable a plist launches and the key it came from, as
+// brew's take_root_ownership? names them in its warning.
+func Program(plist []byte) (path, key string) {
+	if p, ok := firstString(programArgs, plist); ok && p != "" {
+		return xmlUnescape.Replace(p), "first ProgramArguments value"
+	}
+	if p, ok := firstString(programKey, plist); ok && p != "" {
+		return xmlUnescape.Replace(p), "Program"
+	}
+	return "", ""
 }
 
 func FindPlist(kegPath string, names []string) (string, error) {
