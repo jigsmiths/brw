@@ -28,7 +28,6 @@ var integerText = regexp.MustCompile(`^-?\d+$`)
 
 var htmlEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&#39;")
 
-// plistDump writes the plist the Ruby plist gem emits for the same value.
 func plistDump(jsonValue []byte) ([]byte, error) {
 	d := json.NewDecoder(bytes.NewReader(jsonValue))
 	d.UseNumber()
@@ -107,7 +106,6 @@ func plistNode(b *strings.Builder, v any, level int) error {
 	return nil
 }
 
-// plistDictStrings reads the string values of a plist's top-level dict.
 func plistDictStrings(data []byte) (map[string]string, error) {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	for {

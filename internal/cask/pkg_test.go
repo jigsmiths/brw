@@ -198,6 +198,24 @@ func TestInstallPkgFailureRollsBack(t *testing.T) {
 	}
 }
 
+func TestInstallPkgVerbose(t *testing.T) {
+	ti := newTestInstall(t, pkgTarball)
+	f := &fakeRun{}
+	ti.in.Run = f.run
+	ti.in.Verbose = true
+	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Sub/P.pkg",{"allow_untrusted":true}]}]`)); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.sudoCalls()
+	if len(calls) != 1 {
+		t.Fatalf("calls = %+v", calls)
+	}
+	i := slices.Index(calls[0].Args, "-target")
+	if got := calls[0].Args[i+2 : i+4]; !slices.Equal(got, []string{"-verboseR", "-allowUntrusted"}) {
+		t.Errorf("flags after -target / = %q", got)
+	}
+}
+
 type bomPkg struct {
 	plist string
 	files []string

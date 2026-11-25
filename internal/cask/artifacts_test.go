@@ -78,7 +78,7 @@ func TestPlanTargets(t *testing.T) {
 func TestPlanRefusesWhatBrwCannotInstall(t *testing.T) {
 	for name, c := range map[string]api.Cask{
 		"suite":   {Token: "b", Artifacts: raws(t, `[{"app":["B.app"]},{"suite":["b"]}]`)},
-		"script":  {Token: "c", Artifacts: raws(t, `[{"uninstall":[{"script":{"executable":"x"}}]},{"app":["C.app"]}]`)},
+		"unknown": {Token: "c", Artifacts: raws(t, `[{"uninstall":[{"bogus":"x"}]},{"app":["C.app"]}]`)},
 		"rename":  {Token: "d", Artifacts: raws(t, `[{"app":["D.app"]}]`), Rename: raws(t, `[{"from":"a","to":"b"}]`)},
 		"nothing": {Token: "h", Artifacts: raws(t, `[{"zap":[{"trash":"~/x"}]}]`)},
 	} {

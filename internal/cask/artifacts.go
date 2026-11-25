@@ -65,7 +65,10 @@ type installPlan struct {
 	installers            []installerStep
 }
 
-var uninstallDirectives = []string{"quit", "login_item", "launchctl", "pkgutil", "delete", "trash", "rmdir"}
+var (
+	scriptDirectives    = []string{"early_script", "script"}
+	uninstallDirectives = []string{"early_script", "launchctl", "quit", "signal", "login_item", "kext", "script", "pkgutil", "delete", "trash", "rmdir", "on_upgrade"}
+)
 
 func plan(c api.Cask, w Where) (installPlan, error) {
 	var p installPlan

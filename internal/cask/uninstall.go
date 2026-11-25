@@ -52,6 +52,7 @@ func IsPinned(token string) error {
 type uninstallStep struct {
 	kind          string
 	directives    map[string][]string
+	scripts       map[string][]json.RawMessage
 	move          move
 	generator     generator
 	steps         []json.RawMessage
@@ -99,7 +100,7 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 	for _, s := range steps {
 		switch s.kind {
 		case "uninstall":
-			if err := in.runDirectives(ctx, s.directives, apps); err != nil {
+			if err := in.runDirectives(ctx, token, s, apps, force); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		case "app":
@@ -180,10 +181,16 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if bad := unknownDirectives(args); bad != "" {
 			return s, unsupported(token, "uninstall "+bad)
 		}
-		if s.directives, err = readDirectives(args); err != nil {
+		if s.directives, s.scripts, err = readDirectives(args); err != nil {
 			return s, fmt.Errorf("%s: uninstall %s: %w", token, args, err)
 		}
-		if len(s.directives["pkgutil"]) > 0 {
+		if s.stagedVersion, err = in.Root.Abs(filepath.Join("Caskroom", token, version)); err != nil {
+			return s, err
+		}
+		if slices.ContainsFunc(slices.Concat(s.scripts["early_script"], s.scripts["script"]), scriptWantsSudo) {
+			return s, unsupported(token, "uninstall script with sudo")
+		}
+		if len(s.directives["pkgutil"]) > 0 || len(s.directives["kext"]) > 0 {
 			if err := refuseRoot(); err != nil {
 				return s, err
 			}
@@ -223,38 +230,63 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 	return s, nil
 }
 
-func readDirectives(args json.RawMessage) (map[string][]string, error) {
+func readDirectives(args json.RawMessage) (map[string][]string, map[string][]json.RawMessage, error) {
 	var list []map[string]json.RawMessage
 	if err := json.Unmarshal(args, &list); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := map[string][]string{}
+	scripts := map[string][]json.RawMessage{}
 	for _, d := range list {
 		for k, v := range d {
-			var one string
-			if json.Unmarshal(v, &one) == nil {
-				out[k] = append(out[k], one)
+			if slices.Contains(scriptDirectives, k) {
+				scripts[k] = append(scripts[k], v)
 				continue
 			}
-			var many []string
-			if err := json.Unmarshal(v, &many); err != nil {
-				return nil, fmt.Errorf("%s: %w", k, err)
+			values, err := flattenStrings(v)
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s: %w", k, err)
 			}
-			out[k] = append(out[k], many...)
+			out[k] = append(out[k], values...)
 		}
 	}
-	return out, nil
+	return out, scripts, nil
 }
 
-func (in *Installer) runDirectives(ctx context.Context, d map[string][]string, apps []string) error {
+func (in *Installer) runDirectives(ctx context.Context, token string, step uninstallStep, apps []string, force bool) error {
+	d := step.directives
+	runScripts := func(directive string) error {
+		for _, raw := range step.scripts[directive] {
+			if err := in.uninstallScript(ctx, token, step.stagedVersion, directive, raw, force); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := runScripts("early_script"); err != nil {
+		return err
+	}
 	if s := d["launchctl"]; len(s) > 0 {
 		in.launchctl(ctx, s)
 	}
 	if s := d["quit"]; len(s) > 0 {
 		in.quit(ctx, s)
 	}
+	if s := d["signal"]; len(s) > 0 && (!in.upgrading || slices.Contains(d["on_upgrade"], "signal")) {
+		if err := in.uninstallSignal(ctx, token, s); err != nil {
+			return err
+		}
+	}
 	if s := d["login_item"]; len(s) > 0 {
 		in.loginItems(ctx, apps, s)
+	}
+	if s := d["kext"]; len(s) > 0 {
+		if err := in.uninstallKext(ctx, s); err != nil {
+			return err
+		}
+	}
+	if err := runScripts("script"); err != nil {
+		return err
 	}
 	if s := d["pkgutil"]; len(s) > 0 {
 		if err := in.uninstallPkgutil(ctx, s); err != nil {

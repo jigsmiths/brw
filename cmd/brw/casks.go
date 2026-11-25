@@ -23,7 +23,7 @@ import (
 	"github.com/jigsmiths/brw/internal/uninstall"
 )
 
-func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool, casks []api.Cask) error {
+func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt, verbose bool, casks []api.Cask) error {
 	tag, err := platform.Tag(e.host)
 	if err != nil {
 		return err
@@ -108,6 +108,7 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 			Root: root, Apps: apps,
 			Where:       cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
 			Host:        e.host,
+			Verbose:     verbose,
 			Fetcher:     &cask.Fetcher{Dir: filepath.Join(client.CacheDir, "cask-downloads")},
 			Log:         e.out,
 			Warn:        e.err,

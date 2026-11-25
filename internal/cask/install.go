@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
@@ -41,6 +42,8 @@ type Installer struct {
 	Config  Config
 	Exec    Exec
 	Run     sudo.Runner
+	Kill    func(pid int, sig syscall.Signal) error
+	Verbose bool
 	Adopt   bool
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)

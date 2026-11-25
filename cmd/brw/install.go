@@ -34,12 +34,15 @@ func installCommand(e *env, args []string) error {
 	appDir := fs.String("appdir", "", "move apps into this folder instead of /Applications")
 	adopt := fs.Bool("adopt", false, "take over apps already in the app folder")
 	head := fs.Bool("HEAD", false, "install a formula's HEAD version, built from its repository")
+	var verbose bool
+	fs.BoolVar(&verbose, "verbose", false, "print the installer's verbose output")
+	fs.BoolVar(&verbose, "v", false, "print the installer's verbose output")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--appdir DIR] [--adopt] [--dry-run] NAME [NAME ...]")
+		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--appdir DIR] [--adopt] [--verbose] [--dry-run] NAME [NAME ...]")
 	}
 	formulaOnly, caskOnly, err := kinds()
 	if err != nil {
@@ -58,7 +61,7 @@ func installCommand(e *env, args []string) error {
 		failures = append(failures, installFormulae(e, prefix, *journal, dryRun, *head, r))
 	}
 	if len(r.casks) > 0 {
-		failures = append(failures, installCasks(e, prefix, *journal, *appDir, dryRun, *adopt, r.casks))
+		failures = append(failures, installCasks(e, prefix, *journal, *appDir, dryRun, *adopt, verbose, r.casks))
 	}
 	return errors.Join(failures...)
 }

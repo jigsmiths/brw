@@ -72,7 +72,6 @@ func refuseRoot() error {
 	return nil
 }
 
-// brewCommand wraps exe the way brew's SystemCommand does, with sudo_as_root when sudo is set.
 func brewCommand(sudo bool, env []string, exe string, args ...string) Command {
 	if !sudo {
 		return Command{Name: envPath, Args: append([]string{exe}, args...)}
@@ -157,6 +156,9 @@ func (in *Installer) installPkg(ctx context.Context, token, staged string, p pkg
 		return missingPkg(staged, path)
 	}
 	args := []string{"-pkg", path, "-target", "/"}
+	if in.Verbose {
+		args = append(args, "-verboseR")
+	}
 	if p.allowUntrusted {
 		args = append(args, "-allowUntrusted")
 	}
@@ -305,7 +307,6 @@ func (in *Installer) uninstallPkgutil(ctx context.Context, regexes []string) err
 	return nil
 }
 
-// splitLines is Ruby's split("\n"), which drops trailing empty fields.
 func splitLines(s string) []string {
 	s = strings.TrimRight(s, "\n")
 	if s == "" {
