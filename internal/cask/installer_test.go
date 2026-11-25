@@ -166,7 +166,7 @@ func TestInstallerWarnsAboutArgumentsAsBrewDoes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"Warning: Unknown arguments to installer -- [:zeta, :alpha] (ignored). Running `brew update; brew cleanup` will likely fix it.\n",
+		"Warning: Unknown arguments to installer -- [:zeta, :alpha] (ignored). Running `brw update; brw cleanup` will likely fix it.\n",
 		"Error: Some arguments to installer will be ignored -- :[:zeta, :alpha] (overridden).\n",
 	} {
 		if !strings.Contains(ti.warn.String(), want) {

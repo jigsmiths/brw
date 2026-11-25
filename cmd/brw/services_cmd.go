@@ -64,7 +64,7 @@ type servicesOpts struct {
 func parseServices(e *env, args []string) (serviceSub, *servicesOpts, error) {
 	flags := newFlagSet("services")
 	o := &servicesOpts{}
-	flags.StringVar(&o.prefix, "prefix", defaultPrefix(e.host), "Homebrew prefix")
+	flags.StringVar(&o.prefix, "prefix", defaultPrefix(e.host), "brw prefix")
 	flags.StringVar(&o.journal, "journal", "", "append changes to this file")
 	flags.StringVar(&o.sudoUser, "sudo-service-user", "", "when run as root, run the service as this user")
 	flags.StringVar(&o.file, optFile, "", "use the service file from this location")

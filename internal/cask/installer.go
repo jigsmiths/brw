@@ -147,7 +147,7 @@ func (in *Installer) runInstallers(ctx context.Context, token, staged string, st
 			continue
 		}
 		if len(s.ignored) > 0 {
-			in.warnf("Unknown arguments to installer -- %s (ignored). Running `brew update; brew cleanup` will likely fix it.",
+			in.warnf("Unknown arguments to installer -- %s (ignored). Running `brw update; brw cleanup` will likely fix it.",
 				rubySymbols(s.ignored))
 		}
 		if s.overridden && in.Warn != nil {
