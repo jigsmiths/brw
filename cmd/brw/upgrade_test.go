@@ -2,14 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/install/installtest"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 func makeOutdated(t *testing.T, e *env, prefix, name string) {
@@ -459,10 +462,51 @@ func TestUpgradeOnlyTheNamedCask(t *testing.T) {
 	}
 }
 
+func TestUpgradeVerboseReachesThePkgInstaller(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "1")
+	t.Setenv("HOMEBREW_NO_SUDO", "")
+	t.Setenv("HOMEBREW_SUDO_CHECKED", "1")
+	for _, flag := range []string{"-v", "--verbose", ""} {
+		s := newStore(t)
+		s.pkgCask("pk")
+		e, prefix := s.env()
+		var runs []sudo.Command
+		e.sudoRun = func(_ context.Context, c sudo.Command) (sudo.Result, error) {
+			runs = append(runs, c)
+			return sudo.Result{}, nil
+		}
+		if out, err := runCmd(t, e, "install", "-prefix", prefix, "pk"); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		for _, d := range []string{"Caskroom/pk", "Caskroom/pk/.metadata"} {
+			if err := os.Rename(filepath.Join(prefix, d, "1.0"), filepath.Join(prefix, d, "0.9")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		runs = nil
+		args := []string{"-prefix", prefix}
+		if flag != "" {
+			args = append(args, flag)
+		}
+		if out, err := runCmd(t, e, "upgrade", args...); err != nil {
+			t.Fatalf("%s: %v\n%s", flag, err, out)
+		}
+		verbose := false
+		for _, c := range runs {
+			if c.Exe == "/usr/sbin/installer" {
+				verbose = slices.Contains(c.Args, "-verboseR")
+			}
+		}
+		if want := flag != ""; verbose != want {
+			t.Errorf("upgrade %s: -verboseR = %v, want %v", flag, verbose, want)
+		}
+	}
+}
+
 func TestUpgradeAcceptsVerbose(t *testing.T) {
 	_, e, prefix, _ := installedCasks(t, "app")
 	makeCaskOutdated(t, prefix, "app")
-	for _, flag := range []string{"-v", "--verbose"} {
+	for _, flag := range []string{"-v", "--verbose", "-d", "--debug"} {
 		if out, err := runCmd(t, e, "upgrade", "-prefix", prefix, flag, "--dry-run"); err != nil || !strings.Contains(out, "app") {
 			t.Errorf("%s: out = %q, err = %v", flag, out, err)
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/services"
+	"github.com/jigsmiths/brw/internal/sudo"
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
@@ -66,6 +67,7 @@ type env struct {
 	launchctl  services.Launchctl
 	uid        int
 	root       bool
+	sudoRun    sudo.Runner
 	user       string
 	agentsDir  string
 	daemonsDir string

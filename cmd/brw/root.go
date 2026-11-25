@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"os"
 	"regexp"
 )
@@ -22,6 +23,20 @@ func refuseRoot(e *env, cmd string) error {
 	}
 	return errors.New(rootRefusal) //nolint:staticcheck // brew's own message
 
+}
+
+// tracing is brew's global --verbose and --debug.
+type tracing struct{ verbose, debug bool }
+
+func traceFlags(fs *flag.FlagSet) *tracing {
+	var t tracing
+	for _, name := range []string{"verbose", "v"} {
+		fs.BoolVar(&t.verbose, name, false, "print the installer's verbose output")
+	}
+	for _, name := range []string{"debug", "d"} {
+		fs.BoolVar(&t.debug, name, false, "trace the commands the installer runs, with --verbose")
+	}
+	return &t
 }
 
 func detectContainer() bool {

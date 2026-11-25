@@ -54,6 +54,27 @@ func (s *store) appCask(token string) {
 	})
 }
 
+func (s *store) pkgCask(token string) {
+	s.t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	_ = tw.WriteHeader(&tar.Header{Name: "P.pkg", Mode: 0o644, Size: 3, Typeflag: tar.TypeReg})
+	_, _ = tw.Write([]byte("pkg"))
+	_ = tw.Close()
+	_ = gz.Close()
+	body := buf.Bytes()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	s.t.Cleanup(ts.Close)
+	sum := sha256.Sum256(body)
+	s.casks = append(s.casks, map[string]any{
+		"token": token, "full_token": token, "tap": "homebrew/cask", "name": []string{"Pkg"}, "version": "1.0",
+		"url": ts.URL + "/P-1.0.tar.gz", "sha256": hex.EncodeToString(sum[:]),
+		"artifacts":  []any{map[string]any{"pkg": []string{"P.pkg"}}},
+		"depends_on": map[string]any{},
+	})
+}
+
 func (s *store) formula(b installtest.Bottle, deps []string, extra map[string]any) {
 	s.t.Helper()
 	file := s.reg.Add(b, ":any")

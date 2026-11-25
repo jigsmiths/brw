@@ -173,7 +173,7 @@ func (in *Installer) runScript(ctx context.Context, s installerStep, exe string,
 		c.Privilege = sudo.Sudo
 	}
 	c.Stderr = nil
-	if s.stderr == outputOn || s.stderr == outputDebug && sudo.EnvTrue("HOMEBREW_DEBUG") {
+	if s.stderr == outputOn || s.stderr == outputDebug && in.debug() {
 		c.Stderr = in.Warn
 	}
 	_, err := in.runner()(ctx, c)
@@ -186,11 +186,13 @@ func (in *Installer) command(privilege sudo.Privilege, exe string, args ...strin
 		Exe: exe, Args: args, Privilege: privilege, MustSucceed: true,
 		Stderr: in.Warn, Secrets: sudo.SensitiveValues(), Color: sudo.ColorEnabled(in.Log),
 	}
-	if sudo.EnvTrue("HOMEBREW_DEBUG") && (in.Verbose || sudo.EnvTrue("HOMEBREW_VERBOSE")) {
+	if in.debug() && (in.Verbose || sudo.EnvTrue("HOMEBREW_VERBOSE")) {
 		c.Trace = in.Warn
 	}
 	return c
 }
+
+func (in *Installer) debug() bool { return in.Debug || sudo.EnvTrue("HOMEBREW_DEBUG") }
 
 func (in *Installer) capture(ctx context.Context, c sudo.Command) (string, error) {
 	res, err := in.runner()(ctx, c)

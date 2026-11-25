@@ -36,7 +36,7 @@ func TestReinstallPoursTheFormulaAgain(t *testing.T) {
 }
 
 func TestReinstallAcceptsVerbose(t *testing.T) {
-	for _, flag := range []string{"-v", "--verbose"} {
+	for _, flag := range []string{"-v", "--verbose", "-d", "--debug"} {
 		e, prefix := linkStore(t)
 		out, err := runCmd(t, e, "reinstall", "-prefix", prefix, flag, "app")
 		if err != nil || !strings.Contains(out, "==> Reinstalling app\n") {

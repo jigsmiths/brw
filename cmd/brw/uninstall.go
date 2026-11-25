@@ -26,12 +26,13 @@ func uninstallCommand(e *env, args []string) error {
 	fs.BoolVar(&o.Force, "f", false, "remove every installed version")
 	fs.BoolVar(&o.IgnoreDependencies, "ignore-dependencies", false, "remove even if installed formulae need it")
 	kinds := kindFlags(fs)
+	trace := traceFlags(fs)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw uninstall [--formula|--cask] [--force] [--ignore-dependencies] [--dry-run] NAME [NAME ...]")
+		return errors.New("usage: brw uninstall [--formula|--cask] [--force] [--ignore-dependencies] [--verbose] [--debug] [--dry-run] NAME [NAME ...]")
 	}
 	formulaOnly, caskOnly, err := kinds()
 	if err != nil {
@@ -81,7 +82,7 @@ func uninstallCommand(e *env, args []string) error {
 		}
 		var errs []error
 		if len(casks) > 0 {
-			errs = append(errs, uninstallCasks(e, root, prefix, names, casks, installedCasks, dryRun, o.Force, o.IgnoreDependencies))
+			errs = append(errs, uninstallCasks(e, root, prefix, names, casks, installedCasks, dryRun, o.Force, o.IgnoreDependencies, *trace))
 		}
 		if autoremove {
 			errs = append(errs, remover.Autoremove())

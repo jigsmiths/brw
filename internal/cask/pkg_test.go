@@ -224,6 +224,37 @@ func TestInstallPkgRunsThroughSudoAsBrewBuildsIt(t *testing.T) {
 	}
 }
 
+func TestInstallPkgTracesCommandsOnlyWithVerboseAndDebug(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		verbose, debug bool
+		env            map[string]string
+		want           bool
+	}{
+		{"neither", false, false, nil, false},
+		{"verbose alone", true, false, nil, false},
+		{"debug alone", false, true, nil, false},
+		{"both flags", true, true, nil, true},
+		{"flag and environment", true, false, map[string]string{"HOMEBREW_DEBUG": "1"}, true},
+		{"environment only", false, false, map[string]string{"HOMEBREW_DEBUG": "1", "HOMEBREW_VERBOSE": "1"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ti := newPkgInstall(t)
+			t.Setenv("HOMEBREW_DEBUG", tc.env["HOMEBREW_DEBUG"])
+			t.Setenv("HOMEBREW_VERBOSE", tc.env["HOMEBREW_VERBOSE"])
+			f := &fakeRun{}
+			ti.in.Run = f.run
+			ti.in.Verbose, ti.in.Debug = tc.verbose, tc.debug
+			if err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Sub/P.pkg"]}]`)); err != nil {
+				t.Fatal(err)
+			}
+			if got := f.sudoCalls()[0].Trace != nil; got != tc.want {
+				t.Errorf("traced = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestInstallPkgFailureRollsBack(t *testing.T) {
 	ti := newPkgInstall(t)
 	f := &fakeRun{handle: func(sudo.Command) (string, error) { return "", errors.New("installer failed") }}

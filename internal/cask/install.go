@@ -44,6 +44,7 @@ type Installer struct {
 	Run     sudo.Runner
 	Kill    func(pid int, sig syscall.Signal) error
 	Verbose bool
+	Debug   bool
 	Adopt   bool
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)

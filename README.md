@@ -9,7 +9,7 @@ brw is a Homebrew-compatible package client written in Go. It shares a prefix wi
 - Reads tap files with its own Ruby evaluator, so it needs no Ruby.
 - Uses brew's tap trust store.
 
-brw is early. Casks work when their artifacts are apps and binaries.
+brw is early. Casks work when their artifacts are apps, binaries, pkgs and installer scripts, and most uninstall directives. Like brew, brw refuses to run as root, except for `brw services`.
 
 ## Install
 
