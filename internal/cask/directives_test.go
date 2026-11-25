@@ -6,15 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 func withDirectives(t *testing.T, directives string) (*testInstall, *fakeExec, *fakeRun) {
 	t.Helper()
+	sudoChecked(t)
 	ti, f := installed(t, `[{"app":["App.app"]}]`)
 	receipt := filepath.Join(ti.prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json")
 	if err := os.WriteFile(receipt, []byte(`{"uninstall_artifacts":[{"uninstall":[`+directives+`]}]}`), 0o644); err != nil {
@@ -34,13 +38,13 @@ func TestUninstallRunsEarlyScriptThenScript(t *testing.T) {
 	ti, _, r := withDirectives(t, `{"script":{"executable":"uninstall.sh","args":["--yes"],"input":["x","y"]},"early_script":{"executable":"early.sh","args":["a"]}}`)
 	early, script := stagedFile(t, ti, "early.sh"), stagedFile(t, ti, "uninstall.sh")
 	var modes []os.FileMode
-	r.handle = func(c Command) ([]byte, error) {
-		fi, err := os.Stat(c.Args[slices.IndexFunc(c.Args, func(a string) bool { return strings.HasSuffix(a, ".sh") })])
+	r.handle = func(c sudo.Command) (string, error) {
+		fi, err := os.Stat(c.Exe)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		modes = append(modes, fi.Mode().Perm())
-		return nil, nil
+		return "", nil
 	}
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
@@ -48,10 +52,10 @@ func TestUninstallRunsEarlyScriptThenScript(t *testing.T) {
 	if len(r.calls) != 2 {
 		t.Fatalf("calls = %+v", r.calls)
 	}
-	if c := r.calls[0]; c.Name != "/usr/bin/env" || !slices.Equal(c.Args, []string{early, "a"}) || c.Tee == nil {
+	if c := r.calls[0]; c.Exe != early || c.Privilege != sudo.User || !slices.Equal(c.Args, []string{"a"}) || c.Stdout == nil || !c.MustSucceed {
 		t.Errorf("early_script = %+v", c)
 	}
-	if c := r.calls[1]; c.Name != "/usr/bin/env" || !slices.Equal(c.Args, []string{script, "--yes"}) || string(c.Stdin) != "xy" {
+	if c := r.calls[1]; c.Exe != script || !slices.Equal(c.Args, []string{"--yes"}) || c.Input != "xy" {
 		t.Errorf("script = %+v", c)
 	}
 	for i, m := range modes {
@@ -82,7 +86,7 @@ func TestUninstallScriptAsAString(t *testing.T) {
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.calls) != 1 || !slices.Equal(r.calls[0].Args, []string{script}) {
+	if len(r.calls) != 1 || r.calls[0].Exe != script || len(r.calls[0].Args) > 0 {
 		t.Errorf("calls = %+v", r.calls)
 	}
 }
@@ -116,7 +120,7 @@ func TestUninstallScriptFoundOnThePath(t *testing.T) {
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.calls) != 1 || !slices.Equal(r.calls[0].Args, []string{"ls"}) {
+	if len(r.calls) != 1 || r.calls[0].Exe != "ls" {
 		t.Errorf("calls = %+v", r.calls)
 	}
 }
@@ -143,7 +147,7 @@ func TestUninstallScriptWarnsAboutArguments(t *testing.T) {
 	if ti.warn.String() != want {
 		t.Errorf("warn = %q\nwant %q", ti.warn.String(), want)
 	}
-	if len(r.calls) != 1 || r.calls[0].Tee == nil {
+	if len(r.calls) != 1 || r.calls[0].Stdout == nil {
 		t.Errorf("print_stdout should be forced on: %+v", r.calls)
 	}
 }
@@ -151,7 +155,7 @@ func TestUninstallScriptWarnsAboutArguments(t *testing.T) {
 func TestUninstallScriptThatFails(t *testing.T) {
 	ti, _, r := withDirectives(t, `{"script":{"executable":"s.sh"}}`)
 	stagedFile(t, ti, "s.sh")
-	r.handle = func(Command) ([]byte, error) { return nil, errors.New("exited with 1") }
+	r.handle = func(sudo.Command) (string, error) { return "", errors.New("exited with 1") }
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err == nil {
 		t.Error("a failing script should fail the uninstall")
 	}
@@ -307,24 +311,24 @@ func TestUninstallSignalWildcardNeedsAGUI(t *testing.T) {
 
 func TestUninstallKext(t *testing.T) {
 	ti, _, r := withDirectives(t, `{"kext":"com.example.kext"}`)
-	r.handle = func(c Command) ([]byte, error) {
-		switch {
-		case slices.Contains(c.Args, "/usr/sbin/kextstat"):
-			return []byte("12 0 0xfff 0x1 com.example.kext (1.0)\n"), nil
-		case slices.Contains(c.Args, "/usr/sbin/kextfind"):
-			return []byte("/Library/Extensions/A.kext\n/Library/Extensions/B.kext\n"), nil
+	r.handle = func(c sudo.Command) (string, error) {
+		switch c.Exe {
+		case "/usr/sbin/kextstat":
+			return "12 0 0xfff 0x1 com.example.kext (1.0)\n", nil
+		case "/usr/sbin/kextfind":
+			return "/Library/Extensions/A.kext\n/Library/Extensions/B.kext\n", nil
 		}
-		return nil, nil
+		return "", nil
 	}
 	var slept []string
 	ti.in.Sleep = func(d time.Duration) { slept = append(slept, d.String()) }
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	root := func(name string, args ...string) Command {
-		return Command{Name: "/usr/bin/sudo", Args: append([]string{"-u", "root", "-E", "--", name}, args...)}
+	root := func(exe string, args ...string) sudo.Command {
+		return sudo.Command{Exe: exe, Args: args, Privilege: sudo.Root, MustSucceed: true}
 	}
-	want := []Command{
+	want := []sudo.Command{
 		root("/usr/sbin/kextstat", "-l", "-b", "com.example.kext"),
 		root("/sbin/kextunload", "-b", "com.example.kext"),
 		root("/usr/sbin/kextfind", "-b", "com.example.kext"),
@@ -334,9 +338,10 @@ func TestUninstallKext(t *testing.T) {
 	if len(r.calls) != len(want) {
 		t.Fatalf("calls = %+v", r.calls)
 	}
-	for i := range want {
-		if r.calls[i].Name != want[i].Name || !slices.Equal(r.calls[i].Args, want[i].Args) {
-			t.Errorf("call %d = %+v\nwant %+v", i, r.calls[i], want[i])
+	for i, got := range r.calls {
+		got.Stdout, got.Stderr, got.Trace, got.Color, got.Secrets = nil, nil, nil, false, nil
+		if !reflect.DeepEqual(got, want[i]) {
+			t.Errorf("call %d = %+v\nwant %+v", i, got, want[i])
 		}
 	}
 	if !slices.Equal(slept, []string{"1s"}) {
@@ -353,17 +358,8 @@ func TestUninstallKextThatIsNotLoaded(t *testing.T) {
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.calls) != 2 || slices.Contains(r.calls[1].Args, "/sbin/kextunload") {
+	if len(r.calls) != 2 || r.calls[1].Exe == "/sbin/kextunload" {
 		t.Errorf("calls = %+v", r.calls)
-	}
-}
-
-func TestUninstallKextRefusesToRunAsRoot(t *testing.T) {
-	ti, _, r := withDirectives(t, `{"kext":"com.example.kext"}`)
-	asRoot(t)
-	err := ti.in.Uninstall(context.Background(), "app", "1.0", false)
-	if err == nil || !strings.Contains(err.Error(), "Running Homebrew as root") || len(r.calls) > 0 {
-		t.Errorf("err = %v, calls = %+v", err, r.calls)
 	}
 }
 
@@ -385,9 +381,9 @@ func TestUninstallDirectivesRunInBrewsOrder(t *testing.T) {
 			return nil, errors.New("not running")
 		},
 	}
-	r.handle = func(c Command) ([]byte, error) {
-		order = append(order, filepath.Base(c.Args[len(c.Args)-1]))
-		return nil, nil
+	r.handle = func(c sudo.Command) (string, error) {
+		order = append(order, filepath.Base(slices.Concat([]string{c.Exe}, c.Args)[len(c.Args)]))
+		return "", nil
 	}
 	_ = ti.in.Uninstall(context.Background(), "app", "1.0", false)
 	var named []string

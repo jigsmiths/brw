@@ -190,11 +190,6 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if slices.ContainsFunc(slices.Concat(s.scripts["early_script"], s.scripts["script"]), scriptWantsSudo) {
 			return s, unsupported(token, "uninstall script with sudo")
 		}
-		if len(s.directives["pkgutil"]) > 0 || len(s.directives["kext"]) > 0 {
-			if err := refuseRoot(); err != nil {
-				return s, err
-			}
-		}
 	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 		if s.move, err = readMove(args, kind, in.Where); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)

@@ -1,91 +1,26 @@
 package cask
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"maps"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 const (
 	installerPath = "/usr/sbin/installer"
 	pkgutilPath   = "/usr/sbin/pkgutil"
-	sudoPath      = "/usr/bin/sudo"
-	envPath       = "/usr/bin/env"
 	xargsPath     = "/usr/bin/xargs"
 )
-
-// Command is one process to run; Name and Args already carry any sudo prefix.
-type Command struct {
-	Name  string
-	Args  []string
-	Stdin []byte
-	// Tee also receives the process's stdout as it is written.
-	Tee io.Writer
-}
-
-type Runner func(ctx context.Context, c Command) ([]byte, error)
-
-func execRun(ctx context.Context, c Command) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
-	if c.Stdin != nil {
-		cmd.Stdin = bytes.NewReader(c.Stdin)
-	}
-	var out, stderr bytes.Buffer
-	cmd.Stdout = &out
-	if c.Tee != nil {
-		cmd.Stdout = io.MultiWriter(&out, c.Tee)
-	}
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return out.Bytes(), fmt.Errorf("%s %s: %w: %s", c.Name, strings.Join(c.Args, " "), err, bytes.TrimSpace(stderr.Bytes()))
-	}
-	return out.Bytes(), nil
-}
-
-func (in *Installer) run(ctx context.Context, c Command) ([]byte, error) {
-	if in.Run != nil {
-		return in.Run(ctx, c)
-	}
-	return execRun(ctx, c)
-}
-
-var geteuid = os.Geteuid
-
-const rootRefusal = `Running Homebrew as root is extremely dangerous and no longer supported.
-As Homebrew does not drop privileges on installation you would be giving all
-build scripts full access to your system.`
-
-func refuseRoot() error {
-	if geteuid() == 0 {
-		return brewError("%s", rootRefusal)
-	}
-	return nil
-}
-
-func brewCommand(sudo bool, env []string, exe string, args ...string) Command {
-	if !sudo {
-		return Command{Name: envPath, Args: append([]string{exe}, args...)}
-	}
-	pre := []string{"-u", "root"}
-	if _, ok := os.LookupEnv("SUDO_ASKPASS"); ok {
-		pre = append(pre, "-A")
-	}
-	pre = append(pre, "-E")
-	pre = append(pre, env...)
-	pre = append(pre, "--", exe)
-	return Command{Name: sudoPath, Args: append(pre, args...)}
-}
 
 type pkgInstall struct {
 	path           string
@@ -168,9 +103,9 @@ func (in *Installer) installPkg(ctx context.Context, token, staged string, p pkg
 		if u, err := user.Current(); err == nil {
 			env = []string{"LOGNAME=" + u.Username, "USER=" + u.Username, "USERNAME=" + u.Username}
 		}
-		c := brewCommand(true, env, installerPath, args...)
-		c.Tee = in.Log
-		_, err := in.run(ctx, c)
+		c := in.command(sudo.Root, installerPath, args...)
+		c.Env, c.Stdout = env, in.Log
+		_, err := in.runner()(ctx, c)
 		return err
 	}
 	if len(p.choices) == 0 {
@@ -251,8 +186,13 @@ var rmdirScript string
 func (in *Installer) uninstallPkgutil(ctx context.Context, regexes []string) error {
 	in.logf("==> Uninstalling packages with `sudo` (which may request your password)...")
 	for _, re := range regexes {
-		out, _ := in.run(ctx, brewCommand(false, nil, pkgutilPath, "--pkgs="+re))
-		for _, id := range splitLines(string(out)) {
+		list := in.command(sudo.User, pkgutilPath, "--pkgs="+re)
+		list.MustSucceed = false
+		out, err := in.capture(ctx, list)
+		if err != nil {
+			return err
+		}
+		for _, id := range splitLines(out) {
 			in.logf("%s", id)
 			if err := in.uninstallPkg(ctx, id); err != nil {
 				return err
@@ -271,11 +211,11 @@ func splitLines(s string) []string {
 }
 
 func (in *Installer) pkgRoot(ctx context.Context, id string) (string, error) {
-	out, err := in.run(ctx, brewCommand(false, nil, pkgutilPath, "--pkg-info-plist", id))
+	out, err := in.capture(ctx, in.command(sudo.User, pkgutilPath, "--pkg-info-plist", id))
 	if err != nil {
 		return "", err
 	}
-	info, err := plistDictStrings(out)
+	info, err := plistDictStrings([]byte(out))
 	if err != nil {
 		return "", fmt.Errorf("%s: pkg info: %w", id, err)
 	}
@@ -288,7 +228,7 @@ func (in *Installer) pkgRoot(ctx context.Context, id string) (string, error) {
 }
 
 func (in *Installer) uninstallPkg(ctx context.Context, id string) error {
-	out, err := in.run(ctx, brewCommand(false, nil, pkgutilPath, "--files", id))
+	out, err := in.capture(ctx, in.command(sudo.User, pkgutilPath, "--files", id))
 	if err != nil {
 		return err
 	}
@@ -305,7 +245,7 @@ func (in *Installer) uninstallPkg(ctx context.Context, id string) error {
 		return root, nil
 	}
 	var files, specials, dirs []string
-	for _, rel := range splitLines(string(out)) {
+	for _, rel := range splitLines(out) {
 		r, err := getRoot()
 		if err != nil {
 			return err
@@ -323,13 +263,15 @@ func (in *Installer) uninstallPkg(ctx context.Context, id string) error {
 			dirs = append(dirs, path)
 		}
 	}
-	rm := func(paths []string) error {
-		_, err := in.run(ctx, withInput(brewCommand(true, nil, xargsPath, "-0", "--", "/bin/rm", "--"), paths))
+	xargs := func(paths []string, args ...string) error {
+		c := in.command(sudo.Root, xargsPath, args...)
+		c.Input = strings.Join(paths, "\x00")
+		_, err := in.runner()(ctx, c)
 		return err
 	}
+	rm := func(paths []string) error { return xargs(paths, "-0", "--", "/bin/rm", "--") }
 	rmdir := func(paths []string) error {
-		_, err := in.run(ctx, withInput(brewCommand(true, nil, xargsPath, "-0", "--", "/bin/bash", "-c", rmdirScript, "rmdir.sh"), paths))
-		return err
+		return xargs(paths, "-0", "--", "/bin/bash", "-c", rmdirScript, "rmdir.sh")
 	}
 	if len(files) > 0 {
 		if err := rm(files); err != nil {
@@ -358,13 +300,8 @@ func (in *Installer) uninstallPkg(ctx context.Context, id string) error {
 			return err
 		}
 	}
-	_, err = in.run(ctx, brewCommand(true, nil, pkgutilPath, "--forget", id))
+	_, err = in.runner()(ctx, in.command(sudo.Root, pkgutilPath, "--forget", id))
 	return err
-}
-
-func withInput(c Command, paths []string) Command {
-	c.Stdin = []byte(strings.Join(paths, "\x00"))
-	return c
 }
 
 type bomEntry struct{ special, file, dir bool }

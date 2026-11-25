@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 const (
@@ -60,11 +60,8 @@ func flattenStrings(raw json.RawMessage) ([]string, error) {
 }
 
 type scriptSpec struct {
-	executable    string
+	installerStep
 	hasExecutable bool
-	args          []string
-	input         string
-	mustSucceed   bool
 }
 
 func scriptWantsSudo(raw json.RawMessage) bool {
@@ -74,52 +71,42 @@ func scriptWantsSudo(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &o) == nil && o.Sudo
 }
 
-var scriptKeys = []string{"args", "input", "executable", "must_succeed", "sudo", "print_stdout", "print_stderr"}
-
 func (in *Installer) readScript(raw json.RawMessage, description string) (scriptSpec, error) {
-	spec := scriptSpec{mustSucceed: true}
+	spec := scriptSpec{mustSucceed: true, stderr: outputOn}
 	var exe string
 	if json.Unmarshal(raw, &exe) == nil {
-		spec.executable, spec.hasExecutable = exe, true
+		spec.path, spec.hasExecutable = exe, true
 		return spec, nil
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &obj); err != nil {
 		return spec, brewError("Unsupported arguments type %s", raw)
 	}
+	keys, err := keyOrder(raw)
+	if err != nil {
+		return spec, brewError("Unsupported arguments type %s", raw)
+	}
 	var unknown []string
-	for _, k := range slices.Sorted(maps.Keys(obj)) {
+	for _, k := range keys {
 		if !slices.Contains(scriptKeys, k) {
-			unknown = append(unknown, ":"+k)
+			unknown = append(unknown, k)
 		}
 	}
-	inspected := "[" + strings.Join(unknown, ", ") + "]"
+	inspected := rubySymbols(unknown)
 	if len(unknown) > 0 {
 		in.warnf("Unknown arguments to %s -- %s (ignored). Running `brew update; brew cleanup` will likely fix it.", description, inspected)
 	}
 	if _, ok := obj["print_stdout"]; ok {
 		in.errorf("Some arguments to %s will be ignored -- :%s (overridden).", description, inspected)
 	}
-	for k, v := range obj {
-		var err error
-		switch k {
-		case "executable":
-			if err = json.Unmarshal(v, &spec.executable); err == nil {
-				spec.hasExecutable = true
-			}
-		case "args":
-			spec.args, err = flattenStrings(v)
-		case "input":
-			var parts []string
-			if parts, err = flattenStrings(v); err == nil {
-				spec.input = strings.Join(parts, "")
-			}
-		case "must_succeed":
-			err = json.Unmarshal(v, &spec.mustSucceed)
+	for _, k := range keys {
+		if !slices.Contains(scriptKeys, k) {
+			continue
 		}
-		if err != nil {
+		if err := spec.set(k, obj[k]); err != nil {
 			return spec, fmt.Errorf("%s: %s: %w", description, k, err)
 		}
+		spec.hasExecutable = spec.hasExecutable || k == "executable"
 	}
 	return spec, nil
 }
@@ -129,25 +116,23 @@ func (in *Installer) uninstallScript(ctx context.Context, token, staged, directi
 	if err != nil {
 		return err
 	}
-	in.logf("==> Running uninstall script %s", spec.executable)
+	in.logf("==> Running uninstall script %s", spec.path)
 	if !spec.hasExecutable {
 		return brewError("Cask '%s' definition is invalid: uninstall :%s without :executable.", token, directive)
 	}
-	path, err := in.stagedExecutable(staged, spec.executable)
+	path, err := in.stagedExecutable(staged, spec.path)
 	if err != nil {
 		return err
 	}
 	if _, found := lookPath(path); !found {
-		message := fmt.Sprintf("uninstall script %s does not exist", spec.executable)
+		message := fmt.Sprintf("uninstall script %s does not exist", spec.path)
 		if !force {
 			return brewError("%s.", message)
 		}
 		in.warnf("%s; skipping.", message)
 		return nil
 	}
-	c := brewCommand(false, nil, path, spec.args...)
-	c.Stdin, c.Tee = []byte(spec.input), in.Log
-	if _, err := in.run(ctx, c); err != nil && spec.mustSucceed {
+	if err := in.runScript(ctx, spec.installerStep, path, nil); err != nil {
 		return err
 	}
 	in.sleep(time.Second)
@@ -163,41 +148,9 @@ func lookPath(path string) (string, bool) {
 	return found, err == nil
 }
 
-func (in *Installer) stagedExecutable(staged, executable string) (string, error) {
-	path := executable
-	if path == "~" || strings.HasPrefix(path, "~/") {
-		path = in.Where.Home + path[1:]
-	}
-	abs := path
-	if !filepath.IsAbs(path) {
-		abs = filepath.Join(staged, path)
-	}
-	fi, err := os.Stat(abs)
-	if err != nil {
-		return path, nil
-	}
-	if fi.Mode().Perm()&0o111 == 0 {
-		if err := in.chmodX(abs, fi.Mode().Perm()); err != nil {
-			return "", err
-		}
-	}
-	return abs, nil
-}
-
-func (in *Installer) chmodX(path string, perm fs.FileMode) error {
-	real, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return err
-	}
-	if in.inside(resolved(in.Where.Prefix), real) {
-		return in.makeExecutable(real)
-	}
-	return os.Chmod(real, perm|0o111) //fsx:allow a script outside the prefix
-}
-
 func (in *Installer) uninstallKext(ctx context.Context, kexts []string) error {
-	asRoot := func(exe string, args ...string) ([]byte, error) {
-		return in.run(ctx, brewCommand(true, nil, exe, args...))
+	asRoot := func(exe string, args ...string) (string, error) {
+		return in.capture(ctx, in.command(sudo.Root, exe, args...))
 	}
 	for _, kext := range kexts {
 		in.logf("==> Unloading kernel extension %s", kext)
@@ -215,7 +168,7 @@ func (in *Installer) uninstallKext(ctx context.Context, kexts []string) error {
 		if err != nil {
 			return err
 		}
-		for _, p := range lines(strings.TrimSuffix(string(found), "\n")) {
+		for _, p := range lines(strings.TrimSuffix(found, "\n")) {
 			in.logf("==> Removing kernel extension %s", p)
 			if _, err := asRoot("/bin/rm", "-rf", p); err != nil {
 				return err

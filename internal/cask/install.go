@@ -132,15 +132,10 @@ func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]b
 	if err != nil {
 		return installPlan{}, nil, "", err
 	}
-	if p.needsSudo() && !sudo.Available(ctx, in.runner()) {
-		return installPlan{}, nil, "", brewError("%s: The installer artifact requires sudo, but HOMEBREW_NO_SUDO is set.", c.Token)
+	if artifact := p.sudoArtifact(); artifact != "" && !sudo.Available(ctx, in.runner()) {
+		return installPlan{}, nil, "", brewError("%s: The %s artifact requires sudo, but HOMEBREW_NO_SUDO is set.", c.Token, artifact)
 	}
-	if len(p.pkgs) > 0 {
-		if err := refuseRoot(); err != nil {
-			return installPlan{}, nil, "", err
-		}
-		in.warnAllowUntrusted(p.pkgs)
-	}
+	in.warnAllowUntrusted(p.pkgs)
 	links, err := in.checkTargets(c, p, owned)
 	if err != nil {
 		return installPlan{}, nil, "", err

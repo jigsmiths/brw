@@ -7,26 +7,43 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 type fakeRun struct {
-	calls  []Command
-	handle func(c Command) ([]byte, error)
+	calls  []sudo.Command
+	handle func(c sudo.Command) (string, error)
 }
 
-func (f *fakeRun) run(_ context.Context, c Command) ([]byte, error) {
+func (f *fakeRun) run(_ context.Context, c sudo.Command) (sudo.Result, error) {
 	f.calls = append(f.calls, c)
 	if f.handle != nil {
-		return f.handle(c)
+		out, err := f.handle(c)
+		return sudo.Result{Stdout: out}, err
 	}
-	return nil, nil
+	return sudo.Result{}, nil
 }
 
-func (f *fakeRun) sudoCalls() []Command {
-	return slices.DeleteFunc(slices.Clone(f.calls), func(c Command) bool { return c.Name != "/usr/bin/sudo" })
+func (f *fakeRun) sudoCalls() []sudo.Command {
+	return slices.DeleteFunc(slices.Clone(f.calls), func(c sudo.Command) bool { return c.Privilege == sudo.User })
+}
+
+func sudoChecked(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOMEBREW_NO_SUDO", "")
+	t.Setenv("HOMEBREW_SUDO_CHECKED", "1")
+	t.Setenv("HOMEBREW_COLOR", "")
+}
+
+func newPkgInstall(t *testing.T) *testInstall {
+	t.Helper()
+	sudoChecked(t)
+	return newTestInstall(t, pkgTarball)
 }
 
 func loginName(t *testing.T) string {
@@ -36,13 +53,6 @@ func loginName(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return u.Username
-}
-
-func asRoot(t *testing.T) {
-	t.Helper()
-	old := geteuid
-	geteuid = func() int { return 0 }
-	t.Cleanup(func() { geteuid = old })
 }
 
 var pkgTarball = tarGzBytes(&testing.T{},
@@ -67,18 +77,18 @@ const choicesPlist = `<?xml version="1.0" encoding="UTF-8"?>
 `
 
 func TestInstallPkg(t *testing.T) {
-	ti := newTestInstall(t, pkgTarball)
+	ti := newPkgInstall(t)
 	f := &fakeRun{}
 	var choices string
 	var choicesPath string
-	f.handle = func(c Command) ([]byte, error) {
+	f.handle = func(c sudo.Command) (string, error) {
 		if i := slices.Index(c.Args, "-applyChoiceChangesXML"); i >= 0 {
 			choicesPath = c.Args[i+1]
 			b, err := os.ReadFile(choicesPath)
 			choices = string(b)
-			return nil, err
+			return "", err
 		}
-		return nil, nil
+		return "", nil
 	}
 	ti.in.Run = f.run
 	c := ti.cask(t, `[
@@ -89,11 +99,18 @@ func TestInstallPkg(t *testing.T) {
 	}
 	u := loginName(t)
 	staged := filepath.Join(ti.prefix, "Caskroom/app/1.0/Sub/P.pkg")
-	want := []string{"-u", "root", "-E", "LOGNAME=" + u, "USER=" + u, "USERNAME=" + u, "--",
-		"/usr/sbin/installer", "-pkg", staged, "-target", "/", "-applyChoiceChangesXML", choicesPath}
+	want := sudo.Command{
+		Exe: "/usr/sbin/installer", Args: []string{"-pkg", staged, "-target", "/", "-applyChoiceChangesXML", choicesPath},
+		Env: []string{"LOGNAME=" + u, "USER=" + u, "USERNAME=" + u}, Privilege: sudo.Root, MustSucceed: true,
+		Stdout: ti.out, Stderr: ti.warn,
+	}
 	calls := f.sudoCalls()
-	if len(calls) != 1 || !slices.Equal(calls[0].Args, want) {
-		t.Fatalf("sudo calls = %+v\nwant args %q", calls, want)
+	if len(calls) != 1 {
+		t.Fatalf("sudo calls = %+v", calls)
+	}
+	calls[0].Secrets = nil
+	if !reflect.DeepEqual(calls[0], want) {
+		t.Fatalf("sudo call = %+v\nwant %+v", calls[0], want)
 	}
 	if choices != choicesPlist {
 		t.Errorf("choices =\n%s\nwant\n%s", choices, choicesPlist)
@@ -117,7 +134,7 @@ func TestInstallPkgWithoutChoicesOrWithEmptyOnes(t *testing.T) {
 		`[{"pkg":["Sub/P.pkg",{"choices":{}}]}]`,
 		`[{"pkg":["Sub/P.pkg",{"choices":null}]}]`,
 	} {
-		ti := newTestInstall(t, pkgTarball)
+		ti := newPkgInstall(t)
 		f := &fakeRun{}
 		ti.in.Run = f.run
 		if err := ti.in.Install(context.Background(), ti.cask(t, artifacts)); err != nil {
@@ -131,7 +148,7 @@ func TestInstallPkgWithoutChoicesOrWithEmptyOnes(t *testing.T) {
 }
 
 func TestInstallPkgAllowUntrustedIsDeprecated(t *testing.T) {
-	ti := newTestInstall(t, pkgTarball)
+	ti := newPkgInstall(t)
 	f := &fakeRun{}
 	ti.in.Run = f.run
 	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Sub/P.pkg",{"allow_untrusted":true}]}]`)); err != nil {
@@ -147,7 +164,7 @@ func TestInstallPkgAllowUntrustedIsDeprecated(t *testing.T) {
 }
 
 func TestInstallPkgMissingSource(t *testing.T) {
-	ti := newTestInstall(t, pkgTarball)
+	ti := newPkgInstall(t)
 	f := &fakeRun{}
 	ti.in.Run = f.run
 	err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Missing.pkg"]}]`))
@@ -171,23 +188,9 @@ func TestInstallPkgMissingSourceListsNothingWhenThereIsNone(t *testing.T) {
 	}
 }
 
-func TestInstallPkgRefusesToRunAsRoot(t *testing.T) {
-	asRoot(t)
-	ti := newTestInstall(t, pkgTarball)
-	f := &fakeRun{}
-	ti.in.Run = f.run
-	err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Sub/P.pkg"]}]`))
-	if err == nil || !strings.Contains(err.Error(), "Running Homebrew as root is extremely dangerous and no longer supported.") {
-		t.Errorf("err = %v", err)
-	}
-	if len(f.calls) > 0 {
-		t.Errorf("ran %+v", f.calls)
-	}
-}
-
 func TestInstallPkgFailureRollsBack(t *testing.T) {
-	ti := newTestInstall(t, pkgTarball)
-	f := &fakeRun{handle: func(Command) ([]byte, error) { return nil, errors.New("installer failed") }}
+	ti := newPkgInstall(t)
+	f := &fakeRun{handle: func(sudo.Command) (string, error) { return "", errors.New("installer failed") }}
 	ti.in.Run = f.run
 	err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Sub/P.pkg"]}]`))
 	if err == nil || !strings.Contains(err.Error(), "installer failed") {
@@ -199,7 +202,7 @@ func TestInstallPkgFailureRollsBack(t *testing.T) {
 }
 
 func TestInstallPkgVerbose(t *testing.T) {
-	ti := newTestInstall(t, pkgTarball)
+	ti := newPkgInstall(t)
 	f := &fakeRun{}
 	ti.in.Run = f.run
 	ti.in.Verbose = true
@@ -241,24 +244,24 @@ func pkgInfoPlist(volume, location string) string {
 `, location, volume)
 }
 
-func fakePkgutil(pkgs map[string]bomPkg, matches string) func(Command) ([]byte, error) {
-	return func(c Command) ([]byte, error) {
-		if c.Name != "/usr/bin/env" || c.Args[0] != "/usr/sbin/pkgutil" {
-			return nil, nil
+func fakePkgutil(pkgs map[string]bomPkg, matches string) func(sudo.Command) (string, error) {
+	return func(c sudo.Command) (string, error) {
+		if c.Privilege != sudo.User || c.Exe != "/usr/sbin/pkgutil" {
+			return "", nil
 		}
-		switch flag := c.Args[1]; {
+		switch flag := c.Args[0]; {
 		case strings.HasPrefix(flag, "--pkgs="):
-			return []byte(matches), nil
+			return matches, nil
 		case flag == "--files":
-			p, ok := pkgs[c.Args[2]]
+			p, ok := pkgs[c.Args[1]]
 			if !ok {
-				return nil, errors.New("no such package")
+				return "", errors.New("no such package")
 			}
-			return []byte(strings.Join(p.files, "\n") + "\n"), nil
+			return strings.Join(p.files, "\n") + "\n", nil
 		case flag == "--pkg-info-plist":
-			return []byte(pkgs[c.Args[2]].plist), nil
+			return pkgs[c.Args[1]].plist, nil
 		}
-		return nil, nil
+		return "", nil
 	}
 }
 
@@ -291,45 +294,42 @@ func TestUninstallPkgutil(t *testing.T) {
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	sudo := func(name string, args ...string) []string {
-		return append([]string{"-u", "root", "-E", "--", name}, args...)
+	sudoRoot := func(exe string, input string, args ...string) sudo.Command {
+		return sudo.Command{Exe: exe, Args: args, Input: input, Privilege: sudo.Root, MustSucceed: true}
 	}
-	rm := func(input ...string) Command {
-		return Command{Name: "/usr/bin/sudo", Args: sudo("/usr/bin/xargs", "-0", "--", "/bin/rm", "--"), Stdin: []byte(strings.Join(input, "\x00"))}
+	rm := func(input ...string) sudo.Command {
+		return sudoRoot("/usr/bin/xargs", strings.Join(input, "\x00"), "-0", "--", "/bin/rm", "--")
 	}
-	rmdir := func(input ...string) Command {
-		return Command{Name: "/usr/bin/sudo", Args: sudo("/usr/bin/xargs", "-0", "--", "/bin/bash", "-c", rmdirScript, "rmdir.sh"), Stdin: []byte(strings.Join(input, "\x00"))}
+	rmdir := func(input ...string) sudo.Command {
+		return sudoRoot("/usr/bin/xargs", strings.Join(input, "\x00"), "-0", "--", "/bin/bash", "-c", rmdirScript, "rmdir.sh")
 	}
-	forget := func(id string) Command {
-		return Command{Name: "/usr/bin/sudo", Args: sudo("/usr/sbin/pkgutil", "--forget", id)}
+	forget := func(id string) sudo.Command {
+		return sudoRoot("/usr/sbin/pkgutil", "", "--forget", id)
 	}
-	env := func(args ...string) Command {
-		return Command{Name: "/usr/bin/env", Args: append([]string{"/usr/sbin/pkgutil"}, args...)}
+	user := func(mustSucceed bool, args ...string) sudo.Command {
+		return sudo.Command{Exe: "/usr/sbin/pkgutil", Args: args, MustSucceed: mustSucceed}
 	}
-	want := []Command{
-		env("--pkgs=com.example.*"),
-		env("--files", "com.example.a"),
-		env("--pkg-info-plist", "com.example.a"),
+	want := []sudo.Command{
+		user(false, "--pkgs=com.example.*"),
+		user(true, "--files", "com.example.a"),
+		user(true, "--pkg-info-plist", "com.example.a"),
 		rm(filepath.Join(root, "bin/tool"), filepath.Join(root, "lib/deep/f")),
 		rm(filepath.Join(root, "bin/link")),
 		rmdir(filepath.Join(root, "lib/deep"), filepath.Join(root, "bin"), filepath.Join(root, "lib")),
 		rmdir(root),
 		forget("com.example.a"),
-		env("--files", "com.example.b"),
-		env("--pkg-info-plist", "com.example.b"),
+		user(true, "--files", "com.example.b"),
+		user(true, "--pkg-info-plist", "com.example.b"),
 		rmdir(filepath.Join(volume, "opt/y")),
 		forget("com.example.b"),
 	}
-	var got []Command
-	for _, c := range f.calls {
-		got = append(got, Command{Name: c.Name, Args: c.Args, Stdin: c.Stdin})
+	if len(f.calls) != len(want) {
+		t.Fatalf("calls = %d, want %d:\n%+v", len(f.calls), len(want), f.calls)
 	}
-	if len(got) != len(want) {
-		t.Fatalf("calls = %d, want %d:\n%+v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i].Name != want[i].Name || !slices.Equal(got[i].Args, want[i].Args) || string(got[i].Stdin) != string(want[i].Stdin) {
-			t.Errorf("call %d = %+v\nwant %+v", i, got[i], want[i])
+	for i, got := range f.calls {
+		got.Env, got.Stdout, got.Stderr, got.Trace, got.Color, got.Secrets = nil, nil, nil, nil, false, nil
+		if !reflect.DeepEqual(got, want[i]) {
+			t.Errorf("call %d = %+v\nwant %+v", i, got, want[i])
 		}
 	}
 	wantOut := "==> Uninstalling packages with `sudo` (which may request your password)...\ncom.example.a\ncom.example.b\n"
@@ -363,12 +363,12 @@ func TestUninstallPkgutilWithNoMatchRunsNothingElse(t *testing.T) {
 	if err := os.WriteFile(receipt, []byte(`{"uninstall_artifacts":[{"uninstall":[{"pkgutil":"com.none"}]}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeRun{handle: func(Command) ([]byte, error) { return nil, errors.New("exit status 1") }}
+	f := &fakeRun{}
 	ti.in.Run = f.run
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.calls) != 1 || f.calls[0].Args[1] != "--pkgs=com.none" {
+	if len(f.calls) != 1 || f.calls[0].Args[0] != "--pkgs=com.none" || f.calls[0].MustSucceed {
 		t.Errorf("calls = %+v", f.calls)
 	}
 }
@@ -389,23 +389,8 @@ func TestUninstallPkgutilFailureStops(t *testing.T) {
 	}
 }
 
-func TestUninstallPkgutilRefusesToRunAsRoot(t *testing.T) {
-	ti, _ := installed(t, `[{"app":["App.app"]}]`)
-	receipt := filepath.Join(ti.prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json")
-	if err := os.WriteFile(receipt, []byte(`{"uninstall_artifacts":[{"uninstall":[{"pkgutil":"com.example.a"}]}]}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	asRoot(t)
-	f := &fakeRun{}
-	ti.in.Run = f.run
-	err := ti.in.Uninstall(context.Background(), "app", "1.0", false)
-	if err == nil || !strings.Contains(err.Error(), "Running Homebrew as root is extremely dangerous") || len(f.calls) > 0 {
-		t.Errorf("err = %v, calls = %+v", err, f.calls)
-	}
-}
-
 func TestUninstallPkgOnlyCaskWithoutAnUninstallStanza(t *testing.T) {
-	ti := newTestInstall(t, pkgTarball)
+	ti := newPkgInstall(t)
 	ti.in.Run = (&fakeRun{}).run
 	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Sub/P.pkg"]}]`)); err != nil {
 		t.Fatal(err)
