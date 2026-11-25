@@ -445,7 +445,6 @@ func (in *Installer) quit(ctx context.Context, patterns []string, expand *bundle
 				}
 				break
 			}
-			in.sleep(100 * time.Millisecond)
 		}
 		if !quit {
 			in.warnf("Application '%s' did not quit. %s", id, automationAccess)

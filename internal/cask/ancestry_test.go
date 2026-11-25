@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func quitting(t *testing.T, directive string) (*testInstall, *fakeExec) {
@@ -27,19 +28,19 @@ func TestUninstallLeavesAnyAppBrwRunsInside(t *testing.T) {
 		parents := map[string]string{strconv.Itoa(os.Getpid()): "500", "500": "400", "400": "500"}
 		f.handle = map[string]func([]string) ([]byte, error){
 			"/bin/ps": func(args []string) ([]byte, error) {
-				if args[1] == "comm=" {
-					if args[3] == "400" {
-						return []byte("/Applications/Term.app/Contents/Frameworks/Helper.app/Contents/MacOS/Helper\n"), nil
-					}
-					return []byte("/usr/bin/login\n"), nil
-				}
 				return []byte(parents[args[3]] + "\n"), nil
 			},
-			"/usr/bin/plutil": func(args []string) ([]byte, error) {
-				if args[len(args)-1] == "/Applications/Term.app/Contents/Frameworks/Helper.app/Contents/Info.plist" {
-					return []byte("com.term\n"), nil
+			"/usr/bin/lsappinfo": func(args []string) ([]byte, error) {
+				switch args[0] {
+				case "find":
+					if args[1] == "pid=400" {
+						return []byte("ASN:0x0-0x1-\"Term\":\n"), nil
+					}
+					return []byte("\n"), nil
+				case "info":
+					return []byte("[ NULL ]  ASN:0x0-0x1: \n    bundleID=\"com.term\"\n"), nil
 				}
-				return nil, errors.New("no plist")
+				return nil, errors.New("unexpected")
 			},
 			"/bin/launchctl": func([]string) ([]byte, error) {
 				return []byte("PID\tStatus\tLabel\n9\t0\tcom.term\n"), nil
@@ -62,18 +63,42 @@ func TestUninstallLeavesAnyAppBrwRunsInside(t *testing.T) {
 	}
 }
 
-func TestAppBundleOf(t *testing.T) {
-	for comm, want := range map[string]string{
-		"/Applications/Foo.app/Contents/MacOS/Foo":          "/Applications/Foo.app",
-		"/Applications/My App.app/Contents/MacOS/My App":    "/Applications/My App.app",
-		"/A.app/Contents/Frameworks/H.app/Contents/MacOS/H": "/A.app/Contents/Frameworks/H.app",
-		"/usr/bin/zsh": "",
-		"/Applications/Foo.app/Contents/Resources/tool": "",
-		"zsh": "",
-	} {
-		if got := appBundleOf(comm); got != want {
-			t.Errorf("appBundleOf(%q) = %q, want %q", comm, got, want)
-		}
+func TestLSAppInfoParsing(t *testing.T) {
+	list := "  1) \"loginwindow\" ASN:0x0-0x2002: \n    bundleID=\"com.apple.loginwindow\"\n    pid = 442 type=\"UIElement\"\n" +
+		" 2) \"daemon\" ASN:0x0-0x3: \n    bundleID=[ NULL ] \n 3) \"Finder\" ASN:0x0-0x4: \n    bundleID=\"com.apple.finder\"\n"
+	if got := lsappinfoBundleIDs(list); !slices.Equal(got, []string{"com.apple.loginwindow", "com.apple.finder"}) {
+		t.Errorf("bundle IDs = %q", got)
+	}
+	if got := lsappinfoBundleIDs("    bundleID=[ NULL ] \n"); len(got) != 0 {
+		t.Errorf("bundle IDs = %q", got)
+	}
+}
+
+func TestUninstallQuitRetriesWithoutPausing(t *testing.T) {
+	ti, f := quitting(t, `{"quit":"com.example.app"}`)
+	var slept []time.Duration
+	ti.in.Sleep = func(d time.Duration) { slept = append(slept, d) }
+	attempts := 0
+	f.handle = map[string]func([]string) ([]byte, error){
+		"osascript": func(args []string) ([]byte, error) {
+			if strings.Contains(args[3], "app.quit()") {
+				attempts++
+				if attempts <= 3 {
+					return nil, errors.New("not yet")
+				}
+				return nil, nil
+			}
+			if attempts > 3 {
+				return nil, errors.New("not running")
+			}
+			return nil, nil
+		},
+	}
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 4 || len(slept) != 0 {
+		t.Errorf("attempts = %d, sleeps = %v", attempts, slept)
 	}
 }
 

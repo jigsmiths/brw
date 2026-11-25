@@ -56,18 +56,26 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 	case "/bin/cp", "/bin/mkdir":
 		return exec.CommandContext(ctx, name, args...).Output()
 	case "/bin/ps":
-		switch args[1] {
-		case "ppid=":
+		if args[1] == "ppid=" {
 			return []byte("1\n"), nil
-		case "comm=":
-			if f.hostID != "" {
-				return []byte("/Applications/Host.app/Contents/MacOS/Host\n"), nil
-			}
-			return []byte("/bin/zsh\n"), nil
 		}
 		return []byte(fmt.Sprintf("%d\n", os.Getuid())), nil
-	case "/usr/bin/plutil":
-		return []byte(f.hostID + "\n"), nil
+	case "/usr/bin/lsappinfo":
+		switch args[0] {
+		case "find":
+			if f.hostID != "" {
+				return []byte("ASN:0x0-0x1-\"Host\":\n"), nil
+			}
+			return []byte("\n"), nil
+		case "info":
+			return []byte("[ NULL ]  ASN:0x0-0x1: \n    bundleID=\"" + f.hostID + "\"\n"), nil
+		case "list":
+			var b strings.Builder
+			for i, id := range strings.Fields(f.runningIDs) {
+				fmt.Fprintf(&b, " %d) \"app\" ASN:0x0-0x%d: \n    bundleID=\"%s\"\n", i+1, i+1, id)
+			}
+			return []byte(b.String()), nil
+		}
 	case "who":
 		if f.gui {
 			return []byte(loginName(&testing.T{}) + " console Nov 25 10:00\n"), nil
@@ -76,9 +84,6 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 	case "osascript":
 		if args[0] == "-e" {
 			return nil, nil
-		}
-		if strings.Contains(args[3], "runningApplications") {
-			return []byte(f.runningIDs), nil
 		}
 		id := args[len(args)-1]
 		if !strings.Contains(args[3], "app.quit()") {

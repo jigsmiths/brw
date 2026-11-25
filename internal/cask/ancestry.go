@@ -4,32 +4,24 @@ import (
 	"context"
 	"os"
 	"os/user"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 )
 
-const appExecutableDir = ".app/Contents/MacOS/"
+const lsappinfoPath = "/usr/bin/lsappinfo"
 
-const runningBundleIDsScript = `'use strict';
+var lsappinfoBundleID = regexp.MustCompile(`bundleID="([^"]*)"`)
 
-ObjC.import('AppKit')
-
-function run() {
-  var apps = $.NSWorkspace.sharedWorkspace.runningApplications
-  var bundleIds = []
-
-  for (var i = 0; i < apps.count; i++) {
-    var bundleId = apps.objectAtIndex(i).bundleIdentifier
-    if (!bundleId.isNil()) {
-      bundleIds.push(ObjC.unwrap(bundleId))
-    }
-  }
-
-  return bundleIds.join("\n")
-}`
+// lsappinfoBundleIDs lists the bundle IDs in lsappinfo's output, in order, skipping apps without one.
+func lsappinfoBundleIDs(out string) []string {
+	var ids []string
+	for _, m := range lsappinfoBundleID.FindAllStringSubmatch(out, -1) {
+		ids = append(ids, m[1])
+	}
+	return ids
+}
 
 func (in *Installer) hostingBrw(ctx context.Context, bundleID string) bool {
 	if !in.ancestorsKnown {
@@ -56,30 +48,20 @@ func (in *Installer) ancestorBundleIDs(ctx context.Context) []string {
 	return ids
 }
 
-// bundleIDForPID reads the bundle ID from the app that holds the process's executable, which needs no Automation access.
+// bundleIDForPID asks LaunchServices, the registry behind NSRunningApplication, without needing Automation access.
 func (in *Installer) bundleIDForPID(ctx context.Context, pid int) string {
-	out, err := in.exec(ctx, "/bin/ps", "-o", "comm=", "-p", strconv.Itoa(pid))
+	asn, err := in.exec(ctx, lsappinfoPath, "find", "pid="+strconv.Itoa(pid))
+	if err != nil || strings.TrimSpace(string(asn)) == "" {
+		return ""
+	}
+	out, err := in.exec(ctx, lsappinfoPath, "info", "-only", "bundleid", strings.TrimSpace(string(asn)))
 	if err != nil {
 		return ""
 	}
-	bundle := appBundleOf(strings.TrimSpace(string(out)))
-	if bundle == "" {
-		return ""
+	if ids := lsappinfoBundleIDs(string(out)); len(ids) > 0 {
+		return ids[0]
 	}
-	out, err = in.exec(ctx, "/usr/bin/plutil", "-extract", "CFBundleIdentifier", "raw", "-o", "-", filepath.Join(bundle, "Contents/Info.plist"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// appBundleOf is the innermost app bundle whose main executable is comm.
-func appBundleOf(comm string) string {
-	i := strings.LastIndex(comm, appExecutableDir)
-	if i < 0 {
-		return ""
-	}
-	return comm[:i+len(".app")]
+	return ""
 }
 
 func (in *Installer) parentPID(ctx context.Context, pid int) (int, bool) {
@@ -124,13 +106,8 @@ func (b *bundleIDs) expand(ctx context.Context, id string) []string {
 		return nil
 	}
 	if !b.listed {
-		out, _ := b.in.exec(ctx, "osascript", "-l", "JavaScript", "-e", runningBundleIDsScript)
-		for running := range strings.SplitSeq(string(out), "\n") {
-			if running = strings.TrimSpace(running); running != "" {
-				b.running = append(b.running, running)
-			}
-		}
-		b.listed = true
+		out, _ := b.in.exec(ctx, lsappinfoPath, "list")
+		b.running, b.listed = lsappinfoBundleIDs(string(out)), true
 	}
 	re := regexp.MustCompile(`(?i)^` + strings.ReplaceAll(regexp.QuoteMeta(id), `\*`, ".*") + `$`)
 	return slices.DeleteFunc(slices.Clone(b.running), func(running string) bool { return !re.MatchString(running) })
