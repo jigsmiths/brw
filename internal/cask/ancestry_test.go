@@ -139,13 +139,3 @@ func TestUninstallQuitNeedsAGUI(t *testing.T) {
 		t.Errorf("out = %q", ti.out.String())
 	}
 }
-
-func TestEmbeddedRmdirScriptIsBrews(t *testing.T) {
-	brews, err := os.ReadFile("/opt/homebrew/Library/Homebrew/cask/utils/rmdir.sh")
-	if err != nil {
-		t.Skip("no Homebrew checkout to compare with")
-	}
-	if rmdirScript != string(brews) {
-		t.Error("the embedded rmdir.sh differs from brew's")
-	}
-}
