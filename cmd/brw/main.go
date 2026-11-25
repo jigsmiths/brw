@@ -41,7 +41,12 @@ const usage = `Example usage:
   brw cleanup [FORMULA|CASK...]
   brw tap [USER/REPO [URL]]
   brw untap USER/REPO...
-  brw services [list|start|stop|restart] [FORMULA...]
+  brw services [list] [--json]
+  brw services run|start|restart (FORMULA...|--all) [--file=PATH]
+  brw services stop (FORMULA...|--all) [--keep] [--no-wait|--max-wait=SECONDS]
+  brw services kill (FORMULA...|--all)
+  brw services info (FORMULA...|--all) [--json] [--verbose]
+  brw services cleanup
   brw trust [TAP|CASK...]
   brw untrust TAP|CASK...
   brw version
@@ -66,13 +71,27 @@ type env struct {
 
 	launchctl  services.Launchctl
 	uid        int
-	root       bool
+	euidRoot   bool
 	sudoRun    sudo.Runner
 	user       string
 	agentsDir  string
 	daemonsDir string
 	configHome string
 	sleep      func(time.Duration)
+	sudoUser   string
+
+	consoleUID  func() (int, error)
+	target      string
+	targetErr   error
+	targetKnown bool
+
+	plutil func(path string) ([]byte, error)
+
+	clipboardBroken func() bool
+	termWidth       func() int
+	verbose, debug  bool
+	takeOwnership   func(paths []string, group string, sticky bool) error
+	userExists      func(name string) bool
 }
 
 func (e *env) kegs(prefix string) ([]cellar.Keg, error) {
@@ -100,7 +119,8 @@ func main() {
 
 func newEnv(host platform.Host) *env {
 	e := &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host,
-		launchctl: services.NewLaunchctl(), uid: os.Getuid(), root: os.Geteuid() == 0, daemonsDir: "/Library/LaunchDaemons"}
+		launchctl: services.NewLaunchctl(), uid: os.Getuid(), euidRoot: os.Geteuid() == 0, daemonsDir: "/Library/LaunchDaemons",
+		plutil: plutilXML, clipboardBroken: pbpasteBroken, termWidth: sudo.TerminalColumns, takeOwnership: rootOwner.apply, userExists: userExists, consoleUID: consoleOwner}
 	e.user = os.Getenv("USER")
 	if u, err := user.Current(); e.user == "" && err == nil {
 		e.user = u.Username

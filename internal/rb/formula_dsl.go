@@ -414,13 +414,23 @@ func parseCron(s string) string {
 		f["Minute"], f["Hour"], f["Weekday"] = "0", "0", "0"
 	case "@monthly":
 		f["Minute"], f["Hour"], f["Day"] = "0", "0", "1"
+	case "@yearly", "@annually":
+		f["Minute"], f["Hour"], f["Day"], f["Month"] = "0", "0", "1", "1"
 	default:
 		parts := strings.Fields(s)
 		if len(parts) != 5 {
-			fail("cron %q", s)
+			fail("Service#parse_cron expects a valid cron syntax")
 		}
 		for i, k := range []string{"Minute", "Hour", "Day", "Month", "Weekday"} {
 			f[k] = parts[i]
+			if parts[i] == "*" {
+				continue
+			}
+			n, ok := rubyInteger(parts[i])
+			if !ok {
+				fail("invalid value for Integer(): %q", parts[i])
+			}
+			f[k] = n.String()
 		}
 	}
 	return f["Minute"] + " " + f["Hour"] + " " + f["Day"] + " " + f["Month"] + " " + f["Weekday"]

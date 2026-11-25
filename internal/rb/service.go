@@ -3,6 +3,8 @@ package rb
 import (
 	"fmt"
 	"maps"
+	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,10 +18,7 @@ func (f *Formula) ServiceFiles(root string) (files map[string]string, err error)
 		return nil, nil
 	}
 	defer catch(f.b.name, &err)
-	sv := &serviceB{f: f.b}
-	in := &interp{plat: f.b.plat, ctx: []dsl{&instanceDSL{f: f.b, root: root, linked: true}, sv}}
-	in.run(f.b.serviceBlk.body, &scope{vars: map[string]value{}, parent: f.b.serviceScope})
-	s := renderedService{sv: sv, root: root, os: f.b.plat.real().os}
+	s := f.renderService(root)
 	cmd := s.command()
 	if len(cmd) == 0 {
 		return nil, nil
@@ -30,6 +29,21 @@ func (f *Formula) ServiceFiles(root string) (files map[string]string, err error)
 		files[unit+".timer"] = s.timer(unit)
 	}
 	return files, nil
+}
+
+func (f *Formula) ServiceRequiresRoot(root string) (requires bool, err error) {
+	if f.b.serviceBlk == nil {
+		return false, nil
+	}
+	defer catch(f.b.name, &err)
+	return f.renderService(root).get("require_root") == rbool(true), nil
+}
+
+func (f *Formula) renderService(root string) renderedService {
+	sv := &serviceB{f: f.b}
+	in := &interp{plat: f.b.plat, ctx: []dsl{&instanceDSL{f: f.b, root: root, linked: true}, sv}}
+	in.run(f.b.serviceBlk.body, &scope{vars: map[string]value{}, parent: f.b.serviceScope})
+	return renderedService{sv: sv, root: root, os: f.b.plat.real().os}
 }
 
 func catch(name string, err *error) {
@@ -62,9 +76,59 @@ func (s renderedService) get(k string) value {
 }
 
 func (s renderedService) str(v value) string {
-	out := strings.ReplaceAll(str(v), PrefixPlaceholder, s.root)
-	if home, ok := lookupEnv("HOME"); ok && (out == "~" || strings.HasPrefix(out, "~/")) {
-		out = home + out[1:]
+	return strings.ReplaceAll(str(v), PrefixPlaceholder, s.root)
+}
+
+func expandOrFail(p string) string {
+	out, err := ExpandPath(p)
+	if err != nil {
+		fail("%v", err)
+	}
+	return out
+}
+
+func ExpandPath(p string) (string, error) {
+	if strings.HasPrefix(p, "~") {
+		name, rest, _ := strings.Cut(p[1:], "/")
+		if rest != "" || strings.HasSuffix(p, "/") {
+			rest = "/" + rest
+		}
+		home := ""
+		if name == "" {
+			var ok bool
+			if home, ok = lookupEnv("HOME"); !ok {
+				home, _ = os.UserHomeDir()
+			}
+		} else {
+			var ok bool
+			if home, ok = lookupHome(name); !ok {
+				return "", fmt.Errorf("user %s doesn't exist", name)
+			}
+		}
+		p = home + rest
+	}
+	if !filepath.IsAbs(p) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		p = filepath.Join(wd, p)
+	}
+	return filepath.Clean(p), nil
+}
+
+var lookupHome = func(name string) (string, bool) {
+	u, err := user.Lookup(name)
+	if err != nil {
+		return "", false
+	}
+	return u.HomeDir, true
+}
+
+func (s renderedService) arg(v value) string {
+	out := s.str(v)
+	if strings.HasPrefix(out, "~") {
+		return expandOrFail(out)
 	}
 	return out
 }
@@ -74,7 +138,7 @@ func (s renderedService) path(k string) (string, bool) {
 	if blank(v) {
 		return "", false
 	}
-	return filepath.Clean(s.str(v)), true
+	return expandOrFail(s.str(v)), true
 }
 
 func (s renderedService) command() []string {
@@ -86,11 +150,11 @@ func (s renderedService) command() []string {
 	switch x := run.(type) {
 	case *arr:
 		for _, e := range x.v {
-			out = append(out, s.str(e))
+			out = append(out, s.arg(e))
 		}
 	case nil:
 	default:
-		out = []string{s.str(x)}
+		out = []string{s.arg(x)}
 	}
 	return out
 }
@@ -148,25 +212,16 @@ func (s renderedService) cron() [][2]string {
 	if s.sv.cron == "" {
 		return nil
 	}
-	fields := strings.Fields(parseCron(s.sv.cron))
-	var out [][2]string
-	for i, k := range []string{"Minute", "Hour", "Day", "Month", "Weekday"} {
-		v := fields[i]
-		if v != "*" {
-			v = strconv.Itoa(rubyToI(v))
-		}
-		out = append(out, [2]string{k, v})
-	}
-	return out
+	return cronFields(s.sv.cron)
 }
 
-func rubyToI(s string) int {
-	end := 0
-	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
-		end++
+func cronFields(spec string) [][2]string {
+	fields := strings.Fields(parseCron(spec))
+	var out [][2]string
+	for i, k := range []string{"Minute", "Hour", "Day", "Month", "Weekday"} {
+		out = append(out, [2]string{k, fields[i]})
 	}
-	n, _ := strconv.Atoi(s[:end])
-	return n
+	return out
 }
 
 var socketRx = regexp.MustCompile(`(?i)^([a-z]+)://(.+):([0-9]+)$`)
@@ -224,8 +279,7 @@ func (s renderedService) plist(cmd []string, label string) string {
 		c := pdict{}
 		for _, kv := range cron {
 			if kv[1] != "*" {
-				n, _ := strconv.Atoi(kv[1])
-				c[kv[0]] = rint(n)
+				c[kv[0]] = pint(kv[1])
 			}
 		}
 		d["StartCalendarInterval"] = c
@@ -263,6 +317,8 @@ func (s renderedService) sockets() pdict {
 	}
 	return out
 }
+
+type pint string
 
 // pdict is a plist dictionary, written with sorted keys.
 type pdict map[string]any
@@ -307,6 +363,8 @@ func emitPlist(b *strings.Builder, v any, level int) {
 		tag("string", escapeHTML.Replace(x))
 	case rint:
 		tag("integer", strconv.FormatInt(int64(x), 10))
+	case pint:
+		tag("integer", string(x))
 	default:
 		tag("string", escapeHTML.Replace(str(x.(value))))
 	}
@@ -373,8 +431,10 @@ func (s renderedService) timer(unit string) string {
 			if v == "*" {
 				return v
 			}
-			n, _ := strconv.Atoi(v)
-			return fmt.Sprintf("%02d", n)
+			if len(v) == 1 {
+				return "0" + v
+			}
+			return v
 		}
 		day := ""
 		if n, err := strconv.Atoi(c["Weekday"]); err == nil && n >= 0 && n <= 7 {

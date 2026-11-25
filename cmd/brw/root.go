@@ -18,7 +18,7 @@ var (
 
 // refuseRoot is brew's check-run-command-as-root; `services` is the one command brew lets root run.
 func refuseRoot(e *env, cmd string) error {
-	if !e.root || cmd == "services" || inContainer() {
+	if !e.euidRoot || cmd == "services" || inContainer() {
 		return nil
 	}
 	return errors.New(rootRefusal) //nolint:staticcheck // brew's own message
