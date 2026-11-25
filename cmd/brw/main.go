@@ -72,8 +72,10 @@ type env struct {
 	sleep      func(time.Duration)
 	sudoUser   string
 
-	consoleUID func() (int, error)
-	target     string
+	consoleUID  func() (int, error)
+	target      string
+	targetErr   error
+	targetKnown bool
 
 	takeOwnership func(paths []string, group string, sticky bool) error
 	userExists    func(name string) bool

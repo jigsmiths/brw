@@ -17,22 +17,37 @@ import (
 
 const rootServiceGroup = "admin"
 
-// resolveDomain is brew's System.domain_target, run once before a command uses the domain.
-func (e *env) resolveDomain() error {
-	e.target = services.Domain(e.uid)
+// domain is brew's System.domain_target: chosen on first use, then kept for the run.
+func (e *env) domain() (string, error) {
+	if !e.targetKnown {
+		e.target, e.targetErr = e.chooseDomain()
+		e.targetKnown = true
+	}
+	return e.target, e.targetErr
+}
+
+func (e *env) domains() ([]string, error) {
+	target, err := e.domain()
+	if err != nil {
+		return nil, err
+	}
+	return services.Candidates(target, e.uid), nil
+}
+
+func (e *env) chooseDomain() (string, error) {
 	if e.root() {
-		return nil
+		return services.Domain(e.uid), nil
 	}
 	overSSH := false
 	if os.Getenv("HOMEBREW_SSH_TTY") != "" {
 		console, err := e.consoleUID()
 		if err != nil {
-			return err
+			return "", err
 		}
 		overSSH = console != e.uid
 	}
 	if !overSSH && os.Getenv("HOMEBREW_SUDO_USER") == "" {
-		return nil
+		return services.Domain(e.uid), nil
 	}
 	if os.Getenv("HOMEBREW_SERVICES_NO_DOMAIN_WARNING") == "" {
 		if overSSH {
@@ -45,13 +60,8 @@ func (e *env) resolveDomain() error {
 				"Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).\n")
 		}
 	}
-	e.target = services.UserDomain(e.uid)
-	return nil
+	return services.UserDomain(e.uid), nil
 }
-
-func (e *env) domain() string { return e.target }
-
-func (e *env) domains() []string { return services.Candidates(e.target, e.uid) }
 
 func consoleOwner() (int, error) {
 	fi, err := os.Stat("/dev/console")

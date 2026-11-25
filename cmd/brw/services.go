@@ -70,9 +70,7 @@ func servicesCommand(e *env, args []string) error {
 	if e.launchctl == nil {
 		return errors.New("launchctl is not available")
 	}
-	if err := e.resolveDomain(); err != nil {
-		return err
-	}
+	e.targetKnown = false
 	switch sub {
 	case "list":
 		return servicesList(e, args)
@@ -151,8 +149,12 @@ type serviceSnap struct {
 
 func (e *env) snapshot(t serviceTarget) (serviceSnap, error) {
 	s := serviceSnap{active: t.serviceName()}
+	domains, err := e.domains()
+	if err != nil {
+		return s, err
+	}
 	for _, label := range e.labels(t) {
-		loaded, info, err := services.Query(e.launchctl, e.domains(), label)
+		loaded, info, err := services.Query(e.launchctl, domains, label)
 		if err != nil {
 			return s, err
 		}
@@ -381,7 +383,9 @@ func servicesChange(e *env, verb string, args []string) error {
 	}
 	if dryRun {
 		for _, t := range targets {
-			e.planService(verb, t)
+			if err := e.planService(verb, t); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -437,8 +441,11 @@ func serviceTargets(e *env, prefix string, names []string) ([]serviceTarget, err
 	return targets, nil
 }
 
-func (e *env) planService(verb string, t serviceTarget) {
-	domain := e.domain()
+func (e *env) planService(verb string, t serviceTarget) error {
+	domain, err := e.domain()
+	if err != nil {
+		return err
+	}
 	dests := e.dests(t)
 	if verb != "start" {
 		_, _ = fmt.Fprintf(e.out, "launchctl bootout %s/%s\nrm %s\n", domain, t.serviceName(), strings.Join(dests, " "))
@@ -447,6 +454,7 @@ func (e *env) planService(verb string, t serviceTarget) {
 		_, _ = fmt.Fprintf(e.out, "cp %s %s\nlaunchctl enable %s/%s\nlaunchctl bootstrap %s %s\n",
 			t.source, dests[0], domain, t.serviceName(), domain, dests[0])
 	}
+	return nil
 }
 
 func (e *env) reportRunningOrLoaded(t serviceTarget, s serviceSnap, status string) bool {
@@ -514,7 +522,10 @@ func (e *env) startService(t serviceTarget, journal string) error {
 	if err := e.checkLoad(t, "start"); err != nil {
 		return err
 	}
-	domain := e.domain()
+	domain, err := e.domain()
+	if err != nil {
+		return err
+	}
 	if err := e.launchctl.Enable(domain, label); err != nil {
 		return err
 	}
@@ -561,7 +572,11 @@ func (e *env) runService(t serviceTarget) error {
 		}
 		file = tmp.Name()
 	}
-	if err := e.launchctl.Bootstrap(e.domain(), file); err != nil {
+	domain, err := e.domain()
+	if err != nil {
+		return err
+	}
+	if err := e.launchctl.Bootstrap(domain, file); err != nil {
 		return err
 	}
 	e.ohai("Successfully ran `%s` (label: %s)", t.name, label)
@@ -648,7 +663,11 @@ func (e *env) sleepFor(d time.Duration) {
 }
 
 func (e *env) running(label string) (bool, error) {
-	loaded, _, err := services.Query(e.launchctl, e.domains(), label)
+	domains, err := e.domains()
+	if err != nil {
+		return false, err
+	}
+	loaded, _, err := services.Query(e.launchctl, domains, label)
 	return loaded, err
 }
 
@@ -668,8 +687,12 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 			}
 			return fmt.Errorf("Service `%s` is started as `%s`. Try:\n  %sbrw services stop %s", t.name, *e.owner(t, s), sudo, t.name) //nolint:staticcheck // matches brew's error text
 		}
+		domain, err := e.domain()
+		if err != nil {
+			return err
+		}
 		for _, n := range t.names() {
-			if e.launchctl.Bootout(e.domain(), n) == nil {
+			if e.launchctl.Bootout(domain, n) == nil {
 				e.ohai("Successfully stopped `%s` (label: %s)", t.name, n)
 				return nil
 			}
@@ -706,7 +729,11 @@ func (e *env) stopService(t serviceTarget, journal string) error {
 }
 
 func (e *env) bootoutAll(label string) error {
-	for _, domain := range e.domains() {
+	domains, err := e.domains()
+	if err != nil {
+		return err
+	}
+	for _, domain := range domains {
 		up, err := e.running(label)
 		if err != nil || !up {
 			return err

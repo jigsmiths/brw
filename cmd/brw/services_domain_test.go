@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -66,6 +67,28 @@ func TestServicesFailWhenTheConsoleCannotBeStatedOverSsh(t *testing.T) {
 	_, err := runCmd(t, e, "services", "list", "-prefix", prefix)
 	if err == nil || !strings.Contains(err.Error(), "/dev/console") || len(lc.calls) != 0 {
 		t.Errorf("err = %v, calls = %q", err, lc.calls)
+	}
+}
+
+func TestServicesResolveTheDomainOnlyWhenNeeded(t *testing.T) {
+	clearDomainEnv(t)
+	t.Setenv("HOMEBREW_SSH_TTY", "/dev/ttys001")
+	e, prefix, _, lc := servicesEnv(t)
+	e.consoleUID = func() (int, error) { return 0, errors.New("stat /dev/console: no such file or directory") }
+	if err := os.RemoveAll(filepath.Join(prefix, "Cellar/foo")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCmd(t, e, "services", "list", "--json", "-prefix", prefix)
+	if err != nil || out != "[]\n" || stderr(e) != "" || len(lc.calls) != 0 {
+		t.Errorf("out = %q, err = %v, stderr = %q", out, err, stderr(e))
+	}
+
+	e.consoleUID = func() (int, error) { return 0, nil }
+	if _, err := runCmd(t, e, "services", "stop", "-prefix", prefix, "nosuchthing"); err == nil {
+		t.Fatal("expected an error for an unknown formula")
+	}
+	if stderr(e) != "" {
+		t.Errorf("no domain is needed to reject an unknown formula: %q", stderr(e))
 	}
 }
 
