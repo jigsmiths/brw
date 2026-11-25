@@ -926,11 +926,11 @@ func (d *caveatsDSL) call(in *interp, s *scope, c *callN, args []value, kw *hash
 		jv := str(v)
 		switch {
 		case v == sym("any"):
-			text = "{cask} requires Java. You can install the latest version with:\n  brew install --cask temurin\n"
+			text = "{cask} requires Java. You can install the latest version with:\n  brw install --cask temurin\n"
 		case strings.Contains(jv, "+"):
-			text = "{cask} requires Java " + jv + ". You can install the latest version with:\n  brew install --cask temurin\n"
+			text = "{cask} requires Java " + jv + ". You can install the latest version with:\n  brw install --cask temurin\n"
 		default:
-			text = "{cask} requires Java " + jv + ". You can install it with:\n  brew install --cask temurin@" + jv + "\n"
+			text = "{cask} requires Java " + jv + ". You can install it with:\n  brw install --cask temurin@" + jv + "\n"
 		}
 		ok = true
 	case "unsigned_accessibility":

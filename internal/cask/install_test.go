@@ -403,7 +403,7 @@ func TestInstallWarnsAboutADeprecatedCask(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "Warning: app has been deprecated because it is discontinued upstream! It was disabled on 2026-10-01.\n" +
-		"Replacement:\n  brew install --cask other\n\n"
+		"Replacement:\n  brw install --cask other\n\n"
 	if warn.String() != want {
 		t.Errorf("warning = %q, want %q", warn, want)
 	}
@@ -420,7 +420,7 @@ func TestDeprecationMessage(t *testing.T) {
 		{api.Cask{Deprecated: true, DeprecationReason: "a custom reason", DeprecationDate: "2026-01-31"},
 			"deprecated because it a custom reason! It will be disabled on 2027-01-31."},
 		{api.Cask{Disabled: true, DisableReason: "unmaintained", DisableDate: "2026-12-01", DisableReplacementFormula: "x", DisableReplacementCask: "x"},
-			"disabled because it is not maintained upstream! It will be disabled on 2026-12-01.\nReplacement:\n  brew install x\n"},
+			"disabled because it is not maintained upstream! It will be disabled on 2026-12-01.\nReplacement:\n  brw install x\n"},
 	} {
 		if got := deprecation(tc.c, now); got != tc.want {
 			t.Errorf("%+v: got %q, want %q", tc.c, got, tc.want)

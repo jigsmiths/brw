@@ -12,7 +12,7 @@ func TestRunRefusesToRunAsRoot(t *testing.T) {
 	for cmd, refused := range map[string]bool{"list": true, "install": true, "version": true, "services": false, "bogus": true} {
 		e := &env{out: &bytes.Buffer{}, err: &bytes.Buffer{}, euidRoot: true}
 		err := run(e, cmd, nil)
-		got := err != nil && strings.HasPrefix(err.Error(), "Running Homebrew as root is extremely dangerous and no longer supported.\n")
+		got := err != nil && strings.HasPrefix(err.Error(), "Running brw as root is extremely dangerous and no longer supported.\n")
 		if got != refused {
 			t.Errorf("%s as root: err = %v, refused = %v, want %v", cmd, err, got, refused)
 		}

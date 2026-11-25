@@ -95,6 +95,9 @@ func compareWithBrew(t *testing.T, src []byte, want map[string]any) []string {
 		}
 		for _, f := range fields {
 			g, e := got[f], exp[f]
+			if s, ok := e.(string); ok && f == "caveats" {
+				e = strings.ReplaceAll(s, " with:\n  brew install ", " with:\n  brw install ")
+			}
 			if f == "artifacts" {
 				g, e = sameKindSorted(g), sameKindSorted(e)
 			}

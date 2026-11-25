@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/install/installtest"
+	"github.com/jigsmiths/brw/internal/outdated"
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
@@ -573,6 +575,16 @@ func TestUpgradeLeavesSelfUpdatingCasksUnlessGreedy(t *testing.T) {
 	out, err := runCmd(t, e2, "upgrade", "-prefix", prefix, "--greedy")
 	if err != nil || !strings.Contains(out, "==> Upgrading app\n  0.9 -> 1.0\n") {
 		t.Errorf("--greedy: out = %q, err = %v", out, err)
+	}
+}
+
+func TestUpgradeHintsNameBrwNotHomebrew(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_ENV_HINTS", "")
+	idx := api.NewCaskIndex([]api.Cask{{Token: "app", AutoUpdates: true}})
+	var out bytes.Buffer
+	printCaskHints(&env{out: &out}, idx, []outdated.Result{{Name: "app"}}, outdated.CaskOptions{})
+	if want := "brw will now attempt to upgrade casks with `auto_updates true`.\n"; !strings.HasPrefix(out.String(), want) {
+		t.Errorf("hints = %q, want prefix %q", out.String(), want)
 	}
 }
 

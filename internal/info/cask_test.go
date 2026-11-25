@@ -222,7 +222,7 @@ func TestCaskTextDeprecatedNeedsRosetta(t *testing.T) {
 https://quixel.com/
 Deprecated because it is discontinued upstream! It will be disabled on 2026-12-18.
 Replacement:
-  brew install --cask epic-games
+  brw install --cask epic-games
 Not installed
 From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/b/bridge.rb
 ==> Requirements
@@ -321,7 +321,7 @@ func TestCaskDeprecation(t *testing.T) {
 		{api.Cask{Deprecated: true, DeprecationReason: "some reason", DeprecationDate: "2025-01-01"},
 			"Deprecated because it some reason!"},
 		{api.Cask{Disabled: true, DisableReason: "unreachable", DisableDate: "2026-02-01", DisableReplacementFormula: "x"},
-			"Disabled because it is no longer reliably reachable upstream! It was disabled on 2026-02-01.\nReplacement:\n  brew install --formula x\n"},
+			"Disabled because it is no longer reliably reachable upstream! It was disabled on 2026-02-01.\nReplacement:\n  brw install --formula x\n"},
 	} {
 		if got := CaskDeprecation(&tc.cask, now); got != tc.want {
 			t.Errorf("CaskDeprecation(%+v) = %q, want %q", tc.cask, got, tc.want)
