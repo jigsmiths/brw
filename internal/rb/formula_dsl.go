@@ -414,6 +414,8 @@ func parseCron(s string) string {
 		f["Minute"], f["Hour"], f["Weekday"] = "0", "0", "0"
 	case "@monthly":
 		f["Minute"], f["Hour"], f["Day"] = "0", "0", "1"
+	case "@yearly", "@annually":
+		f["Minute"], f["Hour"], f["Day"], f["Month"] = "0", "0", "1", "1"
 	default:
 		parts := strings.Fields(s)
 		if len(parts) != 5 {
