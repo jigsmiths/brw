@@ -62,6 +62,16 @@ type message string
 
 func (m message) Error() string { return string(m) }
 
+// executionError is brew's ErrorDuringExecution.
+type executionError string
+
+func (e executionError) Error() string { return string(e) }
+
+func IsFailure(err error) bool {
+	_, ok := errors.AsType[executionError](err)
+	return ok
+}
+
 func (c Command) Argv() ([]string, error) {
 	if c.Privilege == User {
 		return append([]string{envCommand, c.Exe}, c.Args...), nil
@@ -98,7 +108,7 @@ func (c Command) Argv() ([]string, error) {
 
 func Exec(ctx context.Context, c Command) (Result, error) {
 	if c.Privilege != User && !Available(ctx, Exec) {
-		return Result{}, message(failureMessage(append([]string{c.Exe}, c.Args...), "exited with 1", "sudo is disabled by HOMEBREW_NO_SUDO.\n", c.Secrets))
+		return Result{}, executionError(failureMessage(append([]string{c.Exe}, c.Args...), "exited with 1", "sudo is disabled by HOMEBREW_NO_SUDO.\n", c.Secrets))
 	}
 	argv, err := c.Argv()
 	if err != nil {
@@ -133,7 +143,7 @@ func Exec(ctx context.Context, c Command) (Result, error) {
 	if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
 		reason = "was terminated by uncaught signal " + signalName(ws.Signal())
 	}
-	return result, message(failureMessage(argv, reason, log.render(c.Color), c.Secrets))
+	return result, executionError(failureMessage(argv, reason, log.render(c.Color), c.Secrets))
 }
 
 func failureMessage(argv []string, reason, output string, secrets []string) string {

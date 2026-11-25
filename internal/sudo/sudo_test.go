@@ -66,6 +66,9 @@ func TestExecRefusesSudoWhenDisabled(t *testing.T) {
 	if err == nil || err.Error() != want {
 		t.Errorf("err = %v, want %q", err, want)
 	}
+	if !IsFailure(err) || IsFailure(errors.New(want)) || IsFailure(nil) {
+		t.Error("IsFailure should tell a command's failure from any other error")
+	}
 }
 
 func fakeSudo(t *testing.T) {
