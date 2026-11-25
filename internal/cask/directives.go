@@ -230,7 +230,7 @@ func (in *Installer) killAll(name, id string, pids []int) error {
 }
 
 func (in *Installer) runningProcesses(ctx context.Context, id string) ([]int, error) {
-	out, err := in.exec(ctx, "/bin/launchctl", "list")
+	out, err := in.system(ctx, "/bin/launchctl", "list")
 	if err != nil {
 		return nil, err
 	}

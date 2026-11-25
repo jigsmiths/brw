@@ -137,7 +137,7 @@ func plistDictStrings(data []byte) (map[string]string, error) {
 				if err := d.DecodeElement(&key, &t); err != nil {
 					return nil, err
 				}
-			case "string":
+			case "string", "integer", "real":
 				if err := d.DecodeElement(&text, &t); err != nil {
 					return nil, err
 				}

@@ -36,10 +36,15 @@ func execCommand(ctx context.Context, name string, args ...string) ([]byte, erro
 	return out, nil
 }
 
-func (in *Installer) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
+// system runs a command as brew's SystemCommand does, which echoes it under --verbose --debug.
+func (in *Installer) system(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if in.debug() && (in.Verbose || sudo.EnvTrue("HOMEBREW_VERBOSE")) && in.Warn != nil {
 		_, _ = fmt.Fprintln(in.Warn, sudo.Redact(sudo.ShellJoin(append([]string{"/usr/bin/env", name}, args...)), sudo.SensitiveValues()))
 	}
+	return in.exec(ctx, name, args...)
+}
+
+func (in *Installer) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if in.Exec != nil {
 		return in.Exec(ctx, name, args...)
 	}
@@ -358,7 +363,7 @@ func (in *Installer) launchctl(ctx context.Context, services []string) error {
 
 func (in *Installer) privileged(ctx context.Context, privilege sudo.Privilege, name string, args ...string) error {
 	if privilege == sudo.User {
-		_, err := in.exec(ctx, name, args...)
+		_, err := in.system(ctx, name, args...)
 		return err
 	}
 	_, err := in.capture(ctx, in.command(privilege, name, args...))
@@ -374,7 +379,7 @@ func (in *Installer) sleep(d time.Duration) {
 }
 
 func (in *Installer) runningServices(ctx context.Context, pattern string) []string {
-	out, err := in.exec(ctx, "/bin/launchctl", "list")
+	out, err := in.system(ctx, "/bin/launchctl", "list")
 	if err != nil {
 		return nil
 	}
@@ -443,7 +448,7 @@ func (in *Installer) quit(ctx context.Context, patterns []string, expand *bundle
 		deadline := time.Now().Add(10 * time.Second)
 		quit := false
 		for time.Now().Before(deadline) {
-			if _, err := in.exec(ctx, "osascript", "-l", "JavaScript", "-e", quitScript, id); err == nil && !in.running(ctx, id) {
+			if _, err := in.system(ctx, "osascript", "-l", "JavaScript", "-e", quitScript, id); err == nil && !in.running(ctx, id) {
 				in.logf("Application '%s' quit successfully.", id)
 				quit = true
 				if in.upgrading {
@@ -466,7 +471,7 @@ func (in *Installer) loginItems(ctx context.Context, apps, names []string) {
 		in.logf("==> Removing login item %s", id)
 		quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(id)
 		script := `tell application "System Events" to delete every login item whose ` + property + ` is "` + quoted + `"`
-		if _, err := in.exec(ctx, "osascript", "-e", script); err != nil {
+		if _, err := in.system(ctx, "osascript", "-e", script); err != nil {
 			in.warnf("Removal of login item %s failed. %s", id, automationAccess)
 		}
 		in.sleep(time.Second)
@@ -480,7 +485,7 @@ func (in *Installer) loginItems(ctx context.Context, apps, names []string) {
 }
 
 func (in *Installer) running(ctx context.Context, id string) bool {
-	_, err := in.exec(ctx, "osascript", "-l", "JavaScript", "-e", runningScript, id)
+	_, err := in.system(ctx, "osascript", "-l", "JavaScript", "-e", runningScript, id)
 	return err == nil
 }
 

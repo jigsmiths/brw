@@ -15,7 +15,7 @@ import (
 )
 
 func (in *Installer) sudoIfNeeded(ctx context.Context, name string, args ...string) error {
-	_, err := in.exec(ctx, name, args...)
+	_, err := in.system(ctx, name, args...)
 	if err == nil || !sudo.Available(ctx, in.runner()) {
 		return err
 	}
@@ -73,9 +73,9 @@ func (in *Installer) gainPermissions(ctx context.Context, path string, flags []s
 			flags = []string{"-h"}
 		}
 		if !triedPermissions {
-			_, _ = in.exec(ctx, "/usr/bin/chflags", append(slices.Clone(flags), "--", "000", target)...)
-			_, _ = in.exec(ctx, "/bin/chmod", append(slices.Clone(flags), "--", "u+rwx", target)...)
-			_, _ = in.exec(ctx, "/bin/chmod", append(slices.Clone(flags), "-N", target)...)
+			_, _ = in.system(ctx, "/usr/bin/chflags", append(slices.Clone(flags), "--", "000", target)...)
+			_, _ = in.system(ctx, "/bin/chmod", append(slices.Clone(flags), "--", "u+rwx", target)...)
+			_, _ = in.system(ctx, "/bin/chmod", append(slices.Clone(flags), "-N", target)...)
 			triedPermissions = true
 			continue
 		}

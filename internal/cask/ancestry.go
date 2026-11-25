@@ -77,7 +77,7 @@ func (in *Installer) gui(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	out, err := in.exec(ctx, "who")
+	out, err := in.system(ctx, "who")
 	if err != nil {
 		return false
 	}

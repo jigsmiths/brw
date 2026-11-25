@@ -390,7 +390,7 @@ func TestInstallerTracesItsCommandsLikeBrewsSystemCommand(t *testing.T) {
 			ti, _ := installed(t, `[{"app":["App.app"]}]`)
 			ti.in.Verbose, ti.in.Debug = tc.verbose, tc.debug
 			ti.warn.Reset()
-			_, _ = ti.in.exec(context.Background(), "/bin/chmod", "-R", "u+rwx", "/a b")
+			_, _ = ti.in.system(context.Background(), "/bin/chmod", "-R", "u+rwx", "/a b")
 			if got := ti.warn.String(); got != tc.want {
 				t.Errorf("trace = %q, want %q", got, tc.want)
 			}
