@@ -25,6 +25,7 @@ import (
 type Exec func(ctx context.Context, name string, args ...string) ([]byte, error)
 
 func execCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
+	sudo.Guard(name)
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stderr = &stderr

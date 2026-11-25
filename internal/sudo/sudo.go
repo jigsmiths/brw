@@ -107,6 +107,8 @@ func Exec(ctx context.Context, c Command) (Result, error) {
 	if c.Trace != nil {
 		_, _ = fmt.Fprintln(c.Trace, Redact(ShellJoin(argv), c.Secrets))
 	}
+	Guard(argv[0])
+	Guard(c.Exe)
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = append(os.Environ(), c.Env...)
 	cmd.Env = append(cmd.Env, "COLUMNS="+strconv.Itoa(columns(stdinColumns, tputColumns)))

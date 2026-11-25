@@ -259,6 +259,27 @@ func TestCommandNeverFormatsItsSecrets(t *testing.T) {
 	}
 }
 
+func TestTestsCannotRunPrivilegedCommandsForReal(t *testing.T) {
+	for _, exe := range []string{"/usr/bin/sudo", "/usr/sbin/installer", "/usr/sbin/pkgutil", "/bin/launchctl", "/usr/bin/trash"} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s was allowed", exe)
+				}
+			}()
+			Guard(exe)
+		}()
+	}
+	t.Setenv("HOMEBREW_NO_SUDO", "")
+	t.Setenv("HOMEBREW_SUDO_CHECKED", "1")
+	defer func() {
+		if recover() == nil {
+			t.Error("Exec ran a privileged command")
+		}
+	}()
+	_, _ = Exec(context.Background(), Command{Exe: "/usr/sbin/installer", Privilege: Root})
+}
+
 func TestParseSignal(t *testing.T) {
 	for name, want := range map[string]syscall.Signal{
 		"TERM": syscall.SIGTERM, "SIGTERM": syscall.SIGTERM, "KILL": syscall.SIGKILL, "USR2": syscall.SIGUSR2,
