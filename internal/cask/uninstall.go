@@ -129,7 +129,7 @@ func (in *Installer) readUninstall(token, version string) ([]uninstallStep, erro
 	var steps []uninstallStep
 	for _, a := range artifacts {
 		for kind, args := range a {
-			if kind == "zap" {
+			if kind == "zap" || kind == "installer" {
 				continue
 			}
 			s, err := in.readStep(token, version, kind, args)

@@ -39,6 +39,7 @@ type Installer struct {
 	APIPath string
 	Config  Config
 	Exec    Exec
+	Script  ScriptRunner
 	Adopt   bool
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
@@ -124,6 +125,9 @@ func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]b
 	if err != nil {
 		return installPlan{}, nil, "", err
 	}
+	if p.needsSudo() && os.Getenv("HOMEBREW_NO_SUDO") != "" {
+		return installPlan{}, nil, "", brewError("%s: The installer artifact requires sudo, but HOMEBREW_NO_SUDO is set.", c.Token)
+	}
 	links, err := in.checkTargets(c, p, owned)
 	if err != nil {
 		return installPlan{}, nil, "", err
@@ -151,6 +155,9 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 		return err
 	}
 	if err := in.runSteps("preflight_steps", c.Token, c.Version, staged, p.preflight); err != nil {
+		return err
+	}
+	if err := in.runInstallers(ctx, c.Token, staged, p.installers); err != nil {
 		return err
 	}
 	for _, m := range p.apps {
