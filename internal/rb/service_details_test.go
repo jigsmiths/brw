@@ -158,6 +158,24 @@ func TestServiceCronFieldsFollowRubysInteger(t *testing.T) {
 	}
 }
 
+func TestServiceCronAcceptsHugeIntegersLikeRuby(t *testing.T) {
+	got := serviceFiles(t, "  service do\n    run [\"x\"]\n    run_type :cron\n    cron \"99999999999999999999 0x7fffffffffffffffff 1_0 -3 123456789012345678901234567890\"\n  end\n")
+	for _, want := range []string{
+		"\t\t<key>Day</key>\n\t\t<integer>10</integer>\n",
+		"\t\t<key>Hour</key>\n\t\t<integer>2361183241434822606847</integer>\n",
+		"\t\t<key>Minute</key>\n\t\t<integer>99999999999999999999</integer>\n",
+		"\t\t<key>Month</key>\n\t\t<integer>-3</integer>\n",
+		"\t\t<key>Weekday</key>\n\t\t<integer>123456789012345678901234567890</integer>\n",
+	} {
+		if !strings.Contains(got["sh.brew.tool.plist"], want) {
+			t.Errorf("plist lacks %q:\n%s", want, got["sh.brew.tool.plist"])
+		}
+	}
+	if want := "OnCalendar=*--3-10 2361183241434822606847:99999999999999999999:00\n"; !strings.Contains(got["sh.brew.tool.timer"], want) {
+		t.Errorf("timer:\n%s", got["sh.brew.tool.timer"])
+	}
+}
+
 func TestServiceCronErrorsAreBrews(t *testing.T) {
 	withHome(t)
 	for cron, want := range map[string]string{

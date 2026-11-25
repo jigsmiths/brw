@@ -279,8 +279,7 @@ func (s renderedService) plist(cmd []string, label string) string {
 		c := pdict{}
 		for _, kv := range cron {
 			if kv[1] != "*" {
-				n, _ := strconv.Atoi(kv[1])
-				c[kv[0]] = rint(n)
+				c[kv[0]] = pint(kv[1])
 			}
 		}
 		d["StartCalendarInterval"] = c
@@ -318,6 +317,9 @@ func (s renderedService) sockets() pdict {
 	}
 	return out
 }
+
+// pint is a plist integer kept as decimal text so it can be any size.
+type pint string
 
 // pdict is a plist dictionary, written with sorted keys.
 type pdict map[string]any
@@ -362,6 +364,8 @@ func emitPlist(b *strings.Builder, v any, level int) {
 		tag("string", escapeHTML.Replace(x))
 	case rint:
 		tag("integer", strconv.FormatInt(int64(x), 10))
+	case pint:
+		tag("integer", string(x))
 	default:
 		tag("string", escapeHTML.Replace(str(x.(value))))
 	}
@@ -428,8 +432,10 @@ func (s renderedService) timer(unit string) string {
 			if v == "*" {
 				return v
 			}
-			n, _ := strconv.Atoi(v)
-			return fmt.Sprintf("%02d", n)
+			if len(v) == 1 {
+				return "0" + v
+			}
+			return v
 		}
 		day := ""
 		if n, err := strconv.Atoi(c["Weekday"]); err == nil && n >= 0 && n <= 7 {

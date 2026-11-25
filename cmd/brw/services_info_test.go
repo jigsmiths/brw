@@ -166,6 +166,19 @@ func TestServicesInfoJSONWithAServiceBlock(t *testing.T) {
 	}
 }
 
+func TestServicesInfoShowsHugeCronFieldsAsIntegers(t *testing.T) {
+	formula := strings.Replace(infoFormula, `cron "5 4 * * 1"`, `cron "99999999999999999999 4 * * 1"`, 1)
+	e, prefix, _, _ := servicesEnvFiles(t, file(".brew/foo.rb", formula, 0o644), file("sh.brew.foo.plist", testPlist, 0o644))
+	out, err := runCmd(t, e, "services", "info", "--json", "-prefix", prefix, "foo")
+	if err != nil || !strings.Contains(out, "\"Minute\": 99999999999999999999\n") {
+		t.Errorf("json:\n%s\n%v", out, err)
+	}
+	out, err = runCmd(t, e, "services", "info", "-v", "-prefix", prefix, "foo")
+	if err != nil || !strings.Contains(out, "Hour: 4, Minute: 99999999999999999999}\n") {
+		t.Errorf("text:\n%s\n%v", out, err)
+	}
+}
+
 func TestServicesInfoAllListsEveryService(t *testing.T) {
 	e, prefix, _, _ := servicesEnv(t)
 	out, err := runCmd(t, e, "services", "info", "--all", "--json", "-prefix", prefix)

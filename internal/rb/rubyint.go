@@ -1,12 +1,12 @@
 package rb
 
 import (
-	"strconv"
+	"math/big"
 	"strings"
 )
 
-// rubyInteger is Kernel#Integer on a string: a sign, 0x/0b/0o/0d prefixes, a leading 0 for octal, and single underscores between digits.
-func rubyInteger(s string) (int, bool) {
+// rubyInteger is Kernel#Integer on a string: a sign, 0x/0b/0o/0d prefixes, a leading 0 for octal, single underscores between digits, any size.
+func rubyInteger(s string) (*big.Int, bool) {
 	s = strings.TrimSpace(s)
 	negative := strings.HasPrefix(s, "-")
 	if negative || strings.HasPrefix(s, "+") {
@@ -28,14 +28,14 @@ func rubyInteger(s string) (int, bool) {
 		}
 	}
 	if digits == "" || digits[0] == '_' || digits[len(digits)-1] == '_' || strings.Contains(digits, "__") {
-		return 0, false
+		return nil, false
 	}
-	n, err := strconv.ParseInt(strings.ReplaceAll(digits, "_", ""), base, 64)
-	if err != nil {
-		return 0, false
+	n, ok := new(big.Int).SetString(strings.ReplaceAll(digits, "_", ""), base)
+	if !ok {
+		return nil, false
 	}
 	if negative {
-		n = -n
+		n.Neg(n)
 	}
-	return int(n), true
+	return n, true
 }

@@ -141,10 +141,10 @@ func (e *env) infoBlock(t serviceTarget) *infoBlock {
 	}
 	if len(t.block.Cron) > 0 {
 		value := func(i int) any {
-			if n, err := strconv.Atoi(t.block.Cron[i][1]); err == nil {
-				return n
+			if text := t.block.Cron[i][1]; text != "*" {
+				return json.Number(text)
 			}
-			return t.block.Cron[i][1]
+			return "*"
 		}
 		b.Cron = &infoCron{Month: value(0), Day: value(1), Weekday: value(2), Hour: value(3), Minute: value(4)}
 	}

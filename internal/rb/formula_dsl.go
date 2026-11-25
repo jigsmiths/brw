@@ -4,7 +4,6 @@ import (
 	"net/url"
 	"path"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -431,7 +430,7 @@ func parseCron(s string) string {
 			if !ok {
 				fail("invalid value for Integer(): %q", parts[i])
 			}
-			f[k] = strconv.Itoa(n)
+			f[k] = n.String()
 		}
 	}
 	return f["Minute"] + " " + f["Hour"] + " " + f["Day"] + " " + f["Month"] + " " + f["Weekday"]
