@@ -120,7 +120,6 @@ func existing(paths []string) []string {
 
 func (e *env) presentDests(t serviceTarget) []string { return existing(e.dests(t)) }
 
-// registeredInEitherDir is brew's service_file_present?.
 func (e *env) registeredInEitherDir(t serviceTarget) bool {
 	return len(existing(e.destsIn(e.daemonsDir, t))) > 0 || len(existing(e.destsIn(e.agentsDir, t))) > 0
 }
@@ -186,7 +185,6 @@ func (e *env) owner(t serviceTarget, s serviceSnap) *string {
 	return nil
 }
 
-// registered is brew's registered_destination, in the directory this run manages.
 func (e *env) registered(t serviceTarget, s serviceSnap) (string, bool) {
 	present := e.presentDests(t)
 	if len(present) == 0 {

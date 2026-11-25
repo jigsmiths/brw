@@ -29,7 +29,6 @@ func (f *Formula) ServiceFiles(root string) (files map[string]string, err error)
 	return files, nil
 }
 
-// ServiceRequiresRoot is brew's service.requires_root?, which makes a service start at boot.
 func (f *Formula) ServiceRequiresRoot(root string) (requires bool, err error) {
 	if f.b.serviceBlk == nil {
 		return false, nil

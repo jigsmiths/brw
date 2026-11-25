@@ -146,9 +146,7 @@ const userNameKeyName = "UserName"
 
 var userNameEntry = regexp.MustCompile(`\t<key>` + userNameKeyName + `</key>\n\t<string>[^<]*</string>\n`)
 
-// ApplyUserName sets a plist's UserName as brew's --sudo-service-user does.
-// False means the plist had no shape it could edit.
-func ApplyUserName(plist []byte, user string) ([]byte, bool) {
+func ApplyUserName(plist []byte, user string) (out []byte, editable bool) {
 	s := string(plist)
 	if !strings.HasSuffix(s, plistTail) || !strings.Contains(s, "\n<dict>\n") {
 		return plist, false
@@ -166,9 +164,7 @@ var (
 	xmlUnescape = strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&")
 )
 
-// Program is the executable a plist launches and the key it came from, as
-// brew's take_root_ownership? names them in its warning.
-func Program(plist []byte) (path, key string) {
+func Program(plist []byte) (path, source string) {
 	if p, ok := firstString(programArgs, plist); ok && p != "" {
 		return xmlUnescape.Replace(p), "first ProgramArguments value"
 	}

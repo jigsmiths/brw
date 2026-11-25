@@ -40,7 +40,6 @@ func (e *env) checkLoad(t serviceTarget, function string) error {
 	return nil
 }
 
-// takeRootOwnership hands the service file and the software it runs to root, as brew's take_root_ownership?.
 func (e *env) takeRootOwnership(t serviceTarget, dst string, body []byte) error {
 	if !e.root() || e.sudoUser != "" {
 		return nil
@@ -52,7 +51,7 @@ func (e *env) takeRootOwnership(t serviceTarget, dst string, body []byte) error 
 		return nil
 	}
 	var paths []string
-	if program, key := services.Program(body); program != "" {
+	if program, source := services.Program(body); program != "" {
 		located := program
 		if !filepath.IsAbs(located) {
 			located = filepath.Join(string(filepath.Separator), located)
@@ -60,7 +59,7 @@ func (e *env) takeRootOwnership(t serviceTarget, dst string, body []byte) error 
 		if real, err := filepath.EvalSymlinks(located); err == nil {
 			paths = append(paths, real, filepath.Dir(real))
 		} else {
-			e.opoo("%s: the %s does not exist:\n  %s", t.name, key, program)
+			e.opoo("%s: the %s does not exist:\n  %s", t.name, source, program)
 		}
 	}
 	paths = append(paths,
