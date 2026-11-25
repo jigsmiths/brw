@@ -2,6 +2,7 @@ package cask
 
 import (
 	"context"
+	"errors"
 	"os"
 	"slices"
 	"strconv"
@@ -26,16 +27,19 @@ func TestUninstallLeavesAnyAppBrwRunsInside(t *testing.T) {
 		parents := map[string]string{strconv.Itoa(os.Getpid()): "500", "500": "400", "400": "500"}
 		f.handle = map[string]func([]string) ([]byte, error){
 			"/bin/ps": func(args []string) ([]byte, error) {
+				if args[1] == "comm=" {
+					if args[3] == "400" {
+						return []byte("/Applications/Term.app/Contents/Frameworks/Helper.app/Contents/MacOS/Helper\n"), nil
+					}
+					return []byte("/usr/bin/login\n"), nil
+				}
 				return []byte(parents[args[3]] + "\n"), nil
 			},
-			"osascript": func(args []string) ([]byte, error) {
-				if strings.Contains(args[3], "runningApplicationWithProcessIdentifier") {
-					if args[len(args)-1] == "400" {
-						return []byte("com.term"), nil
-					}
-					return nil, nil
+			"/usr/bin/plutil": func(args []string) ([]byte, error) {
+				if args[len(args)-1] == "/Applications/Term.app/Contents/Frameworks/Helper.app/Contents/Info.plist" {
+					return []byte("com.term\n"), nil
 				}
-				return nil, nil
+				return nil, errors.New("no plist")
 			},
 			"/bin/launchctl": func([]string) ([]byte, error) {
 				return []byte("PID\tStatus\tLabel\n9\t0\tcom.term\n"), nil
@@ -54,6 +58,21 @@ func TestUninstallLeavesAnyAppBrwRunsInside(t *testing.T) {
 			if !slices.Contains(f.calls, want) {
 				t.Errorf("%s: calls = %q, missing %q", directive, f.calls, want)
 			}
+		}
+	}
+}
+
+func TestAppBundleOf(t *testing.T) {
+	for comm, want := range map[string]string{
+		"/Applications/Foo.app/Contents/MacOS/Foo":          "/Applications/Foo.app",
+		"/Applications/My App.app/Contents/MacOS/My App":    "/Applications/My App.app",
+		"/A.app/Contents/Frameworks/H.app/Contents/MacOS/H": "/A.app/Contents/Frameworks/H.app",
+		"/usr/bin/zsh": "",
+		"/Applications/Foo.app/Contents/Resources/tool": "",
+		"zsh": "",
+	} {
+		if got := appBundleOf(comm); got != want {
+			t.Errorf("appBundleOf(%q) = %q, want %q", comm, got, want)
 		}
 	}
 }

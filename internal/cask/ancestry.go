@@ -4,24 +4,14 @@ import (
 	"context"
 	"os"
 	"os/user"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 )
 
-const bundleIDForPIDScript = `'use strict';
-
-ObjC.import('AppKit')
-
-function run(argv) {
-  var app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(parseInt(argv[0]))
-  if (app.isNil()) {
-    return ""
-  }
-  var bundleId = app.bundleIdentifier
-  return bundleId.isNil() ? "" : ObjC.unwrap(bundleId)
-}`
+const appExecutableDir = ".app/Contents/MacOS/"
 
 const runningBundleIDsScript = `'use strict';
 
@@ -59,12 +49,37 @@ func (in *Installer) ancestorBundleIDs(ctx context.Context) []string {
 	}
 	var ids []string
 	for _, pid := range pids {
-		out, err := in.exec(ctx, "osascript", "-l", "JavaScript", "-e", bundleIDForPIDScript, strconv.Itoa(pid))
-		if id := strings.TrimSpace(string(out)); err == nil && id != "" {
+		if id := in.bundleIDForPID(ctx, pid); id != "" {
 			ids = append(ids, id)
 		}
 	}
 	return ids
+}
+
+// bundleIDForPID reads the bundle ID from the app that holds the process's executable, which needs no Automation access.
+func (in *Installer) bundleIDForPID(ctx context.Context, pid int) string {
+	out, err := in.exec(ctx, "/bin/ps", "-o", "comm=", "-p", strconv.Itoa(pid))
+	if err != nil {
+		return ""
+	}
+	bundle := appBundleOf(strings.TrimSpace(string(out)))
+	if bundle == "" {
+		return ""
+	}
+	out, err = in.exec(ctx, "/usr/bin/plutil", "-extract", "CFBundleIdentifier", "raw", "-o", "-", filepath.Join(bundle, "Contents/Info.plist"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// appBundleOf is the innermost app bundle whose main executable is comm.
+func appBundleOf(comm string) string {
+	i := strings.LastIndex(comm, appExecutableDir)
+	if i < 0 {
+		return ""
+	}
+	return comm[:i+len(".app")]
 }
 
 func (in *Installer) parentPID(ctx context.Context, pid int) (int, bool) {

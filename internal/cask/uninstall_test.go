@@ -56,10 +56,18 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 	case "/bin/cp", "/bin/mkdir":
 		return exec.CommandContext(ctx, name, args...).Output()
 	case "/bin/ps":
-		if args[1] == "ppid=" {
+		switch args[1] {
+		case "ppid=":
 			return []byte("1\n"), nil
+		case "comm=":
+			if f.hostID != "" {
+				return []byte("/Applications/Host.app/Contents/MacOS/Host\n"), nil
+			}
+			return []byte("/bin/zsh\n"), nil
 		}
 		return []byte(fmt.Sprintf("%d\n", os.Getuid())), nil
+	case "/usr/bin/plutil":
+		return []byte(f.hostID + "\n"), nil
 	case "who":
 		if f.gui {
 			return []byte(loginName(&testing.T{}) + " console Nov 25 10:00\n"), nil
@@ -69,10 +77,7 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 		if args[0] == "-e" {
 			return nil, nil
 		}
-		switch {
-		case strings.Contains(args[3], "runningApplicationWithProcessIdentifier"):
-			return []byte(f.hostID), nil
-		case strings.Contains(args[3], "runningApplications"):
+		if strings.Contains(args[3], "runningApplications") {
 			return []byte(f.runningIDs), nil
 		}
 		id := args[len(args)-1]
