@@ -87,7 +87,6 @@ func expandOrFail(p string) string {
 	return out
 }
 
-// ExpandPath is File.expand_path: ~ and ~user are replaced and the result is absolute and clean.
 func ExpandPath(p string) (string, error) {
 	if strings.HasPrefix(p, "~") {
 		name, rest, _ := strings.Cut(p[1:], "/")

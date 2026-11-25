@@ -768,7 +768,6 @@ func (e *env) restartServices(targets []serviceTarget, o *servicesOpts) error {
 		}
 	}
 	if ran {
-		// brew runs every target here, not only the ones that were loaded without a file.
 		for _, t := range targets {
 			if err := e.runService(t, o.file); err != nil {
 				return err

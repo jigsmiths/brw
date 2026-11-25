@@ -14,7 +14,6 @@ func plutilXML(path string) ([]byte, error) {
 	return exec.Command("/usr/bin/plutil", "-convert", "xml1", "-o", "-", path).Output()
 }
 
-// fileLabel is FormulaWrapper.service_file_label: binary plists go through plutil.
 func (e *env) fileLabel(path string) (string, bool) {
 	fi, err := os.Stat(path)
 	if err != nil || !fi.Mode().IsRegular() {

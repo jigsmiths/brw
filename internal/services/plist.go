@@ -54,7 +54,6 @@ type plistDict struct {
 // plistUnprintable is a key whose to_s differs on every run or needs a date offset, such as a data or date element.
 type plistUnprintable struct{}
 
-// checkPrintable fails when the output would print a key brw cannot reproduce.
 func checkPrintable(v any) error {
 	switch x := v.(type) {
 	case *plistDict:
