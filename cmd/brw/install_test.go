@@ -36,7 +36,7 @@ func (s *store) appCask(token string) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	for _, f := range []struct{ name, body string }{{"App.app/Contents/Info.plist", "<plist/>"}, {"tool", "#!/bin/sh\n"}} {
+	for _, f := range []struct{ name, body string }{{"App.app/Contents/Info.plist", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict/></plist>\n"}, {"tool", "#!/bin/sh\n"}} {
 		_ = tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0o755, Size: int64(len(f.body)), Typeflag: tar.TypeReg})
 		_, _ = tw.Write([]byte(f.body))
 	}

@@ -372,7 +372,11 @@ func (in *Installer) moveApp(ctx context.Context, version string, m move, autoUp
 			if err != nil {
 				return err
 			}
-			if !in.sameApp(ctx, abs, m.target) {
+			same, err := in.sameApp(ctx, abs, m.target)
+			if err != nil {
+				return err
+			}
+			if !same {
 				return brewError("It seems the existing App is different from the one being installed.")
 			}
 		}

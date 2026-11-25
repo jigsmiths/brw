@@ -104,14 +104,26 @@ func TestInstallAdoptsAnAutoUpdatingAppOfAnyVersion(t *testing.T) {
 	}
 }
 
+const versionlessPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict/></plist>
+`
+
+var versionlessTarball = func() []byte {
+	var t testing.T
+	return tarGzBytes(&t,
+		entry{name: "App.app/Contents/Info.plist", body: versionlessPlist},
+		entry{name: "App.app/Contents/MacOS/app", body: "#!/bin/sh\n", mode: 0o755},
+		entry{name: "tool", body: "#!/bin/sh\n"})
+}()
+
 func TestInstallAdoptsByComparingFilesWithoutVersions(t *testing.T) {
 	for _, tc := range []struct {
 		body string
 		ok   bool
 	}{{"#!/bin/sh\n", true}, {"changed\n", false}} {
-		ti := newTestInstall(t, appTarball)
+		ti := newTestInstall(t, versionlessTarball)
 		ti.in.Adopt = true
-		app := existingApp(t, ti, "<plist/>")
+		app := existingApp(t, ti, versionlessPlist)
 		writeFile(t, filepath.Join(app, "Contents/MacOS/app"), []byte(tc.body), 0o755)
 		err := ti.in.Install(context.Background(), ti.cask(t, `[{"app":["App.app"]}]`))
 		if tc.ok && err != nil {
