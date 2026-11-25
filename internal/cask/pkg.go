@@ -3,6 +3,7 @@ package cask
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -244,54 +245,8 @@ func withChoicesFile(choices json.RawMessage, fn func(path string) error) error 
 	return fn(f.Name())
 }
 
-// rmdirScript is brew's cask/utils/rmdir.sh; unlike brew, it runs through bash -c as brw has no Homebrew library to read it from.
-const rmdirScript = `set -euo pipefail
-
-# Try removing as many empty directories as possible with a single
-# ` + "`rmdir`" + ` call to avoid or at least speed up the loop below.
-if rmdir -- "${@}" &>/dev/null
-then
-  exit
-fi
-
-for path in "${@}"
-do
-  symlink=true
-  [[ -L "${path}" ]] || symlink=false
-
-  directory=false
-  if [[ -d "${path}" ]]
-  then
-    directory=true
-
-    if [[ -e "${path}/.DS_Store" ]]
-    then
-      /bin/rm -- "${path}/.DS_Store"
-    fi
-
-    # Some packages leave broken symlinks around; we clean them out before
-    # attempting to ` + "`rmdir`" + ` to prevent extra cruft from accumulating.
-    /usr/bin/find "${path}" -mindepth 1 -maxdepth 1 -type l ! -exec test -e {} \; -delete || true
-  elif ! ${symlink} && [[ ! -e "${path}" ]]
-  then
-    # Skip paths that don't exists and aren't a broken symlink.
-    continue
-  fi
-
-  if ${symlink}
-  then
-    # Delete directory symlink.
-    /bin/rm -- "${path}"
-  elif ${directory}
-  then
-    # Delete directory if empty.
-    /usr/bin/find "${path}" -maxdepth 0 -type d -empty -exec rmdir -- {} \;
-  else
-    # Try ` + "`rmdir`" + ` anyways to show a proper error.
-    rmdir -- "${path}"
-  fi
-done
-`
+//go:embed rmdir.sh
+var rmdirScript string
 
 func (in *Installer) uninstallPkgutil(ctx context.Context, regexes []string) error {
 	in.logf("==> Uninstalling packages with `sudo` (which may request your password)...")

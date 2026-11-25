@@ -9,7 +9,6 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -34,24 +33,6 @@ var signals = map[string]syscall.Signal{
 	"VTALRM": syscall.SIGVTALRM, "PROF": syscall.SIGPROF, "WINCH": syscall.SIGWINCH,
 	"USR1": syscall.SIGUSR1, "USR2": syscall.SIGUSR2,
 }
-
-const runningBundleIDsScript = `'use strict';
-
-ObjC.import('AppKit')
-
-function run() {
-  var apps = $.NSWorkspace.sharedWorkspace.runningApplications
-  var bundleIds = []
-
-  for (var i = 0; i < apps.count; i++) {
-    var bundleId = apps.objectAtIndex(i).bundleIdentifier
-    if (!bundleId.isNil()) {
-      bundleIds.push(ObjC.unwrap(bundleId))
-    }
-  }
-
-  return bundleIds.join("\n")
-}`
 
 func flattenStrings(raw json.RawMessage) ([]string, error) {
 	var v any
@@ -253,28 +234,14 @@ func lines(s string) []string {
 	return out
 }
 
-func (in *Installer) uninstallSignal(ctx context.Context, token string, values []string) error {
+func (in *Installer) uninstallSignal(ctx context.Context, token string, values []string, expand *bundleIDs) error {
 	type pair struct{ signal, id string }
 	var pairs []pair
-	var running []string
-	haveRunning := false
 	for chunk := range slices.Chunk(values, 2) {
 		if len(chunk) != 2 {
 			return brewError("Cask '%s' definition is invalid: Each uninstall :signal must consist of 2 elements.", token)
 		}
-		ids := []string{chunk[1]}
-		if strings.Contains(chunk[1], "*") {
-			if !haveRunning {
-				var ok bool
-				if running, ok = in.runningBundleIDs(ctx, chunk[1]); !ok {
-					continue
-				}
-				haveRunning = true
-			}
-			re := regexp.MustCompile(`(?i)^` + strings.ReplaceAll(regexp.QuoteMeta(chunk[1]), `\*`, ".*") + `$`)
-			ids = slices.DeleteFunc(slices.Clone(running), func(id string) bool { return !re.MatchString(id) })
-		}
-		for _, id := range ids {
+		for _, id := range expand.expand(ctx, chunk[1]) {
 			pairs = append(pairs, pair{chunk[0], id})
 		}
 	}
@@ -286,7 +253,7 @@ func (in *Installer) uninstallSignal(ctx context.Context, token string, values [
 		if len(pids) == 0 {
 			continue
 		}
-		if host := os.Getenv("__CFBundleIdentifier"); strings.EqualFold(host, p.id) {
+		if in.hostingBrw(ctx, p.id) {
 			in.warnf("Skipping signalling application '%s' as `brw` is running inside it.", p.id)
 			continue
 		}
@@ -353,36 +320,4 @@ func (in *Installer) ownedByMe(ctx context.Context, pid int) bool {
 	}
 	uid, err := strconv.Atoi(strings.TrimSpace(string(out)))
 	return err == nil && uid == os.Getuid()
-}
-
-func (in *Installer) runningBundleIDs(ctx context.Context, pattern string) ([]string, bool) {
-	if !in.gui(ctx) {
-		in.warnf("Not logged into a GUI; skipping applications matching '%s'.", pattern)
-		return nil, false
-	}
-	out, _ := in.exec(ctx, "osascript", "-l", "JavaScript", "-e", runningBundleIDsScript)
-	var ids []string
-	for id := range strings.SplitSeq(string(out), "\n") {
-		if id = strings.TrimSpace(id); id != "" {
-			ids = append(ids, id)
-		}
-	}
-	return ids, true
-}
-
-func (in *Installer) gui(ctx context.Context) bool {
-	u, err := user.Current()
-	if err != nil {
-		return false
-	}
-	out, err := in.exec(ctx, "who")
-	if err != nil {
-		return false
-	}
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if f := strings.Fields(line); len(f) > 1 && f[0] == u.Username && f[1] == "console" {
-			return true
-		}
-	}
-	return false
 }

@@ -20,6 +20,10 @@ type fakeExec struct {
 	fail    map[string]bool
 	noFix   bool
 	handle  map[string]func(args []string) ([]byte, error)
+	// gui is whether the user has a console session.
+	gui bool
+	// hostID is the bundle ID of the app brw runs in; runningIDs lists the running apps.
+	hostID, runningIDs string
 }
 
 func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -51,9 +55,25 @@ func (f *fakeExec) exec(ctx context.Context, name string, args ...string) ([]byt
 		return exec.CommandContext(ctx, name, args...).Output()
 	case "/bin/cp", "/bin/mkdir":
 		return exec.CommandContext(ctx, name, args...).Output()
+	case "/bin/ps":
+		if args[1] == "ppid=" {
+			return []byte("1\n"), nil
+		}
+		return []byte(fmt.Sprintf("%d\n", os.Getuid())), nil
+	case "who":
+		if f.gui {
+			return []byte(loginName(&testing.T{}) + " console Nov 25 10:00\n"), nil
+		}
+		return nil, nil
 	case "osascript":
 		if args[0] == "-e" {
 			return nil, nil
+		}
+		switch {
+		case strings.Contains(args[3], "runningApplicationWithProcessIdentifier"):
+			return []byte(f.hostID), nil
+		case strings.Contains(args[3], "runningApplications"):
+			return []byte(f.runningIDs), nil
 		}
 		id := args[len(args)-1]
 		if !strings.Contains(args[3], "app.quit()") {
@@ -91,7 +111,7 @@ func installed(t *testing.T, artifacts string) (*testInstall, *fakeExec) {
 		t.Fatal(err)
 	}
 	ti.out.Reset()
-	f := &fakeExec{running: map[string]int{}, fail: map[string]bool{}}
+	f := &fakeExec{running: map[string]int{}, fail: map[string]bool{}, gui: true}
 	ti.in.Exec = f.exec
 	return ti, f
 }
@@ -147,7 +167,7 @@ func TestUninstallQuitsARunningApp(t *testing.T) {
 
 func TestUninstallLeavesTheAppBrwRunsIn(t *testing.T) {
 	ti, f := installed(t, appArtifacts)
-	t.Setenv("__CFBundleIdentifier", "com.example.app")
+	f.hostID = "com.example.app"
 	f.running["com.example.app"] = 1
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)

@@ -167,7 +167,6 @@ func signalling(t *testing.T, directives string) (*testInstall, *fakeExec, *[]st
 			}
 			return nil, errors.New("not found")
 		},
-		"/bin/ps": func(args []string) ([]byte, error) { return []byte(fmt.Sprintf("%d\n", os.Getuid())), nil },
 	}
 	var kills []string
 	ti.in.Kill = func(pid int, sig syscall.Signal) error {
@@ -208,7 +207,12 @@ func TestUninstallSignalAcceptsPairsAndSigPrefix(t *testing.T) {
 
 func TestUninstallSignalSkipsOtherUsersProcesses(t *testing.T) {
 	ti, f, kills := signalling(t, `{"signal":["TERM","com.other"]}`)
-	f.handle["/bin/ps"] = func([]string) ([]byte, error) { return []byte("0\n"), nil }
+	f.handle["/bin/ps"] = func(args []string) ([]byte, error) {
+		if args[1] == "ppid=" {
+			return []byte("1\n"), nil
+		}
+		return []byte("0\n"), nil
+	}
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
@@ -218,8 +222,8 @@ func TestUninstallSignalSkipsOtherUsersProcesses(t *testing.T) {
 }
 
 func TestUninstallSignalSkipsTheHostApp(t *testing.T) {
-	t.Setenv("__CFBundleIdentifier", "COM.other")
-	ti, _, kills := signalling(t, `{"signal":["TERM","com.other"]}`)
+	ti, f, kills := signalling(t, `{"signal":["TERM","com.other"]}`)
+	f.hostID = "COM.other"
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
@@ -281,11 +285,7 @@ func TestUninstallSignalWaitsForUpgradesUnlessAskedTo(t *testing.T) {
 
 func TestUninstallSignalExpandsWildcards(t *testing.T) {
 	ti, f, kills := signalling(t, `{"signal":["TERM","com.EXAMPLE.*"]}`)
-	who := loginName(t) + " console Nov 25 10:00\n"
-	f.handle["who"] = func([]string) ([]byte, error) { return []byte(who), nil }
-	f.handle["osascript"] = func([]string) ([]byte, error) {
-		return []byte("com.example.app\norg.other.com.example.app\ncom.example.apple\n"), nil
-	}
+	f.runningIDs = "com.example.app\norg.other.com.example.app\ncom.example.apple\n"
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,8 @@ func TestUninstallSignalExpandsWildcards(t *testing.T) {
 }
 
 func TestUninstallSignalWildcardNeedsAGUI(t *testing.T) {
-	ti, _, kills := signalling(t, `{"signal":["TERM","com.example.*"]}`)
+	ti, f, kills := signalling(t, `{"signal":["TERM","com.example.*"]}`)
+	f.gui = false
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}

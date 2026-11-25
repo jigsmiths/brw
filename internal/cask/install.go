@@ -53,6 +53,9 @@ type Installer struct {
 	upgrading     bool
 	reopen        []string
 	warnedSandbox bool
+
+	ancestors      []string
+	ancestorsKnown bool
 }
 
 func (in *Installer) logf(format string, args ...any) {

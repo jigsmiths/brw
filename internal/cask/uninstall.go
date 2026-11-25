@@ -255,6 +255,7 @@ func readDirectives(args json.RawMessage) (map[string][]string, map[string][]jso
 
 func (in *Installer) runDirectives(ctx context.Context, token string, step uninstallStep, apps []string, force bool) error {
 	d := step.directives
+	expand := &bundleIDs{in: in}
 	runScripts := func(directive string) error {
 		for _, raw := range step.scripts[directive] {
 			if err := in.uninstallScript(ctx, token, step.stagedVersion, directive, raw, force); err != nil {
@@ -270,10 +271,10 @@ func (in *Installer) runDirectives(ctx context.Context, token string, step unins
 		in.launchctl(ctx, s)
 	}
 	if s := d["quit"]; len(s) > 0 {
-		in.quit(ctx, s)
+		in.quit(ctx, s, expand)
 	}
 	if s := d["signal"]; len(s) > 0 && (!in.upgrading || slices.Contains(d["on_upgrade"], "signal")) {
-		if err := in.uninstallSignal(ctx, token, s); err != nil {
+		if err := in.uninstallSignal(ctx, token, s, expand); err != nil {
 			return err
 		}
 	}
@@ -415,16 +416,20 @@ const automationAccess = `Enable Automation access for "Terminal → System Even
   System Settings → Privacy & Security → Automation
 if you haven't already.`
 
-func (in *Installer) quit(ctx context.Context, ids []string) {
+func (in *Installer) quit(ctx context.Context, patterns []string, expand *bundleIDs) {
+	var ids []string
+	for _, p := range patterns {
+		ids = append(ids, expand.expand(ctx, p)...)
+	}
 	for _, id := range ids {
-		if strings.Contains(id, "*") {
-			in.warnf("brw cannot quit applications matching '%s' yet; skipping.", id)
-			continue
-		}
 		if !in.running(ctx, id) {
 			continue
 		}
-		if host := os.Getenv("__CFBundleIdentifier"); strings.EqualFold(host, id) {
+		if !in.gui(ctx) {
+			in.warnf("Not logged into a GUI; skipping quitting application ID '%s'.", id)
+			continue
+		}
+		if in.hostingBrw(ctx, id) {
 			in.warnf("Skipping quitting application '%s' as `brw` is running inside it.", id)
 			continue
 		}
