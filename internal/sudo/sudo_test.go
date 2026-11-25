@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -237,6 +238,24 @@ func TestSignalNames(t *testing.T) {
 		if got := signalName(sig); got != want {
 			t.Errorf("signalName(%d) = %q, want %q", sig, got, want)
 		}
+	}
+}
+
+func TestCommandNeverFormatsItsSecrets(t *testing.T) {
+	const secret = "fake-secret-value"
+	c := Command{
+		Exe: "/bin/tool", Args: []string{"--token=" + secret}, Env: []string{"KEY=" + secret}, Input: secret + "\n",
+		Secrets: []string{secret, "other-fake-secret"},
+	}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q", "%d", "%x"} {
+		for name, arg := range map[string]any{"value": c, "pointer": &c, "slice": []Command{c}, "error": fmt.Errorf("wrapped: %v", c)} {
+			if got := fmt.Sprintf(verb, arg); strings.Contains(got, secret) || strings.Contains(got, "other-fake-secret") {
+				t.Errorf("%s of a %s leaks a secret: %s", verb, name, got)
+			}
+		}
+	}
+	if got := fmt.Sprintf("%v", c); !strings.Contains(got, "/bin/tool") {
+		t.Errorf("the command should still be readable: %s", got)
 	}
 }
 

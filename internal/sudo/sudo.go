@@ -39,6 +39,21 @@ type Command struct {
 	Secrets        []string
 }
 
+// Format prints the command for every verb with its secrets redacted and its writers left out.
+func (c Command) Format(f fmt.State, _ rune) {
+	hide := func(s string) string { return Redact(s, c.Secrets) }
+	args := make([]string, len(c.Args))
+	for i, a := range c.Args {
+		args[i] = hide(a)
+	}
+	env := make([]string, len(c.Env))
+	for i, e := range c.Env {
+		env[i] = hide(e)
+	}
+	_, _ = fmt.Fprintf(f, "sudo.Command{Exe:%s Args:%q Env:%q Input:%q Privilege:%d MustSucceed:%t Secrets:%d}",
+		hide(c.Exe), args, env, hide(c.Input), c.Privilege, c.MustSucceed, len(c.Secrets))
+}
+
 type Result struct{ Stdout, Stderr string }
 
 type Runner func(ctx context.Context, c Command) (Result, error)
