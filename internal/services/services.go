@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -114,74 +113,40 @@ func ParseEnvPairs(content string) (pairs [][2]string, skipped []string) {
 	return pairs, skipped
 }
 
-var (
-	envDict      = regexp.MustCompile(`(?s)\t<key>EnvironmentVariables</key>\n\t<dict>\n(.*?)\t</dict>\n`)
-	envEntry     = regexp.MustCompile(`\t\t<key>([^<]*)</key>\n\t\t<string>([^<]*)</string>\n`)
-	topLevelKey  = regexp.MustCompile(`(?m)^\t<key>([^<]+)</key>$`)
-	xmlEscaper   = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
-	plistTail    = "</dict>\n</plist>\n"
-	envDictKey   = "EnvironmentVariables"
-	envDictStart = "\t<key>" + envDictKey + "</key>\n\t<dict>\n"
-)
-
-// ApplyEnv sets variables in a plist's EnvironmentVariables as brew's
-// effective_environment_variables does: overrides win, keys stay sorted.
-// False means the plist had no shape it could edit.
-func ApplyEnv(plist []byte, env map[string]string) ([]byte, bool) {
-	s := string(plist)
-	if !strings.HasSuffix(s, plistTail) || !strings.Contains(s, "\n<dict>\n") {
-		return plist, false
+// Program is how take_root_ownership? finds the executable. parsed is false when
+// the plist does not parse, where brew gives up on the rest of the ownership change.
+func Program(plist []byte) (path, source string, parsed bool) {
+	root, err := parsePlist(string(plist))
+	if err != nil {
+		return "", "", false
 	}
-	if len(env) == 0 {
-		return plist, true
+	if _, isNil := root.(plistNil); isNil {
+		return "", "", false
 	}
-	vars := map[string]string{}
-	loc := envDict.FindStringSubmatchIndex(s)
-	if loc != nil {
-		for _, m := range envEntry.FindAllStringSubmatch(s[loc[2]:loc[3]], -1) {
-			vars[m[1]] = m[2]
+	dict, _ := root.(*plistDict)
+	if dict == nil {
+		return "", "", true
+	}
+	value := func(key string) (string, bool) {
+		for _, e := range dict.entries {
+			if e.id == "s:"+key {
+				s, ok := e.val.(string)
+				return s, ok
+			}
+		}
+		return "", false
+	}
+	for _, e := range dict.entries {
+		if args, ok := e.val.([]any); ok && e.id == "s:ProgramArguments" && len(args) > 0 {
+			if first, ok := args[0].(string); ok && strings.TrimSpace(first) != "" {
+				return first, "first ProgramArguments value", true
+			}
 		}
 	}
-	for k, v := range env {
-		vars[xmlEscaper.Replace(k)] = xmlEscaper.Replace(v)
+	if program, ok := value("Program"); ok && strings.TrimSpace(program) != "" {
+		return program, "Program", true
 	}
-	var b strings.Builder
-	b.WriteString(envDictStart)
-	for _, k := range slices.Sorted(maps.Keys(vars)) {
-		fmt.Fprintf(&b, "\t\t<key>%s</key>\n\t\t<string>%s</string>\n", k, vars[k])
-	}
-	b.WriteString("\t</dict>\n")
-	if loc != nil {
-		return []byte(s[:loc[0]] + b.String() + s[loc[1]:]), true
-	}
-	return []byte(insertTopLevel(s, envDictKey, b.String())), true
-}
-
-func insertTopLevel(s, key, block string) string {
-	at := len(s) - len(plistTail)
-	for _, m := range topLevelKey.FindAllStringSubmatchIndex(s, -1) {
-		if s[m[2]:m[3]] > key {
-			at = m[0]
-			break
-		}
-	}
-	return s[:at] + block + s[at:]
-}
-
-var (
-	programArgs = regexp.MustCompile(`<key>ProgramArguments</key>\s*<array>\s*<string>([^<]*)</string>`)
-	programKey  = regexp.MustCompile(`<key>Program</key>\s*<string>([^<]*)</string>`)
-	xmlUnescape = strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&")
-)
-
-func Program(plist []byte) (path, source string) {
-	if p, ok := firstString(programArgs, plist); ok && p != "" {
-		return xmlUnescape.Replace(p), "first ProgramArguments value"
-	}
-	if p, ok := firstString(programKey, plist); ok && p != "" {
-		return xmlUnescape.Replace(p), "Program"
-	}
-	return "", ""
+	return "", "", true
 }
 
 func FindPlist(kegPath string, names []string) (string, error) {
@@ -204,14 +169,6 @@ func FindPlist(kegPath string, names []string) (string, error) {
 func FileLabel(plist []byte) (string, bool) { return plistString(plist, "Label") }
 
 func FileUser(plist []byte) (string, bool) { return plistString(plist, userNameKeyName) }
-
-func firstString(re *regexp.Regexp, b []byte) (string, bool) {
-	m := re.FindSubmatch(b)
-	if m == nil {
-		return "", false
-	}
-	return string(m[1]), true
-}
 
 // plistString is `Plist.parse_xml(...)[key]` kept when it is a non-blank String; a plist that does not parse has none.
 func plistString(plist []byte, key string) (string, bool) {
@@ -237,11 +194,6 @@ func plistString(plist []byte, key string) (string, bool) {
 		return "", false
 	}
 	return s, true
-}
-
-func Timed(plist []byte) bool {
-	s := string(plist)
-	return strings.Contains(s, "<key>StartInterval</key>") || strings.Contains(s, "<key>StartCalendarInterval</key>")
 }
 
 type Info struct {

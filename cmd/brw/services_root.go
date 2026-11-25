@@ -132,11 +132,12 @@ func (e *env) takeRootOwnership(t serviceTarget, dst string, body []byte) error 
 	if err := e.takeOwnership([]string{dst}, rootServiceGroup, false); err != nil {
 		return err
 	}
-	if !strings.Contains(string(body), "<plist") {
+	program, source, parsed := services.Program(body)
+	if !parsed {
 		return nil
 	}
 	var paths []string
-	if program, source := services.Program(body); program != "" {
+	if program != "" {
 		located := program
 		if !filepath.IsAbs(located) {
 			located = filepath.Join(string(filepath.Separator), located)

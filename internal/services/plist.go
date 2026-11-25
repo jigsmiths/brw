@@ -18,6 +18,33 @@ const userNameKeyName = "UserName"
 
 // ApplyUserName sets UserName and re-serializes the plist as the Ruby plist gem's to_plist does.
 func ApplyUserName(plist []byte, user string) ([]byte, error) {
+	return rewritePlist(plist, func(dict *plistDict) {
+		dict.set("s:"+userNameKeyName, userNameKeyName, userNameKeyName, user)
+	})
+}
+
+const envKeyName = "EnvironmentVariables"
+
+// ApplyEnv merges env into EnvironmentVariables through a parse and to_plist round trip, as brew builds its plist from a hash.
+func ApplyEnv(plist []byte, env map[string]string) ([]byte, error) {
+	if len(env) == 0 {
+		return plist, nil
+	}
+	return rewritePlist(plist, func(dict *plistDict) {
+		vars := &plistDict{}
+		for _, e := range dict.entries {
+			if existing, ok := e.val.(*plistDict); ok && e.id == "s:"+envKeyName {
+				vars = existing
+			}
+		}
+		for k, v := range env {
+			vars.set("s:"+k, k, k, v)
+		}
+		dict.set("s:"+envKeyName, envKeyName, envKeyName, vars)
+	})
+}
+
+func rewritePlist(plist []byte, edit func(*plistDict)) ([]byte, error) {
 	root, err := parsePlist(string(plist))
 	if err != nil {
 		return nil, err
@@ -29,7 +56,7 @@ func ApplyUserName(plist []byte, user string) ([]byte, error) {
 	if err := checkPrintable(dict); err != nil {
 		return nil, err
 	}
-	dict.set("s:"+userNameKeyName, userNameKeyName, userNameKeyName, user)
+	edit(dict)
 	var b strings.Builder
 	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
 	b.WriteString("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")

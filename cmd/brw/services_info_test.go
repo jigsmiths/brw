@@ -100,6 +100,15 @@ func TestServicesInfoVerboseWithoutAServiceBlock(t *testing.T) {
 	}
 }
 
+func TestServicesInfoSchedulableComesFromTheServiceBlockNotThePlist(t *testing.T) {
+	timed := "<plist><dict><key>Label</key><string>sh.brew.foo</string><key>StartInterval</key><integer>60</integer></dict></plist>\n"
+	e, prefix, _, _ := servicesEnvFiles(t, file("sh.brew.foo.plist", timed, 0o644))
+	out, err := runCmd(t, e, "services", "info", "-prefix", prefix, "foo")
+	if err != nil || !strings.Contains(out, "Schedulable: false\n") {
+		t.Errorf("out %q, err %v", out, err)
+	}
+}
+
 func TestServicesInfoForAFormulaWithoutAService(t *testing.T) {
 	e, prefix, _, _ := servicesEnv(t)
 	for _, name := range []string{"plain", "ghost"} {

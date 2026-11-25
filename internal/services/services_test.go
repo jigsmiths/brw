@@ -109,49 +109,41 @@ func TestParseEnvFileIsBrews(t *testing.T) {
 	}
 }
 
-const envPlistHead = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n"
+const envPlistHead = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n"
 
-func TestApplyEnvMergesIntoTheExistingDictSorted(t *testing.T) {
-	in := envPlistHead +
-		"\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>NOTE</key>\n\t\t<string>a &amp; b</string>\n\t\t<key>PATH</key>\n\t\t<string>/bin</string>\n\t</dict>\n" +
-		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	got, ok := ApplyEnv([]byte(in), map[string]string{"PATH": "/x:/y", "ALPHA": "1 < 2"})
-	want := envPlistHead +
-		"\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>ALPHA</key>\n\t\t<string>1 &lt; 2</string>\n\t\t<key>NOTE</key>\n\t\t<string>a &amp; b</string>\n" +
-		"\t\t<key>PATH</key>\n\t\t<string>/x:/y</string>\n\t</dict>\n" +
-		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	if !ok || string(got) != want {
-		t.Errorf("ApplyEnv = %v\n%s\nwant\n%s", ok, got, want)
-	}
-}
-
-func TestApplyEnvAddsTheDictInKeyOrder(t *testing.T) {
-	in := envPlistHead + "\t<key>Disabled</key>\n\t<false/>\n\t<key>KeepAlive</key>\n\t<true/>\n\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	got, ok := ApplyEnv([]byte(in), map[string]string{"B": "2", "A": "1"})
-	want := envPlistHead + "\t<key>Disabled</key>\n\t<false/>\n" +
-		"\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>A</key>\n\t\t<string>1</string>\n\t\t<key>B</key>\n\t\t<string>2</string>\n\t</dict>\n" +
-		"\t<key>KeepAlive</key>\n\t<true/>\n\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	if !ok || string(got) != want {
-		t.Errorf("ApplyEnv = %v\n%s\nwant\n%s", ok, got, want)
-	}
-}
-
-func TestApplyEnvAppendsWhenItSortsLast(t *testing.T) {
-	in := envPlistHead + "\t<key>Abc</key>\n\t<true/>\n</dict>\n</plist>\n"
-	got, ok := ApplyEnv([]byte(in), map[string]string{"A": "1"})
-	if !ok || !strings.HasSuffix(string(got), "\t<key>Abc</key>\n\t<true/>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>A</key>\n\t\t<string>1</string>\n\t</dict>\n</dict>\n</plist>\n") {
-		t.Errorf("ApplyEnv = %v\n%s", ok, got)
-	}
-}
-
-func TestApplyEnvLeavesAnUneditablePlistAlone(t *testing.T) {
-	for _, in := range []string{"bplist00\x00", "<plist>no dict</plist>"} {
-		if got, ok := ApplyEnv([]byte(in), map[string]string{"A": "1"}); ok || string(got) != in {
-			t.Errorf("ApplyEnv(%q) = %q, %v", in, got, ok)
+// The expected plists are what brew's Ruby prints for the same hash, from the plist gem's to_plist.
+func TestApplyEnvIsTheRubyHashRoundTrip(t *testing.T) {
+	env := map[string]string{"PATH": "/x:/bin", "Zoo": "<z>", "alpha": "1 & 2"}
+	for name, tc := range map[string]struct{ in, want string }{
+		"existing environment": {
+			envPlistHead + "<dict>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>PATH</key>\n\t\t<string>/bin</string>\n\t\t<key>keep</key>\n\t\t<string>a &amp; b</string>\n\t</dict>\n" +
+				"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/x</string>\n\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n</dict>\n</plist>\n",
+			envPlistHead + "<dict>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>PATH</key>\n\t\t<string>/x:/bin</string>\n\t\t<key>Zoo</key>\n\t\t<string>&lt;z&gt;</string>\n" +
+				"\t\t<key>alpha</key>\n\t\t<string>1 &amp; 2</string>\n\t\t<key>keep</key>\n\t\t<string>a &amp; b</string>\n\t</dict>\n" +
+				"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/x</string>\n\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n</dict>\n</plist>\n",
+		},
+		"no environment": {
+			envPlistHead + "<dict>\n\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>Zed</key>\n\t<integer>3</integer>\n</dict>\n</plist>\n",
+			envPlistHead + "<dict>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>PATH</key>\n\t\t<string>/x:/bin</string>\n\t\t<key>Zoo</key>\n\t\t<string>&lt;z&gt;</string>\n" +
+				"\t\t<key>alpha</key>\n\t\t<string>1 &amp; 2</string>\n\t</dict>\n\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>Zed</key>\n\t<integer>3</integer>\n</dict>\n</plist>\n",
+		},
+	} {
+		got, err := ApplyEnv([]byte(tc.in), env)
+		if err != nil || string(got) != tc.want {
+			t.Errorf("%s: ApplyEnv = %v\n%s\nwant\n%s", name, err, got, tc.want)
 		}
 	}
-	if got, ok := ApplyEnv([]byte(envPlistHead+"</dict>\n</plist>\n"), nil); !ok || string(got) != envPlistHead+"</dict>\n</plist>\n" {
-		t.Errorf("no overrides must not change the plist: %q, %v", got, ok)
+}
+
+func TestApplyEnvRefusesAPlistThatIsNotADictionary(t *testing.T) {
+	for _, in := range []string{"bplist00\x00", "<plist>no dict</plist>", "<plist><dict>"} {
+		if got, err := ApplyEnv([]byte(in), map[string]string{"A": "1"}); err == nil {
+			t.Errorf("ApplyEnv(%q) = %q", in, got)
+		}
+	}
+	in := envPlistHead + "<dict>\n</dict>\n</plist>\n"
+	if got, err := ApplyEnv([]byte(in), nil); err != nil || string(got) != in {
+		t.Errorf("no overrides must not change the plist: %q, %v", got, err)
 	}
 }
 
@@ -309,14 +301,24 @@ func TestRootUsesTheSystemDomainOnly(t *testing.T) {
 }
 
 func TestProgram(t *testing.T) {
-	args := "<dict>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/opt/x/bin/x</string>\n\t\t<string>serve</string>\n\t</array>\n</dict>"
-	if got, key := Program([]byte(args)); got != "/opt/x/bin/x" || key != "first ProgramArguments value" {
-		t.Errorf("args: %q %q", got, key)
-	}
-	if got, key := Program([]byte("<dict>\n\t<key>Program</key>\n\t<string>/bin/y</string>\n</dict>")); got != "/bin/y" || key != "Program" {
-		t.Errorf("program: %q %q", got, key)
-	}
-	if got, _ := Program([]byte("<dict></dict>")); got != "" {
-		t.Errorf("none: %q", got)
+	for name, tc := range map[string]struct {
+		body, path, key string
+		parsed          bool
+	}{
+		"arguments": {"<plist><dict><key>ProgramArguments</key><array><string>/opt/x/bin/x</string><string>serve</string></array></dict></plist>",
+			"/opt/x/bin/x", "first ProgramArguments value", true},
+		"program": {"<plist><dict><key>Program</key><string>/bin/y</string></dict></plist>", "/bin/y", "Program", true},
+		"blank first argument": {"<plist><dict><key>ProgramArguments</key><array><string> </string></array><key>Program</key><string>/bin/z</string></dict></plist>",
+			"/bin/z", "Program", true},
+		"cdata and entities": {"<plist><!-- c --><dict><key>ProgramArguments</key><array><string><![CDATA[/c&d]]></string></array></dict></plist>",
+			"/c&d", "first ProgramArguments value", true},
+		"neither":   {"<plist><dict></dict></plist>", "", "", true},
+		"malformed": {"<plist><dict>", "", "", false},
+		"empty":     {"<plist/>", "", "", false},
+	} {
+		path, key, parsed := Program([]byte(tc.body))
+		if path != tc.path || key != tc.key || parsed != tc.parsed {
+			t.Errorf("%s: Program = %q, %q, %v; want %q, %q, %v", name, path, key, parsed, tc.path, tc.key, tc.parsed)
+		}
 	}
 }

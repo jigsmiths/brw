@@ -98,11 +98,6 @@ func (e *env) serviceInfo(t serviceTarget, prefix string) (serviceInfo, error) {
 		return serviceInfo{}, err
 	}
 	timed := t.block.Timed
-	if !t.block.Defined {
-		if body, err := os.ReadFile(t.source); err == nil {
-			timed = services.Timed(body)
-		}
-	}
 	info := serviceInfo{
 		Name:        t.name,
 		ServiceName: s.active,

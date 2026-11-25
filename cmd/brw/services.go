@@ -215,13 +215,9 @@ func servicesList(e *env, o *servicesOpts, prefix string) error {
 		if err != nil {
 			return err
 		}
-		timed := false
-		if body, err := os.ReadFile(t.source); err == nil {
-			timed = services.Timed(body)
-		}
 		row := services.Row{
 			Name:   name,
-			Status: services.Classify(services.State{Loaded: snap.loaded, Timed: timed, Info: snap.info}),
+			Status: services.Classify(services.State{Loaded: snap.loaded, Timed: t.block.Timed, Info: snap.info}),
 			User:   e.owner(t, snap),
 			File:   e.serviceFile(t, snap, prefix),
 			Loaded: snap.loaded,
@@ -584,9 +580,9 @@ func (e *env) applyUserEnv(name string, body []byte) []byte {
 	for _, kv := range pairs {
 		vars[kv[0]] = kv[1]
 	}
-	out, ok := services.ApplyEnv(body, vars)
-	if !ok {
-		e.opoo("Skipping %s: the service file is not an XML plist it can edit.", path)
+	out, err := services.ApplyEnv(body, vars)
+	if err != nil {
+		e.opoo("Skipping %s: the service file is not a plist it can edit: %v", path, err)
 		return body
 	}
 	return out
