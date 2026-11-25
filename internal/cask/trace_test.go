@@ -36,6 +36,7 @@ func TestOnlyBrewsSystemCommandsEchoUnderVerboseAndDebug(t *testing.T) {
 			t.Setenv("HOMEBREW_VERBOSE", "")
 			ti := newTestInstall(t, appTarball)
 			ti.in.Verbose, ti.in.Debug = true, true
+			ti.in.warnedSandbox = true
 			ti.in.Exec = func(context.Context, string, ...string) ([]byte, error) { return nil, nil }
 			tc.run(ti.in)
 			got := ti.warn.String()

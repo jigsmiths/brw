@@ -475,7 +475,7 @@ func TestUpgradeVerboseReachesThePkgInstaller(t *testing.T) {
 			runs = append(runs, c)
 			return sudo.Result{}, nil
 		}
-		if out, err := runCmd(t, e, "install", "-prefix", prefix, "pk"); err != nil {
+		if out, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", t.TempDir(), "pk"); err != nil {
 			t.Fatalf("%v\n%s", err, out)
 		}
 		for _, d := range []string{"Caskroom/pk", "Caskroom/pk/.metadata"} {

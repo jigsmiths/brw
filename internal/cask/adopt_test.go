@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 func infoPlist(short, version string) string {
@@ -104,6 +106,15 @@ func TestInstallAdoptsAnAutoUpdatingAppOfAnyVersion(t *testing.T) {
 	}
 }
 
+// catPlist stands in for plutil, which the plists here need no conversion by.
+func catPlist(_ context.Context, c sudo.Command) (sudo.Result, error) {
+	if c.Exe != "/usr/bin/plutil" {
+		return sudo.Result{}, nil
+	}
+	b, err := os.ReadFile(c.Args[len(c.Args)-1])
+	return sudo.Result{Stdout: string(b)}, err
+}
+
 const versionlessPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict/></plist>
 `
@@ -123,6 +134,7 @@ func TestInstallAdoptsByComparingFilesWithoutVersions(t *testing.T) {
 	}{{"#!/bin/sh\n", true}, {"changed\n", false}} {
 		ti := newTestInstall(t, versionlessTarball)
 		ti.in.Adopt = true
+		ti.in.Run = catPlist
 		app := existingApp(t, ti, versionlessPlist)
 		writeFile(t, filepath.Join(app, "Contents/MacOS/app"), []byte(tc.body), 0o755)
 		err := ti.in.Install(context.Background(), ti.cask(t, `[{"app":["App.app"]}]`))

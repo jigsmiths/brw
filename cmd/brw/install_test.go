@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,7 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/install/installtest"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 var mac = platform.Host{OS: "darwin", MacVersion: "26.0", Arch: "arm64"}
@@ -269,6 +271,13 @@ func TestInstallCaskAdopt(t *testing.T) {
 	s := newStore(t)
 	s.appCask("app")
 	e, prefix := s.env()
+	e.sudoRun = func(_ context.Context, c sudo.Command) (sudo.Result, error) {
+		if c.Exe != "/usr/bin/plutil" {
+			return sudo.Result{}, nil
+		}
+		b, err := os.ReadFile(c.Args[len(c.Args)-1])
+		return sudo.Result{Stdout: string(b)}, err
+	}
 	apps := t.TempDir()
 	if _, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "app"); err != nil {
 		t.Fatal(err)
