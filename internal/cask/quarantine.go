@@ -171,12 +171,12 @@ func (in *Installer) releaseQuarantine(ctx context.Context, token string, before
 	}
 	for i, a := range before {
 		if a.identity == "" {
-			in.warnf("Homebrew couldn't verify %s's signer so macOS may prompt at next launch.", token)
+			in.warnf("brw couldn't verify %s's signer so macOS may prompt at next launch.", token)
 			return
 		}
 		match, ok := in.identityMatch(ctx, apps[i].target, a.identity)
 		if !ok {
-			in.warnf("Homebrew couldn't verify %s's signer so macOS may prompt at next launch.", token)
+			in.warnf("brw couldn't verify %s's signer so macOS may prompt at next launch.", token)
 			return
 		}
 		if !match {
@@ -186,7 +186,7 @@ func (in *Installer) releaseQuarantine(ctx context.Context, token string, before
 	}
 	for _, m := range apps {
 		if err := inheritApproval(ctx, m.target); err != nil {
-			in.warnf("Homebrew couldn't inherit %s's quarantine approval so macOS may prompt at next launch.", token)
+			in.warnf("brw couldn't inherit %s's quarantine approval so macOS may prompt at next launch.", token)
 		}
 	}
 }
