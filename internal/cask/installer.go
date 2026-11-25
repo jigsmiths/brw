@@ -32,7 +32,6 @@ type installerStep struct {
 	ignored                  []string
 }
 
-// ScriptRun is one installer script as brew's SystemCommand runs it.
 type ScriptRun struct {
 	Executable               string
 	Args                     []string
@@ -265,7 +264,6 @@ func execScript(ctx context.Context, r ScriptRun) error {
 	return err
 }
 
-// shellEscape is Ruby's String#shellescape.
 func shellEscape(s string) string {
 	if s == "" {
 		return "''"

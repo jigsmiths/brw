@@ -50,7 +50,6 @@ func TestPlanRejectsBadInstallerStanzas(t *testing.T) {
 type fakeScripts struct {
 	runs []ScriptRun
 	err  error
-	// seen records state at the time of each run.
 	seen func(ScriptRun)
 }
 
