@@ -23,17 +23,6 @@ const (
 	eperm       = "Operation not permitted"
 )
 
-var signals = map[string]syscall.Signal{
-	"HUP": syscall.SIGHUP, "INT": syscall.SIGINT, "QUIT": syscall.SIGQUIT, "ILL": syscall.SIGILL,
-	"TRAP": syscall.SIGTRAP, "ABRT": syscall.SIGABRT, "FPE": syscall.SIGFPE, "KILL": syscall.SIGKILL,
-	"BUS": syscall.SIGBUS, "SEGV": syscall.SIGSEGV, "SYS": syscall.SIGSYS, "PIPE": syscall.SIGPIPE,
-	"ALRM": syscall.SIGALRM, "TERM": syscall.SIGTERM, "URG": syscall.SIGURG, "STOP": syscall.SIGSTOP,
-	"TSTP": syscall.SIGTSTP, "CONT": syscall.SIGCONT, "CHLD": syscall.SIGCHLD, "TTIN": syscall.SIGTTIN,
-	"TTOU": syscall.SIGTTOU, "IO": syscall.SIGIO, "XCPU": syscall.SIGXCPU, "XFSZ": syscall.SIGXFSZ,
-	"VTALRM": syscall.SIGVTALRM, "PROF": syscall.SIGPROF, "WINCH": syscall.SIGWINCH,
-	"USR1": syscall.SIGUSR1, "USR2": syscall.SIGUSR2,
-}
-
 func flattenStrings(raw json.RawMessage) ([]string, error) {
 	var v any
 	if err := json.Unmarshal(raw, &v); err != nil {
@@ -62,13 +51,6 @@ func flattenStrings(raw json.RawMessage) ([]string, error) {
 type scriptSpec struct {
 	installerStep
 	hasExecutable bool
-}
-
-func scriptWantsSudo(raw json.RawMessage) bool {
-	var o struct {
-		Sudo bool `json:"sudo"`
-	}
-	return json.Unmarshal(raw, &o) == nil && o.Sudo
 }
 
 func (in *Installer) readScript(raw json.RawMessage, description string) (scriptSpec, error) {
@@ -224,9 +206,9 @@ func (in *Installer) uninstallSignal(ctx context.Context, token string, values [
 }
 
 func (in *Installer) killAll(name, id string, pids []int) error {
-	sig, ok := signals[strings.TrimPrefix(name, "SIG")]
-	if !ok {
-		return fmt.Errorf("unsupported signal 'SIG%s'", strings.TrimPrefix(name, "SIG"))
+	sig, err := sudo.ParseSignal(name)
+	if err != nil {
+		return err
 	}
 	kill := in.Kill
 	if kill == nil {

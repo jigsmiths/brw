@@ -237,8 +237,11 @@ func (in *Installer) chmodAll(path string, perm os.FileMode) error {
 
 // sudoArtifact names the first artifact brew installs that requires sudo, or "" if none does.
 func (p installPlan) sudoArtifact() string {
-	if slices.ContainsFunc(p.installers, func(s installerStep) bool { return s.sudo }) {
+	switch {
+	case slices.ContainsFunc(p.installers, func(s installerStep) bool { return s.sudo }):
 		return "installer"
+	case len(p.pkgs) > 0:
+		return "pkg"
 	}
 	return ""
 }

@@ -240,6 +240,25 @@ func TestSignalNames(t *testing.T) {
 	}
 }
 
+func TestParseSignal(t *testing.T) {
+	for name, want := range map[string]syscall.Signal{
+		"TERM": syscall.SIGTERM, "SIGTERM": syscall.SIGTERM, "KILL": syscall.SIGKILL, "USR2": syscall.SIGUSR2,
+		"SIGHUP": syscall.SIGHUP, "EXIT": 0, "SIGEXIT": 0, "WINCH": syscall.SIGWINCH,
+	} {
+		if got, err := ParseSignal(name); err != nil || got != want {
+			t.Errorf("ParseSignal(%q) = %d, %v, want %d", name, got, err, want)
+		}
+	}
+	for name, want := range map[string]string{
+		"BOGUS": "unsupported signal 'SIGBOGUS'", "SIGBOGUS": "unsupported signal 'SIGBOGUS'",
+		"SIGSIGTERM": "unsupported signal 'SIGSIGTERM'", "term": "unsupported signal 'SIGterm'", "": "unsupported signal 'SIG'",
+	} {
+		if _, err := ParseSignal(name); err == nil || err.Error() != want {
+			t.Errorf("ParseSignal(%q) err = %v, want %q", name, err, want)
+		}
+	}
+}
+
 func TestShellEscape(t *testing.T) {
 	for in, want := range map[string]string{"plain/a-b.c": "plain/a-b.c", "a b": `a\ b`, "": "''", "it's": `it\'s`} {
 		if got := ShellEscape(in); got != want {

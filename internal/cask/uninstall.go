@@ -187,9 +187,6 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if s.stagedVersion, err = in.Root.Abs(filepath.Join("Caskroom", token, version)); err != nil {
 			return s, err
 		}
-		if slices.ContainsFunc(slices.Concat(s.scripts["early_script"], s.scripts["script"]), scriptWantsSudo) {
-			return s, unsupported(token, "uninstall script with sudo")
-		}
 	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 		if s.move, err = readMove(args, kind, in.Where); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)

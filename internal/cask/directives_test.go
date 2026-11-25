@@ -69,14 +69,39 @@ func TestUninstallRunsEarlyScriptThenScript(t *testing.T) {
 	}
 }
 
-func TestUninstallRefusesAScriptThatNeedsSudo(t *testing.T) {
-	ti, _, r := withDirectives(t, `{"script":{"executable":"s.sh","sudo":true}}`)
-	stagedFile(t, ti, "s.sh")
-	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); !errors.Is(err, ErrUnsupported) {
-		t.Errorf("err = %v, want ErrUnsupported", err)
+func TestUninstallRunsScriptsWithSudo(t *testing.T) {
+	ti, _, r := withDirectives(t, `{"early_script":{"executable":"e.sh","sudo":true},"script":{"executable":"s.sh","sudo":false}}`)
+	early, script := stagedFile(t, ti, "e.sh"), stagedFile(t, ti, "s.sh")
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
 	}
-	if len(r.calls) > 0 || ti.out.Len() > 0 {
-		t.Errorf("something ran: %+v %q", r.calls, ti.out.String())
+	if len(r.calls) != 2 || r.calls[0].Exe != early || r.calls[0].Privilege != sudo.Sudo || r.calls[1].Exe != script || r.calls[1].Privilege != sudo.User {
+		t.Errorf("calls = %+v", r.calls)
+	}
+}
+
+func TestUninstallScriptOutputModes(t *testing.T) {
+	for _, tc := range []struct {
+		name, args, debug string
+		wantStderr        bool
+	}{
+		{"default", ``, "", true},
+		{"on", `,"print_stderr":true`, "", true},
+		{"off", `,"print_stderr":false`, "1", false},
+		{"debug without HOMEBREW_DEBUG", `,"print_stderr":"debug"`, "", false},
+		{"debug with HOMEBREW_DEBUG", `,"print_stderr":"debug"`, "1", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOMEBREW_DEBUG", tc.debug)
+			ti, _, r := withDirectives(t, `{"script":{"executable":"s.sh"`+tc.args+`}}`)
+			stagedFile(t, ti, "s.sh")
+			if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+				t.Fatal(err)
+			}
+			if got := r.calls[0].Stderr != nil; got != tc.wantStderr || r.calls[0].Stdout == nil {
+				t.Errorf("stderr streamed = %v, want %v; stdout streamed = %v", got, tc.wantStderr, r.calls[0].Stdout != nil)
+			}
+		})
 	}
 }
 
@@ -262,6 +287,21 @@ func TestUninstallSignalRejectsUnknownSignals(t *testing.T) {
 	ti, _, kills := signalling(t, `{"signal":["BOGUS","com.other"]}`)
 	err := ti.in.Uninstall(context.Background(), "app", "1.0", false)
 	if err == nil || !strings.Contains(err.Error(), "unsupported signal 'SIGBOGUS'") || len(*kills) > 0 {
+		t.Errorf("err = %v, kills = %v", err, *kills)
+	}
+}
+
+func TestUninstallSignalUsesRubysSignalTable(t *testing.T) {
+	ti, _, kills := signalling(t, `{"signal":["EXIT","com.other","SIGUSR2","com.other"]}`)
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"789:0", fmt.Sprintf("789:%d", syscall.SIGUSR2)}; !slices.Equal(*kills, want) {
+		t.Errorf("kills = %v, want %v", *kills, want)
+	}
+	ti, _, kills = signalling(t, `{"signal":["SIGSIGTERM","com.other"]}`)
+	err := ti.in.Uninstall(context.Background(), "app", "1.0", false)
+	if err == nil || !strings.Contains(err.Error(), "unsupported signal 'SIGSIGTERM'") || len(*kills) > 0 {
 		t.Errorf("err = %v, kills = %v", err, *kills)
 	}
 }

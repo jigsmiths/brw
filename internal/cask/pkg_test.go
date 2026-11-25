@@ -188,6 +188,42 @@ func TestInstallPkgMissingSourceListsNothingWhenThereIsNone(t *testing.T) {
 	}
 }
 
+func TestInstallPkgNeedsSudo(t *testing.T) {
+	ti := newPkgInstall(t)
+	t.Setenv("HOMEBREW_NO_SUDO", "1")
+	f := &fakeRun{}
+	ti.in.Run = f.run
+	err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Sub/P.pkg"]}]`))
+	if want := "app: The pkg artifact requires sudo, but HOMEBREW_NO_SUDO is set."; err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+	if len(f.calls) > 0 || exists(filepath.Join(ti.prefix, "Caskroom/app")) {
+		t.Errorf("something ran or changed before the sudo check: %d calls", len(f.calls))
+	}
+}
+
+func TestInstallPkgRunsThroughSudoAsBrewBuildsIt(t *testing.T) {
+	t.Setenv("SUDO_ASKPASS", "/askpass")
+	t.Setenv("HOMEBREW_SUDO_THROUGH_SUDO_USER", "")
+	ti := newPkgInstall(t)
+	f := &fakeRun{}
+	ti.in.Run = f.run
+	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"pkg":["Sub/P.pkg"]}]`)); err != nil {
+		t.Fatal(err)
+	}
+	argv, err := f.sudoCalls()[0].Argv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loginName(t)
+	staged := filepath.Join(ti.prefix, "Caskroom/app/1.0/Sub/P.pkg")
+	want := []string{"/usr/bin/sudo", "-u", "root", "-A", "-E", "LOGNAME=" + u, "USER=" + u, "USERNAME=" + u, "--",
+		"/usr/sbin/installer", "-pkg", staged, "-target", "/"}
+	if !slices.Equal(argv, want) {
+		t.Errorf("argv = %q\nwant %q", argv, want)
+	}
+}
+
 func TestInstallPkgFailureRollsBack(t *testing.T) {
 	ti := newPkgInstall(t)
 	f := &fakeRun{handle: func(sudo.Command) (string, error) { return "", errors.New("installer failed") }}

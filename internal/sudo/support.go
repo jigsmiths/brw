@@ -49,6 +49,25 @@ func signalName(s syscall.Signal) string {
 	return platformSignalNames[s]
 }
 
+// ParseSignal is Process.kill's lookup of a signal name, with or without its SIG prefix.
+func ParseSignal(name string) (syscall.Signal, error) {
+	bare := strings.TrimPrefix(name, "SIG")
+	if bare == "EXIT" {
+		return 0, nil
+	}
+	if sig, ok := signalAliases[bare]; ok {
+		return sig, nil
+	}
+	for _, names := range []map[syscall.Signal]string{signalNames, platformSignalNames} {
+		for sig, n := range names {
+			if n == bare {
+				return sig, nil
+			}
+		}
+	}
+	return 0, message("unsupported signal 'SIG" + bare + "'")
+}
+
 func EnvSet(name string) bool { return strings.TrimSpace(os.Getenv(name)) != "" }
 
 func EnvTrue(name string) bool {
