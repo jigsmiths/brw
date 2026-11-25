@@ -113,8 +113,6 @@ func ParseEnvPairs(content string) (pairs [][2]string, skipped []string) {
 	return pairs, skipped
 }
 
-// Program is how take_root_ownership? finds the executable. parsed is false when
-// the plist does not parse, where brew gives up on the rest of the ownership change.
 func Program(plist []byte) (path, source string, parsed bool) {
 	root, err := parsePlist(string(plist))
 	if err != nil {
@@ -170,7 +168,6 @@ func FileLabel(plist []byte) (string, bool) { return plistString(plist, "Label")
 
 func FileUser(plist []byte) (string, bool) { return plistString(plist, userNameKeyName) }
 
-// plistString is `Plist.parse_xml(...)[key]` kept when it is a non-blank String; a plist that does not parse has none.
 func plistString(plist []byte, key string) (string, bool) {
 	root, err := parsePlist(string(plist))
 	if err != nil {

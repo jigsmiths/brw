@@ -58,17 +58,16 @@ var (
 )
 
 type frags struct {
-	v    map[string]int
-	comp bool
-	bc   bool
-	// yearBig is a year too large for the day arithmetic, kept exact until reduceYear splits it into period count nth and a year in v.
+	v       map[string]int
+	comp    bool
+	bc      bool
 	yearBig *big.Int
 	nth     *big.Int
 }
 
 const (
 	bigYearDigits = 12
-	// date_core.c's CM_PERIOD days and the Julian years it spans, which decode_year and decode_jd divide by.
+	// date_core.c's CM_PERIOD days and the Julian years it spans.
 	cmPeriod      = 213447717
 	cmPeriodYears = 584400
 )

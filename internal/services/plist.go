@@ -25,7 +25,6 @@ func ApplyUserName(plist []byte, user string) ([]byte, error) {
 
 const envKeyName = "EnvironmentVariables"
 
-// ApplyEnv merges env into EnvironmentVariables through a parse and to_plist round trip, as brew builds its plist from a hash.
 func ApplyEnv(plist []byte, env map[string]string) ([]byte, error) {
 	if len(env) == 0 {
 		return plist, nil

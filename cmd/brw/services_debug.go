@@ -54,7 +54,6 @@ func (e *env) echo(args ...string) {
 	}
 }
 
-// echoRun is what SystemCommand.run prints to stderr under --verbose --debug. quiet_system never prints.
 func (e *env) echoRun(exe string, args ...string) {
 	if !e.verbose || !e.debug {
 		return

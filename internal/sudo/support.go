@@ -83,7 +83,6 @@ func columns(size func() (int, bool), tput func() string) int {
 	return n
 }
 
-// TerminalColumns is Tty.width: the stdin window size, else `tput cols`, else 80.
 func TerminalColumns() int { return columns(stdinColumns, tputColumns) }
 
 func stdinColumns() (int, bool) {

@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// rubyInteger is Kernel#Integer on a string: a sign, 0x/0b/0o/0d prefixes, a leading 0 for octal, single underscores between digits, any size.
 func rubyInteger(s string) (*big.Int, bool) {
 	s = strings.TrimSpace(s)
 	negative := strings.HasPrefix(s, "-")

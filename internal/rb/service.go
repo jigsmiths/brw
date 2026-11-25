@@ -318,7 +318,6 @@ func (s renderedService) sockets() pdict {
 	return out
 }
 
-// pint is a plist integer kept as decimal text so it can be any size.
 type pint string
 
 // pdict is a plist dictionary, written with sorted keys.

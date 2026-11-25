@@ -111,7 +111,6 @@ func TestParseEnvFileIsBrews(t *testing.T) {
 
 const envPlistHead = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n"
 
-// The expected plists are what brew's Ruby prints for the same hash, from the plist gem's to_plist.
 func TestApplyEnvIsTheRubyHashRoundTrip(t *testing.T) {
 	env := map[string]string{"PATH": "/x:/bin", "Zoo": "<z>", "alpha": "1 & 2"}
 	for name, tc := range map[string]struct{ in, want string }{
