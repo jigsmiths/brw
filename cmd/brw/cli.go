@@ -28,7 +28,7 @@ func parse(fs *flag.FlagSet, args []string) ([]string, error) {
 }
 
 func prefixFlag(e *env, fs *flag.FlagSet) *string {
-	return fs.String("prefix", defaultPrefix(e.host), "Homebrew prefix")
+	return fs.String("prefix", defaultPrefix(e.host), "brw prefix")
 }
 
 func changeFlags(e *env, fs *flag.FlagSet, dryRun *bool) (prefix, journal *string) {

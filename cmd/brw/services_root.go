@@ -160,8 +160,8 @@ func (e *env) takeRootOwnership(t serviceTarget, dst string, body []byte) error 
 	e.opoo("Taking root:%s ownership of some %s paths:\n  %s\n"+
 		"This will require manual removal of these paths using `sudo rm` on\n"+
 		"brw upgrade/reinstall/uninstall.\n"+
-		"Root services will run Homebrew-installed software as root by default. Only use\n"+
-		"root services if you trust all users who can write to your Homebrew installation.",
+		"Root services will run brw-installed software as root by default. Only use\n"+
+		"root services if you trust all users who can write to your brw installation.",
 		rootServiceGroup, t.name, strings.Join(paths, "\n  "))
 	return e.takeOwnership(paths, rootServiceGroup, true)
 }

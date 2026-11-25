@@ -132,8 +132,8 @@ func TestServicesRootStartTakesOwnershipOfTheServiceSoftware(t *testing.T) {
 	warning := "Warning: Taking root:admin ownership of some foo paths:\n  " + strings.Join(wantPaths, "\n  ") + "\n" +
 		"This will require manual removal of these paths using `sudo rm` on\n" +
 		"brw upgrade/reinstall/uninstall.\n" +
-		"Root services will run Homebrew-installed software as root by default. Only use\n" +
-		"root services if you trust all users who can write to your Homebrew installation.\n"
+		"Root services will run brw-installed software as root by default. Only use\n" +
+		"root services if you trust all users who can write to your brw installation.\n"
 	if !strings.Contains(stderr(e), warning) {
 		t.Errorf("stderr = %q, want it to contain %q", stderr(e), warning)
 	}

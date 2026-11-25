@@ -246,15 +246,15 @@ func TestUpgradeQuarantineApproval(t *testing.T) {
 		},
 		{
 			name: "new signature unreadable", quarantine: "01c1;5f000000;;OLD", verify: []error{nil, exitCode(1)},
-			wantWarn: "Warning: Homebrew couldn't verify app's signer so macOS may prompt at next launch.\n", wantFlags: "0181",
+			wantWarn: "Warning: brw couldn't verify app's signer so macOS may prompt at next launch.\n", wantFlags: "0181",
 		},
 		{
 			name: "old app unsigned", quarantine: "01c1;5f000000;;OLD", identity: exitCode(1),
-			wantWarn: "Warning: Homebrew couldn't verify app's signer so macOS may prompt at next launch.\n", wantFlags: "0181",
+			wantWarn: "Warning: brw couldn't verify app's signer so macOS may prompt at next launch.\n", wantFlags: "0181",
 		},
 		{
 			name: "old app fails its own requirement", quarantine: "01c1;5f000000;;OLD", verify: []error{exitCode(3)},
-			wantWarn: "Warning: Homebrew couldn't verify app's signer so macOS may prompt at next launch.\n", wantFlags: "0181",
+			wantWarn: "Warning: brw couldn't verify app's signer so macOS may prompt at next launch.\n", wantFlags: "0181",
 		},
 	}
 	for _, tt := range tests {

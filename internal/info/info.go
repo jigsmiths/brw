@@ -260,7 +260,7 @@ func Deprecation(f *api.Formula, now time.Time) string {
 		}
 	}
 	if replacement != "" {
-		msg += "\nReplacement:\n  brew install " + replacement + "\n"
+		msg += "\nReplacement:\n  brw install " + replacement + "\n"
 	}
 	return msg
 }

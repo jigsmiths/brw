@@ -337,7 +337,7 @@ func printCaskHints(e *env, idx *api.CaskIndex, upgrade []outdated.Result, o out
 	})
 	var b strings.Builder
 	if !o.GreedyAutoUpdates && autoUpdates {
-		b.WriteString("Homebrew will now attempt to upgrade casks with `auto_updates true`.\n" +
+		b.WriteString("brw will now attempt to upgrade casks with `auto_updates true`.\n" +
 			"Disable this behaviour with `HOMEBREW_NO_UPGRADE_AUTO_UPDATES_CASKS=1`.\n")
 	}
 	switch {
