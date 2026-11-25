@@ -76,7 +76,7 @@ func (in *Installer) readScript(raw json.RawMessage, description string) (script
 	}
 	inspected := rubySymbols(unknown)
 	if len(unknown) > 0 {
-		in.warnf("Unknown arguments to %s -- %s (ignored). Running `brew update; brew cleanup` will likely fix it.", description, inspected)
+		in.warnf("Unknown arguments to %s -- %s (ignored). Running `brw update; brw cleanup` will likely fix it.", description, inspected)
 	}
 	if _, ok := obj["print_stdout"]; ok {
 		in.errorf("Some arguments to %s will be ignored -- :%s (overridden).", description, inspected)

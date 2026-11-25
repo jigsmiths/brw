@@ -167,7 +167,7 @@ func TestUninstallScriptWarnsAboutArguments(t *testing.T) {
 	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
 		t.Fatal(err)
 	}
-	want := "Warning: Unknown arguments to uninstall :early_script -- [:bogus] (ignored). Running `brew update; brew cleanup` will likely fix it.\n" +
+	want := "Warning: Unknown arguments to uninstall :early_script -- [:bogus] (ignored). Running `brw update; brw cleanup` will likely fix it.\n" +
 		"Error: Some arguments to uninstall :early_script will be ignored -- :[:bogus] (overridden).\n"
 	if ti.warn.String() != want {
 		t.Errorf("warn = %q\nwant %q", ti.warn.String(), want)
