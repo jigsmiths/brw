@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/api"
@@ -74,6 +75,8 @@ func TestInstallRunsInstallerScriptBeforeApps(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin:/bin")
 	t.Setenv("MY_API_TOKEN", "s3cr3t")
 	t.Setenv("ORDINARY", "ordinary")
+	t.Setenv("EMPTY_TOKEN", "")
+	t.Setenv("HOMEBREW_COLOR", "")
 	ti := newTestInstall(t, installerTarball)
 	f := &fakeScripts{}
 	ti.in.Script = f.run
@@ -95,7 +98,7 @@ func TestInstallRunsInstallerScriptBeforeApps(t *testing.T) {
 		Path: ti.prefix + "/bin:" + ti.prefix + "/sbin:/usr/bin:/bin",
 	}
 	if len(f.runs) == 1 {
-		if !slices.Contains(f.runs[0].Secrets, "s3cr3t") || slices.Contains(f.runs[0].Secrets, "ordinary") {
+		if !slices.Contains(f.runs[0].Secrets, "s3cr3t") || !slices.Contains(f.runs[0].Secrets, "") || slices.Contains(f.runs[0].Secrets, "ordinary") {
 			t.Errorf("secrets = %q", f.runs[0].Secrets)
 		}
 		f.runs[0].Secrets = nil
@@ -304,13 +307,90 @@ func TestScriptCommand(t *testing.T) {
 func TestLineSinkRedactsSecretsAsBrewDoes(t *testing.T) {
 	var out bytes.Buffer
 	var log outputLog
-	sink := newLineSink([]string{"s3cr3t", "tok"}, &log, &out)
+	sink := newLineSink([]string{"s3cr3t", "tok"}, &log, &out, false)
 	_, _ = sink.Write([]byte("key=s3cr3t and\npartial s3"))
 	_, _ = sink.Write([]byte("cr3t tok"))
 	sink.Flush()
 	want := "key=****** and\npartial ****** ******"
-	if out.String() != want || log.String() != want {
-		t.Errorf("out = %q, log = %q, want %q", out.String(), log.String(), want)
+	if out.String() != want || log.render(true) != want {
+		t.Errorf("out = %q, log = %q, want %q", out.String(), log.render(true), want)
+	}
+}
+
+func TestEmptySecretRedactsBetweenCharacters(t *testing.T) {
+	if got, want := redact("ab\n", []string{""}), "******a******b******\n******"; got != want {
+		t.Errorf("redact = %q, want %q", got, want)
+	}
+}
+
+func TestOutputLogColoursStderrLines(t *testing.T) {
+	var log outputLog
+	newLineSink(nil, &log, nil, false).emit("out\n")
+	newLineSink(nil, &log, nil, true).emit("err\n")
+	if got, want := log.render(true), "out\n\x1b[31merr\n\x1b[0m"; got != want {
+		t.Errorf("coloured = %q, want %q", got, want)
+	}
+	if got, want := log.render(false), "out\nerr\n"; got != want {
+		t.Errorf("plain = %q, want %q", got, want)
+	}
+}
+
+func TestInstallerColourFollowsBrew(t *testing.T) {
+	for name, tc := range map[string]struct {
+		env  map[string]string
+		want bool
+	}{
+		"plain buffer":      {want: false},
+		"forced":            {env: map[string]string{"HOMEBREW_COLOR": "1"}, want: true},
+		"no colour wins":    {env: map[string]string{"HOMEBREW_COLOR": "1", "HOMEBREW_NO_COLOR": "1"}, want: false},
+		"NO_COLOR fallback": {env: map[string]string{"HOMEBREW_COLOR": "1", "NO_COLOR": "1"}, want: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, k := range []string{"HOMEBREW_COLOR", "HOMEBREW_NO_COLOR", "NO_COLOR"} {
+				t.Setenv(k, tc.env[k])
+			}
+			ti := newTestInstall(t, installerTarball)
+			f := &fakeScripts{}
+			ti.in.Script = f.run
+			c := ti.cask(t, `[{"installer":[{"script":"setup.sh"}]},{"app":["App.app"]}]`)
+			if err := ti.in.Install(context.Background(), c); err != nil {
+				t.Fatal(err)
+			}
+			if got := f.runs[0].Color; got != tc.want {
+				t.Errorf("colour = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTerminalColumns(t *testing.T) {
+	size := func(w int, ok bool) func() (int, bool) { return func() (int, bool) { return w, ok } }
+	tput := func(out string) func() string { return func() string { return out } }
+	for name, tc := range map[string]struct {
+		size func() (int, bool)
+		tput func() string
+		want int
+	}{
+		"terminal":      {size(132, true), tput("40\n"), 132},
+		"tput":          {size(0, false), tput("100\n"), 100},
+		"tput is blank": {size(0, false), tput(""), 80},
+		"tput is junk":  {size(0, false), tput("many"), 0},
+	} {
+		if got := columns(tc.size, tc.tput); got != tc.want {
+			t.Errorf("%s: columns = %d, want %d", name, got, tc.want)
+		}
+	}
+}
+
+func TestSignalNames(t *testing.T) {
+	for sig, want := range map[syscall.Signal]string{
+		syscall.SIGINT: "INT", syscall.SIGUSR1: "USR1", syscall.SIGTRAP: "TRAP", syscall.SIGSTOP: "STOP",
+		syscall.SIGWINCH: "WINCH", syscall.SIGCHLD: "CHLD", syscall.SIGSYS: "SYS", syscall.SIGXCPU: "XCPU",
+		syscall.SIGVTALRM: "VTALRM", syscall.SIGIO: "IO", syscall.SIGABRT: "ABRT",
+	} {
+		if got := signalName(sig); got != want {
+			t.Errorf("signalName(%d) = %q, want %q", sig, got, want)
+		}
 	}
 }
 

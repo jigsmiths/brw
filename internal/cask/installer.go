@@ -33,7 +33,6 @@ type installerStep struct {
 	overridden        bool
 }
 
-// ScriptRun is one command for SystemCommand-style execution; a nil Stdout or Stderr discards that stream.
 type ScriptRun struct {
 	Executable        string
 	Args              []string
@@ -43,6 +42,7 @@ type ScriptRun struct {
 	Askpass           bool
 	SudoUser          string
 	Secrets           []string
+	Color             bool
 	Stdout, Stderr    io.Writer
 	Trace             io.Writer
 }
@@ -178,6 +178,7 @@ func (in *Installer) runInstallers(ctx context.Context, token, staged string, st
 			Path:    strings.Join([]string{filepath.Join(in.Where.Prefix, "bin"), filepath.Join(in.Where.Prefix, "sbin"), os.Getenv("PATH")}, ":"),
 			Secrets: sensitiveValues(),
 			Stdout:  in.Log,
+			Color:   colorEnabled(in.Log),
 		}
 		debug := envEnabled("HOMEBREW_DEBUG")
 		if s.stderr == outputOn || s.stderr == outputDebug && debug {

@@ -11,15 +11,19 @@ import (
 	"os/exec"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
+	"unsafe"
 )
 
 const (
 	envCommand  = "/usr/bin/env"
 	sudoCommand = "/usr/bin/sudo"
 	redacted    = "******"
+	ansiRed     = "\x1b[31m"
+	ansiReset   = "\x1b[0m"
 )
 
 var sudoBinary = sudoCommand
@@ -30,22 +34,71 @@ var falsyValues = []string{"false", "no", "off", "nil", "0"}
 
 var signalNames = map[syscall.Signal]string{
 	syscall.SIGHUP: "HUP", syscall.SIGINT: "INT", syscall.SIGQUIT: "QUIT", syscall.SIGILL: "ILL",
-	syscall.SIGABRT: "ABRT", syscall.SIGFPE: "FPE", syscall.SIGKILL: "KILL", syscall.SIGBUS: "BUS",
-	syscall.SIGSEGV: "SEGV", syscall.SIGPIPE: "PIPE", syscall.SIGALRM: "ALRM", syscall.SIGTERM: "TERM",
+	syscall.SIGTRAP: "TRAP", syscall.SIGABRT: "ABRT", syscall.SIGFPE: "FPE", syscall.SIGKILL: "KILL",
+	syscall.SIGBUS: "BUS", syscall.SIGSEGV: "SEGV", syscall.SIGSYS: "SYS", syscall.SIGPIPE: "PIPE",
+	syscall.SIGALRM: "ALRM", syscall.SIGTERM: "TERM", syscall.SIGURG: "URG", syscall.SIGSTOP: "STOP",
+	syscall.SIGTSTP: "TSTP", syscall.SIGCONT: "CONT", syscall.SIGCHLD: "CHLD", syscall.SIGTTIN: "TTIN",
+	syscall.SIGTTOU: "TTOU", syscall.SIGIO: "IO", syscall.SIGXCPU: "XCPU", syscall.SIGXFSZ: "XFSZ",
+	syscall.SIGVTALRM: "VTALRM", syscall.SIGPROF: "PROF", syscall.SIGWINCH: "WINCH",
+	syscall.SIGUSR1: "USR1", syscall.SIGUSR2: "USR2",
 }
 
-// envEnabled is Homebrew's boolean env parsing: set, non-blank and not a false word.
+func signalName(s syscall.Signal) string {
+	if name, ok := signalNames[s]; ok {
+		return name
+	}
+	return platformSignalNames[s]
+}
+
 func envEnabled(name string) bool {
 	v := strings.TrimSpace(os.Getenv(name))
 	return v != "" && !slices.Contains(falsyValues, strings.ToLower(v))
 }
 
-// sensitiveValues is brew's ENV.sensitive_environment values; unlike brew, an empty value is not a secret.
+func colorEnabled(w io.Writer) bool {
+	if strings.TrimSpace(os.Getenv("HOMEBREW_NO_COLOR")) != "" || strings.TrimSpace(os.Getenv("NO_COLOR")) != "" {
+		return false
+	}
+	if strings.TrimSpace(os.Getenv("HOMEBREW_COLOR")) != "" {
+		return true
+	}
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// columns is Tty.width: the terminal on stdin, else tput, else 80.
+func columns(size func() (int, bool), tput func() string) int {
+	if w, ok := size(); ok {
+		return w
+	}
+	out := strings.TrimSpace(tput())
+	if out == "" {
+		return 80
+	}
+	n, _ := strconv.Atoi(out)
+	return n
+}
+
+func stdinColumns() (int, bool) {
+	var ws struct{ Row, Col, X, Y uint16 }
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, os.Stdin.Fd(), syscall.TIOCGWINSZ, uintptr(unsafe.Pointer(&ws)))
+	return int(ws.Col), errno == 0
+}
+
+func tputColumns() string {
+	out, _ := exec.Command("/usr/bin/tput", "cols").Output()
+	return string(out)
+}
+
 func sensitiveValues() []string {
 	var out []string
 	for _, kv := range os.Environ() {
 		name, value, _ := strings.Cut(kv, "=")
-		if value != "" && sensitiveName.MatchString(name) && !slices.Contains(out, value) {
+		if sensitiveName.MatchString(name) && !slices.Contains(out, value) {
 			out = append(out, value)
 		}
 	}
@@ -81,7 +134,6 @@ func keyOrder(raw json.RawMessage) ([]string, error) {
 
 var plainSymbol = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*[?!=]?$`)
 
-// rubySymbols is Array#inspect of symbols.
 func rubySymbols(names []string) string {
 	parts := make([]string, len(names))
 	for i, n := range names {
@@ -136,33 +188,46 @@ func failureMessage(argv []string, reason, output string, secrets []string) stri
 	return msg
 }
 
+type logLine struct {
+	text   string
+	stderr bool
+}
+
 type outputLog struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
+	mu    sync.Mutex
+	lines []logLine
 }
 
-func (l *outputLog) add(line string) {
+func (l *outputLog) add(line logLine) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.buf.WriteString(line)
+	l.lines = append(l.lines, line)
 }
 
-func (l *outputLog) String() string {
+func (l *outputLog) render(color bool) string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.buf.String()
+	var b strings.Builder
+	for _, line := range l.lines {
+		if line.stderr && color {
+			b.WriteString(ansiRed + line.text + ansiReset)
+		} else {
+			b.WriteString(line.text)
+		}
+	}
+	return b.String()
 }
 
-// lineSink redacts secrets line by line, as brew does, before the output is shown or kept for a failure message.
 type lineSink struct {
 	secrets []string
 	log     *outputLog
 	out     io.Writer
+	stderr  bool
 	partial []byte
 }
 
-func newLineSink(secrets []string, log *outputLog, out io.Writer) *lineSink {
-	return &lineSink{secrets: secrets, log: log, out: out}
+func newLineSink(secrets []string, log *outputLog, out io.Writer, stderr bool) *lineSink {
+	return &lineSink{secrets: secrets, log: log, out: out, stderr: stderr}
 }
 
 func (s *lineSink) Write(p []byte) (int, error) {
@@ -186,7 +251,7 @@ func (s *lineSink) Flush() {
 
 func (s *lineSink) emit(line string) {
 	line = redact(line, s.secrets)
-	s.log.add(line)
+	s.log.add(logLine{text: line, stderr: s.stderr})
 	if s.out != nil {
 		_, _ = io.WriteString(s.out, line)
 	}
@@ -210,7 +275,6 @@ var sudoRefusals = []string{`The "no new privileges" flag is set`, "effective ui
 
 var sudoDenials = []string{" is not in the sudoers file.", " is not allowed to run sudo on ", " may not run sudo on "}
 
-// sudoUsable follows utils/sudo.sh.
 func (in *Installer) sudoUsable(ctx context.Context) bool {
 	sudo := sudoBinary
 	if fi, err := os.Stat(sudo); err != nil || fi.Mode()&0o111 == 0 {
@@ -249,12 +313,12 @@ func execScript(ctx context.Context, r ScriptRun) error {
 		_, _ = fmt.Fprintln(r.Trace, redact(shellJoin(argv), r.Secrets))
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Env = append(os.Environ(), "PATH="+r.Path)
+	cmd.Env = append(os.Environ(), "PATH="+r.Path, "COLUMNS="+strconv.Itoa(columns(stdinColumns, tputColumns)))
 	if r.Input != "" {
 		cmd.Stdin = strings.NewReader(r.Input)
 	}
 	var log outputLog
-	stdout, stderr := newLineSink(r.Secrets, &log, r.Stdout), newLineSink(r.Secrets, &log, r.Stderr)
+	stdout, stderr := newLineSink(r.Secrets, &log, r.Stdout, false), newLineSink(r.Secrets, &log, r.Stderr, true)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
 	stdout.Flush()
@@ -268,7 +332,7 @@ func execScript(ctx context.Context, r ScriptRun) error {
 	}
 	reason := fmt.Sprintf("exited with %d", exitErr.ExitCode())
 	if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-		reason = "was terminated by uncaught signal " + signalNames[ws.Signal()]
+		reason = "was terminated by uncaught signal " + signalName(ws.Signal())
 	}
-	return brewMessage(failureMessage(argv, reason, log.String(), r.Secrets))
+	return brewMessage(failureMessage(argv, reason, log.render(r.Color), r.Secrets))
 }
