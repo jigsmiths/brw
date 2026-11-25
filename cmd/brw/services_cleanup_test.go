@@ -9,7 +9,7 @@ import (
 )
 
 func plistFor(label string) string {
-	return "<plist><key>Label</key><string>" + label + "</string></plist>\n"
+	return "<plist><dict><key>Label</key><string>" + label + "</string></dict></plist>\n"
 }
 
 func TestServicesCleanupWithNothingToDo(t *testing.T) {

@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	testPlist   = "<plist><key>Label</key><string>sh.brew.foo</string></plist>\n"
-	legacyPlist = "<plist><key>Label</key><string>homebrew.mxcl.foo</string></plist>\n"
+	testPlist   = "<plist><dict><key>Label</key><string>sh.brew.foo</string></dict></plist>\n"
+	legacyPlist = "<plist><dict><key>Label</key><string>homebrew.mxcl.foo</string></dict></plist>\n"
 	runningOut  = "\tstate = running\n\tpid = 42\n"
 )
 

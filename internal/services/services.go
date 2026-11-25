@@ -201,14 +201,9 @@ func FindPlist(kegPath string, names []string) (string, error) {
 	return "", ErrNoService
 }
 
-var (
-	labelKey    = regexp.MustCompile(`<key>Label</key>\s*<string>([^<]+)</string>`)
-	userNameKey = regexp.MustCompile(`<key>UserName</key>\s*<string>([^<]+)</string>`)
-)
+func FileLabel(plist []byte) (string, bool) { return plistString(plist, "Label") }
 
-func FileLabel(plist []byte) (string, bool) { return firstString(labelKey, plist) }
-
-func FileUser(plist []byte) (string, bool) { return firstString(userNameKey, plist) }
+func FileUser(plist []byte) (string, bool) { return plistString(plist, userNameKeyName) }
 
 func firstString(re *regexp.Regexp, b []byte) (string, bool) {
 	m := re.FindSubmatch(b)
@@ -216,6 +211,32 @@ func firstString(re *regexp.Regexp, b []byte) (string, bool) {
 		return "", false
 	}
 	return string(m[1]), true
+}
+
+// plistString is `Plist.parse_xml(...)[key]` kept when it is a non-blank String; a plist that does not parse has none.
+func plistString(plist []byte, key string) (string, bool) {
+	root, err := parsePlist(string(plist))
+	if err != nil {
+		return "", false
+	}
+	var value any
+	switch x := root.(type) {
+	case *plistDict:
+		for _, e := range x.entries {
+			if e.id == "s:"+key {
+				value = e.val
+			}
+		}
+	case string:
+		if strings.Contains(x, key) {
+			value = key
+		}
+	}
+	s, ok := value.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return "", false
+	}
+	return s, true
 }
 
 func Timed(plist []byte) bool {

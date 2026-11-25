@@ -58,7 +58,7 @@ func TestServicesRunAllRunsEveryService(t *testing.T) {
 }
 
 func TestServicesRunAndStartTakeAServiceFile(t *testing.T) {
-	custom := "<plist><key>Label</key><string>custom.label</string></plist>\n"
+	custom := "<plist><dict><key>Label</key><string>custom.label</string></dict></plist>\n"
 	for _, verb := range []string{"run", "start", "restart"} {
 		e, prefix, agents, lc := servicesEnv(t)
 		file := plistAt(t, filepath.Join(t.TempDir(), "custom.plist"), custom)

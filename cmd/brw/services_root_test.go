@@ -372,7 +372,7 @@ func TestServicesStartAsRootIgnoresTheUserEnvFile(t *testing.T) {
 
 func TestServicesListShowsTheServiceUserOfARootDaemon(t *testing.T) {
 	e, prefix, _, _ := servicesEnv(t)
-	body := "<plist><key>Label</key><string>sh.brew.foo</string><key>UserName</key><string>svc</string></plist>\n"
+	body := "<plist><dict><key>Label</key><string>sh.brew.foo</string><key>UserName</key><string>svc</string></dict></plist>\n"
 	if err := os.WriteFile(filepath.Join(e.daemonsDir, "sh.brew.foo.plist"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

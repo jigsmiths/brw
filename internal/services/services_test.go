@@ -156,12 +156,32 @@ func TestApplyEnvLeavesAnUneditablePlistAlone(t *testing.T) {
 }
 
 func TestPlistKeys(t *testing.T) {
-	body := []byte("<dict>\n<key>Label</key>\n<string>homebrew.mxcl.foo</string>\n<key>UserName</key><string>bob</string></dict>")
+	body := []byte("<plist><dict>\n<key>Label</key>\n<string>homebrew.mxcl.foo</string>\n<key>UserName</key><string>bob</string></dict></plist>")
 	if l, ok := FileLabel(body); !ok || l != "homebrew.mxcl.foo" {
 		t.Errorf("label = %q, %v", l, ok)
 	}
 	if u, ok := FileUser(body); !ok || u != "bob" {
 		t.Errorf("user = %q, %v", u, ok)
+	}
+}
+
+func TestPlistKeysAreReadLikeTheRubyGem(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		want string
+		ok   bool
+	}{
+		"blank label":        {"<plist><dict><key>Label</key><string> </string></dict></plist>", "", false},
+		"label not a string": {"<plist><dict><key>Label</key><integer>3</integer></dict></plist>", "", false},
+		"malformed xml":      {"<plist><dict><key>Label</key><string>x</string></dict>", "", false},
+		"array root":         {"<plist><array><string>Label</string></array></plist>", "", false},
+		"no dict":            {"<plist><key>Label</key><string>x</string></plist>", "Label", true},
+		"empty":              {"", "", false},
+		"entities":           {"<plist><dict><key>Label</key><string>a&amp;b</string></dict></plist>", "a&b", true},
+	} {
+		if got, ok := FileLabel([]byte(tc.body)); got != tc.want || ok != tc.ok {
+			t.Errorf("%s: FileLabel = %q, %v; want %q, %v", name, got, ok, tc.want, tc.ok)
+		}
 	}
 }
 
