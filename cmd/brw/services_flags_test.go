@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -61,19 +62,39 @@ func TestServicesDebugIsQuietWithoutTheFlag(t *testing.T) {
 	}
 }
 
-func TestServicesVerboseAndDebugEchoTheQuietLaunchctlCommands(t *testing.T) {
+func TestServicesQuietSystemCommandsAreNeverEchoed(t *testing.T) {
 	e, prefix, _, lc := servicesEnv(t)
 	lc.loaded["sh.brew.foo"] = runningOut
 	if _, err := runCmd(t, e, "services", "kill", "-v", "-d", "-prefix", prefix, "foo"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr(e), "/bin/launchctl stop sh.brew.foo\n") {
-		t.Errorf("stderr = %q", stderr(e))
+	if strings.Contains(stderr(e), "launchctl stop") {
+		t.Errorf("quiet_system does not echo: %q", stderr(e))
 	}
-	e, prefix, _, lc = servicesEnv(t)
-	lc.loaded["sh.brew.foo"] = runningOut
-	if _, err := runCmd(t, e, "services", "kill", "-v", "-prefix", prefix, "foo"); err != nil || strings.Contains(stderr(e), "/bin/launchctl") {
-		t.Errorf("-v alone does not echo quiet commands: %q, %v", stderr(e), err)
+}
+
+func TestServicesVerboseAndDebugEchoPlutil(t *testing.T) {
+	for _, flags := range [][]string{{"-v", "-d"}, {"-v"}, {"-d"}} {
+		e, prefix, agents, _ := servicesEnv(t)
+		bin := plistAt(t, filepath.Join(agents, "sh.brew.bin.plist"), "bplist00x")
+		e.plutil = func(string) ([]byte, error) { return []byte(plistFor("sh.brew.bin")), nil }
+		if _, err := runCmd(t, e, "services", append([]string{"cleanup", "-prefix", prefix}, flags...)...); err != nil {
+			t.Fatal(err)
+		}
+		want := "/usr/bin/plutil -convert xml1 -o - " + bin + "\n"
+		if got := strings.Contains(stderr(e), want); got != (len(flags) == 2) {
+			t.Errorf("%v: echoed %v, stderr %q", flags, got, stderr(e))
+		}
+	}
+}
+
+func TestServicesCleanupTreatsAMalformedPlistAsHavingNoLabel(t *testing.T) {
+	e, prefix, agents, lc := servicesEnv(t)
+	bad := plistAt(t, filepath.Join(agents, "sh.brew.bad.plist"), "<plist><dict><key>Label</key><string>custom.bad</string></dict>")
+	lc.loaded["custom.bad"] = "\tstate = not running\n\tlast exit code = 0\n"
+	out, err := runCmd(t, e, "services", "cleanup", "-prefix", prefix)
+	if want := "Removing unused service file: " + bad + "\n"; err != nil || out != want {
+		t.Errorf("out %q, err %v, want %q", out, err, want)
 	}
 }
 
@@ -91,6 +112,26 @@ func TestServicesOhaiIsCutToTheTerminalWidthUnlessVerbose(t *testing.T) {
 	out, _ = runCmd(t, e, "services", "start", "-v", "-prefix", prefix, "foo")
 	if !strings.Contains(out, "(label: sh.brew.foo)") {
 		t.Errorf("verbose output is not cut: %q", out)
+	}
+}
+
+func TestServicesColorFollowsTheEnvironmentLikeBrew(t *testing.T) {
+	e, prefix, _, _ := servicesEnv(t)
+	e.tty = true
+	t.Setenv("NO_COLOR", "1")
+	out, err := runCmd(t, e, "services", "start", "-prefix", prefix, "foo")
+	if want := "==> Successfully started `foo` (label: sh.brew.foo)\n"; err != nil || out != want {
+		t.Errorf("NO_COLOR: out %q, want %q, %v", out, want, err)
+	}
+	t.Setenv("NO_COLOR", "")
+	if err := os.Unsetenv("NO_COLOR"); err != nil {
+		t.Fatal(err)
+	}
+	e, prefix, _, _ = servicesEnv(t)
+	t.Setenv("HOMEBREW_COLOR", "1")
+	out, _ = runCmd(t, e, "services", "start", "-prefix", prefix, "foo")
+	if !strings.HasPrefix(out, "\x1b[34m==>") {
+		t.Errorf("HOMEBREW_COLOR: out %q", out)
 	}
 }
 

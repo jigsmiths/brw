@@ -16,6 +16,7 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/services"
+	"github.com/jigsmiths/brw/internal/sudo"
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
@@ -117,7 +118,7 @@ func main() {
 func newEnv(host platform.Host) *env {
 	e := &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host,
 		launchctl: services.NewLaunchctl(), uid: os.Getuid(), daemonsDir: "/Library/LaunchDaemons",
-		plutil: plutilXML, clipboardBroken: pbpasteBroken, termWidth: stdinWidth, takeOwnership: rootOwner.apply, userExists: userExists, consoleUID: consoleOwner}
+		plutil: plutilXML, clipboardBroken: pbpasteBroken, termWidth: sudo.TerminalColumns, takeOwnership: rootOwner.apply, userExists: userExists, consoleUID: consoleOwner}
 	e.user = os.Getenv("USER")
 	if u, err := user.Current(); e.user == "" && err == nil {
 		e.user = u.Username

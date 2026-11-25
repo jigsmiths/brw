@@ -193,15 +193,19 @@ func (e *env) prettyBool(b bool) string {
 	if !e.tty || os.Getenv("HOMEBREW_NO_EMOJI") != "" {
 		return strconv.FormatBool(b)
 	}
-	if b {
-		return ansiBold + ansiGreen + "✔" + ansiReset + ansiReset
+	bold, reset, green, red := "", "", "", ""
+	if e.color() {
+		bold, reset, green, red = ansiBold, ansiReset, ansiGreen, ansiRed
 	}
-	return ansiBold + ansiRed + "✘" + ansiReset + ansiReset
+	if b {
+		return bold + green + "✔" + reset + reset
+	}
+	return bold + red + "✘" + reset + reset
 }
 
 func (e *env) infoText(info serviceInfo, verbose bool) string {
 	bold, reset := "", ""
-	if e.tty {
+	if e.color() {
 		bold, reset = ansiBold, ansiReset
 	}
 	var b strings.Builder

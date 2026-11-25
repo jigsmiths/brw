@@ -20,6 +20,7 @@ import (
 	"github.com/jigsmiths/brw/internal/racks"
 	"github.com/jigsmiths/brw/internal/rb"
 	"github.com/jigsmiths/brw/internal/services"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 const (
@@ -59,15 +60,26 @@ func (t serviceTarget) names() []string {
 func (t serviceTarget) serviceName() string { return t.names()[0] }
 
 func (e *env) ohai(format string, a ...any) {
-	if e.tty {
-		_, _ = fmt.Fprintf(e.out, "%s==>%s %s%s\n", ansiBlue, ansiBold, e.truncate(fmt.Sprintf(format, a...)), ansiReset)
+	title := e.truncate(fmt.Sprintf(format, a...))
+	if e.color() {
+		_, _ = fmt.Fprintf(e.out, "%s==>%s %s%s\n", ansiBlue, ansiBold, title, ansiReset)
 		return
 	}
-	_, _ = fmt.Fprintf(e.out, "==> %s\n", fmt.Sprintf(format, a...))
+	_, _ = fmt.Fprintf(e.out, "==> %s\n", title)
+}
+
+func (e *env) color() bool {
+	switch {
+	case sudo.EnvSet("HOMEBREW_NO_COLOR"), sudo.EnvSet("NO_COLOR"):
+		return false
+	case sudo.EnvSet("HOMEBREW_COLOR"):
+		return true
+	}
+	return e.tty
 }
 
 func (e *env) opoo(format string, a ...any) {
-	if e.tty {
+	if e.color() {
 		_, _ = fmt.Fprintf(e.err, "%sWarning%s: %s\n", ansiYellow, ansiReset, fmt.Sprintf(format, a...))
 		return
 	}
@@ -238,7 +250,7 @@ func servicesList(e *env, o *servicesOpts, prefix string) error {
 		return err
 	}
 	home, _ := os.UserHomeDir()
-	_, err = fmt.Fprint(e.out, services.FormatTable(rows, e.tty, home))
+	_, err = fmt.Fprint(e.out, services.FormatTable(rows, e.color(), home))
 	return err
 }
 
@@ -649,7 +661,6 @@ func (e *env) stopService(t serviceTarget, o *servicesOpts) error {
 			return err
 		}
 		for _, n := range t.names() {
-			e.echoQuiet("bootout", domain+"/"+n)
 			if e.launchctl.Bootout(domain, n) == nil {
 				e.ohai("Successfully stopped `%s` (label: %s)", t.name, n)
 				return nil
@@ -700,9 +711,6 @@ func (e *env) bootoutAll(label string, o *servicesOpts) error {
 		if err != nil || !up {
 			return err
 		}
-		if o.noWait {
-			e.echoQuiet("bootout", domain+"/"+label)
-		}
 		code, err := e.bootout(domain, label)
 		if err != nil {
 			return err
@@ -729,7 +737,6 @@ func (e *env) bootoutAll(label string, o *servicesOpts) error {
 		if up, err := e.running(label); err != nil {
 			return err
 		} else if up {
-			e.echoQuiet("stop", label)
 			_ = e.launchctl.Stop(label)
 		}
 	}
