@@ -20,10 +20,11 @@ func fixture(t *testing.T, name string) string {
 
 func TestParseRealPrint(t *testing.T) {
 	got := ParsePrint(fixture(t, "print_rift.txt"))
-	if got != (Info{ExitCode: 78, HasExitCode: true}) {
+	want := Info{ExitCode: 78, HasExitCode: true, LoadedFile: "/Users/me/Library/LaunchAgents/homebrew.mxcl.rift.plist", HasLoadedFile: true}
+	if got != want {
 		t.Errorf("print: %+v", got)
 	}
-	if got := ParsePrint("\tstate = running\n\tpid = 42\n"); got.PID != 42 || !got.Running() || got.HasExitCode {
+	if got := ParsePrint("\tstate = running\n\tpid = 42\n"); got.PID != 42 || !got.HasPID || !got.Running() || got.HasExitCode || got.HasLoadedFile {
 		t.Errorf("running: %+v", got)
 	}
 	if got := ParsePrint("\tstate = not running\n\tlast exit code = (never exited)\n"); got.HasExitCode {
@@ -36,7 +37,7 @@ func TestParseRealList(t *testing.T) {
 	if got != (Info{ExitCode: 19968, HasExitCode: true}) {
 		t.Errorf("list: %+v", got)
 	}
-	if got := ParseList("{\n\t\"PID\" = 7;\n\t\"LastExitStatus\" = 0;\n};\n"); got.PID != 7 || !got.HasExitCode {
+	if got := ParseList("{\n\t\"PID\" = 7;\n\t\"LastExitStatus\" = 0;\n\t\"Program\" = \"path = x\";\n};\n"); got.PID != 7 || !got.HasPID || !got.HasExitCode || got.HasLoadedFile {
 		t.Errorf("list with pid: %+v", got)
 	}
 }
@@ -108,59 +109,70 @@ func TestParseEnvFileIsBrews(t *testing.T) {
 	}
 }
 
-const envPlistHead = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n"
+const envPlistHead = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n"
 
-func TestApplyEnvMergesIntoTheExistingDictSorted(t *testing.T) {
-	in := envPlistHead +
-		"\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>NOTE</key>\n\t\t<string>a &amp; b</string>\n\t\t<key>PATH</key>\n\t\t<string>/bin</string>\n\t</dict>\n" +
-		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	got, ok := ApplyEnv([]byte(in), map[string]string{"PATH": "/x:/y", "ALPHA": "1 < 2"})
-	want := envPlistHead +
-		"\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>ALPHA</key>\n\t\t<string>1 &lt; 2</string>\n\t\t<key>NOTE</key>\n\t\t<string>a &amp; b</string>\n" +
-		"\t\t<key>PATH</key>\n\t\t<string>/x:/y</string>\n\t</dict>\n" +
-		"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	if !ok || string(got) != want {
-		t.Errorf("ApplyEnv = %v\n%s\nwant\n%s", ok, got, want)
-	}
-}
-
-func TestApplyEnvAddsTheDictInKeyOrder(t *testing.T) {
-	in := envPlistHead + "\t<key>Disabled</key>\n\t<false/>\n\t<key>KeepAlive</key>\n\t<true/>\n\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	got, ok := ApplyEnv([]byte(in), map[string]string{"B": "2", "A": "1"})
-	want := envPlistHead + "\t<key>Disabled</key>\n\t<false/>\n" +
-		"\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>A</key>\n\t\t<string>1</string>\n\t\t<key>B</key>\n\t\t<string>2</string>\n\t</dict>\n" +
-		"\t<key>KeepAlive</key>\n\t<true/>\n\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n</dict>\n</plist>\n"
-	if !ok || string(got) != want {
-		t.Errorf("ApplyEnv = %v\n%s\nwant\n%s", ok, got, want)
-	}
-}
-
-func TestApplyEnvAppendsWhenItSortsLast(t *testing.T) {
-	in := envPlistHead + "\t<key>Abc</key>\n\t<true/>\n</dict>\n</plist>\n"
-	got, ok := ApplyEnv([]byte(in), map[string]string{"A": "1"})
-	if !ok || !strings.HasSuffix(string(got), "\t<key>Abc</key>\n\t<true/>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>A</key>\n\t\t<string>1</string>\n\t</dict>\n</dict>\n</plist>\n") {
-		t.Errorf("ApplyEnv = %v\n%s", ok, got)
-	}
-}
-
-func TestApplyEnvLeavesAnUneditablePlistAlone(t *testing.T) {
-	for _, in := range []string{"bplist00\x00", "<plist>no dict</plist>"} {
-		if got, ok := ApplyEnv([]byte(in), map[string]string{"A": "1"}); ok || string(got) != in {
-			t.Errorf("ApplyEnv(%q) = %q, %v", in, got, ok)
+func TestApplyEnvIsTheRubyHashRoundTrip(t *testing.T) {
+	env := map[string]string{"PATH": "/x:/bin", "Zoo": "<z>", "alpha": "1 & 2"}
+	for name, tc := range map[string]struct{ in, want string }{
+		"existing environment": {
+			envPlistHead + "<dict>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>PATH</key>\n\t\t<string>/bin</string>\n\t\t<key>keep</key>\n\t\t<string>a &amp; b</string>\n\t</dict>\n" +
+				"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/x</string>\n\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n</dict>\n</plist>\n",
+			envPlistHead + "<dict>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>PATH</key>\n\t\t<string>/x:/bin</string>\n\t\t<key>Zoo</key>\n\t\t<string>&lt;z&gt;</string>\n" +
+				"\t\t<key>alpha</key>\n\t\t<string>1 &amp; 2</string>\n\t\t<key>keep</key>\n\t\t<string>a &amp; b</string>\n\t</dict>\n" +
+				"\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>/x</string>\n\t</array>\n\t<key>RunAtLoad</key>\n\t<true/>\n</dict>\n</plist>\n",
+		},
+		"no environment": {
+			envPlistHead + "<dict>\n\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>Zed</key>\n\t<integer>3</integer>\n</dict>\n</plist>\n",
+			envPlistHead + "<dict>\n\t<key>EnvironmentVariables</key>\n\t<dict>\n\t\t<key>PATH</key>\n\t\t<string>/x:/bin</string>\n\t\t<key>Zoo</key>\n\t\t<string>&lt;z&gt;</string>\n" +
+				"\t\t<key>alpha</key>\n\t\t<string>1 &amp; 2</string>\n\t</dict>\n\t<key>Label</key>\n\t<string>sh.brew.foo</string>\n\t<key>Zed</key>\n\t<integer>3</integer>\n</dict>\n</plist>\n",
+		},
+	} {
+		got, err := ApplyEnv([]byte(tc.in), env)
+		if err != nil || string(got) != tc.want {
+			t.Errorf("%s: ApplyEnv = %v\n%s\nwant\n%s", name, err, got, tc.want)
 		}
 	}
-	if got, ok := ApplyEnv([]byte(envPlistHead+"</dict>\n</plist>\n"), nil); !ok || string(got) != envPlistHead+"</dict>\n</plist>\n" {
-		t.Errorf("no overrides must not change the plist: %q, %v", got, ok)
+}
+
+func TestApplyEnvRefusesAPlistThatIsNotADictionary(t *testing.T) {
+	for _, in := range []string{"bplist00\x00", "<plist>no dict</plist>", "<plist><dict>"} {
+		if got, err := ApplyEnv([]byte(in), map[string]string{"A": "1"}); err == nil {
+			t.Errorf("ApplyEnv(%q) = %q", in, got)
+		}
+	}
+	in := envPlistHead + "<dict>\n</dict>\n</plist>\n"
+	if got, err := ApplyEnv([]byte(in), nil); err != nil || string(got) != in {
+		t.Errorf("no overrides must not change the plist: %q, %v", got, err)
 	}
 }
 
 func TestPlistKeys(t *testing.T) {
-	body := []byte("<dict>\n<key>Label</key>\n<string>homebrew.mxcl.foo</string>\n<key>UserName</key><string>bob</string></dict>")
+	body := []byte("<plist><dict>\n<key>Label</key>\n<string>homebrew.mxcl.foo</string>\n<key>UserName</key><string>bob</string></dict></plist>")
 	if l, ok := FileLabel(body); !ok || l != "homebrew.mxcl.foo" {
 		t.Errorf("label = %q, %v", l, ok)
 	}
 	if u, ok := FileUser(body); !ok || u != "bob" {
 		t.Errorf("user = %q, %v", u, ok)
+	}
+}
+
+func TestPlistKeysAreReadLikeTheRubyGem(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		want string
+		ok   bool
+	}{
+		"blank label":        {"<plist><dict><key>Label</key><string> </string></dict></plist>", "", false},
+		"label not a string": {"<plist><dict><key>Label</key><integer>3</integer></dict></plist>", "", false},
+		"malformed xml":      {"<plist><dict><key>Label</key><string>x</string></dict>", "", false},
+		"array root":         {"<plist><array><string>Label</string></array></plist>", "", false},
+		"no dict":            {"<plist><key>Label</key><string>x</string></plist>", "Label", true},
+		"empty":              {"", "", false},
+		"entities":           {"<plist><dict><key>Label</key><string>a&amp;b</string></dict></plist>", "a&b", true},
+	} {
+		if got, ok := FileLabel([]byte(tc.body)); got != tc.want || ok != tc.ok {
+			t.Errorf("%s: FileLabel = %q, %v; want %q, %v", name, got, ok, tc.want, tc.ok)
+		}
 	}
 }
 
@@ -263,5 +275,49 @@ func TestQueryTreatsEmptyOutputAsNotLoaded(t *testing.T) {
 	p := &probeLaunchctl{printOut: map[string]string{"gui/501": "  \n"}}
 	if loaded, _, _ := Query(p, Domains(501), "x"); loaded {
 		t.Error("blank print output is not a loaded service")
+	}
+}
+
+func TestCandidatesStartWithTheChosenDomainWithoutRepeats(t *testing.T) {
+	if got := Candidates("user/501", 501); !reflect.DeepEqual(got, []string{"user/501", "gui/501"}) {
+		t.Errorf("user: %v", got)
+	}
+	if got := Candidates("gui/501", 501); !reflect.DeepEqual(got, []string{"gui/501", "user/501"}) {
+		t.Errorf("gui: %v", got)
+	}
+	if got := Candidates("system", 0); !reflect.DeepEqual(got, []string{"system"}) {
+		t.Errorf("root: %v", got)
+	}
+}
+
+func TestRootUsesTheSystemDomainOnly(t *testing.T) {
+	if got := Domain(0); got != "system" {
+		t.Errorf("Domain(0) = %q", got)
+	}
+	if got := Domains(0); !reflect.DeepEqual(got, []string{"system"}) {
+		t.Errorf("Domains(0) = %v", got)
+	}
+}
+
+func TestProgram(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body, path, key string
+		parsed          bool
+	}{
+		"arguments": {"<plist><dict><key>ProgramArguments</key><array><string>/opt/x/bin/x</string><string>serve</string></array></dict></plist>",
+			"/opt/x/bin/x", "first ProgramArguments value", true},
+		"program": {"<plist><dict><key>Program</key><string>/bin/y</string></dict></plist>", "/bin/y", "Program", true},
+		"blank first argument": {"<plist><dict><key>ProgramArguments</key><array><string> </string></array><key>Program</key><string>/bin/z</string></dict></plist>",
+			"/bin/z", "Program", true},
+		"cdata and entities": {"<plist><!-- c --><dict><key>ProgramArguments</key><array><string><![CDATA[/c&d]]></string></array></dict></plist>",
+			"/c&d", "first ProgramArguments value", true},
+		"neither":   {"<plist><dict></dict></plist>", "", "", true},
+		"malformed": {"<plist><dict>", "", "", false},
+		"empty":     {"<plist/>", "", "", false},
+	} {
+		path, key, parsed := Program([]byte(tc.body))
+		if path != tc.path || key != tc.key || parsed != tc.parsed {
+			t.Errorf("%s: Program = %q, %q, %v; want %q, %q, %v", name, path, key, parsed, tc.path, tc.key, tc.parsed)
+		}
 	}
 }

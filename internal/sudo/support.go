@@ -83,6 +83,8 @@ func columns(size func() (int, bool), tput func() string) int {
 	return n
 }
 
+func TerminalColumns() int { return columns(stdinColumns, tputColumns) }
+
 func stdinColumns() (int, bool) {
 	var ws struct{ Row, Col, X, Y uint16 }
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, os.Stdin.Fd(), syscall.TIOCGWINSZ, uintptr(unsafe.Pointer(&ws)))
