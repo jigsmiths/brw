@@ -134,15 +134,20 @@ func filterLog(logs string) string {
 	return keep.String()
 }
 
+var syslogQuery = func(args ...string) string {
+	out, _ := exec.Command(syslogCommand, args...).Output()
+	return string(out)
+}
+
 func RecordLog(start time.Time, dest LogDestination, failed, verbose bool, display io.Writer) error {
 	time.Sleep(logSettleDelay)
 	since := fmt.Sprint(start.Unix())
-	out, _ := exec.Command(syslogCommand,
+	out := syslogQuery(
 		"-F", "$((Time)(local)) $(Sender)[$(PID)]: $(Message)",
 		"-k", "Time", "ge", since, "-k", "Message", "S", "deny", "-k", "Sender", "kernel",
 		"-o",
-		"-k", "Time", "ge", since, "-k", "Message", "S", "deny", "-k", "Sender", "sandboxd").Output()
-	logs := filterLog(string(out))
+		"-k", "Time", "ge", since, "-k", "Message", "S", "deny", "-k", "Sender", "sandboxd")
+	logs := filterLog(out)
 	if logs == "" {
 		return nil
 	}

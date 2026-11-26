@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDecideFollowsBrewsUseFor(t *testing.T) {
@@ -125,6 +126,39 @@ func TestTheChildRunsOnItsOwnTerminal(t *testing.T) {
 		if name := parent.Name(); strings.Contains(got, "\n"+name+"\n") {
 			t.Errorf("the child ran on the parent's terminal %s", name)
 		}
+	}
+}
+
+const syslogFixture = `Nov 26 14:25:01 kernel[0]: Sandbox: touch(123) deny(1) file-write-create /private/var/x
+Nov 26 14:25:02 kernel[0]: Sandbox: Python(124) deny file-write-create /opt/y/__pycache__/m.cpython-313.pyc
+Nov 26 14:25:03 sandboxd[9]: ([123]) touch(123) deny file-write-data /private/var/z
+`
+
+func TestRecordLogKeepsWhatTheKernelDeniedAndShowsItOnlyForAVerboseFailure(t *testing.T) {
+	old := syslogQuery
+	syslogQuery = func(...string) string { return syslogFixture }
+	t.Cleanup(func() { syslogQuery = old })
+	file := t.TempDir() + "/postinstall.sandbox.log"
+	var shown bytes.Buffer
+	if err := RecordLog(time.Now(), LogTo(file), false, true, &shown); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(kept), ".pyc") || !strings.Contains(string(kept), "file-write-create /private/var/x") ||
+		!strings.HasSuffix(string(kept), logFooter) {
+		t.Errorf("log file = %q", kept)
+	}
+	if shown.Len() != 0 {
+		t.Errorf("a successful run showed %q", shown.String())
+	}
+	if err := RecordLog(time.Now(), NoLogFile, true, true, &shown); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(shown.String(), "==> Sandbox Log\n") || !strings.Contains(shown.String(), "file-write-data /private/var/z") {
+		t.Errorf("shown = %q", shown.String())
 	}
 }
 
