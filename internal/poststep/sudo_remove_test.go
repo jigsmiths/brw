@@ -87,14 +87,15 @@ func TestRemoveIfNeededUsesSudoInAnUnwritableDirectory(t *testing.T) {
 	}
 }
 
-func TestRemoveWithSudoFalseStillStaysInThePrefix(t *testing.T) {
+func TestRemoveWithSudoFalseRemovesDirectlyOutsideThePrefix(t *testing.T) {
 	f := newSudoFixture(t)
 	p := f.touch("a.txt")
-	if err := f.run(f.removeStep(`,"sudo":false`, p)); err == nil {
-		t.Error("a plain remove outside the prefix should still be refused")
+	f.mustRun(f.removeStep(`,"sudo":false`, p))
+	if _, err := os.Lstat(p); err == nil {
+		t.Error("the file was not removed")
 	}
-	if len(f.stub.removed) != 0 {
-		t.Errorf("removed = %v", f.stub.removed)
+	if len(f.stub.removed) != 0 || len(f.stub.cmds) != 0 {
+		t.Errorf("privileged work for a plain remove: %v %v", f.stub.removed, f.stub.cmds)
 	}
 }
 

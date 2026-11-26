@@ -8,7 +8,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -26,9 +26,6 @@ func (r *runner) setPermissions(s step) error {
 		for _, p := range matches {
 			if _, err := os.Stat(p); err != nil {
 				continue
-			}
-			if _, err := r.inside(p); err != nil {
-				return err
 			}
 			paths = append(paths, p)
 		}
@@ -150,15 +147,15 @@ func (r *runner) captureStdout(s step, stdout string) error {
 	if s.StdoutPath == nil {
 		return nil
 	}
-	_, rel, err := r.target(s.StdoutPath)
+	abs, err := r.target(s.StdoutPath)
 	if err != nil {
 		return err
 	}
-	if err := r.c.Root.MkdirAll(path.Dir(rel), 0o755); err != nil {
+	if err := r.mkdirAll(filepath.Dir(abs)); err != nil {
 		return err
 	}
-	if err := r.removeFile(rel); err != nil {
+	if err := r.removeAny(abs); err != nil {
 		return err
 	}
-	return r.c.Root.WriteFile(rel, []byte(stdout), 0o644)
+	return r.writeFile(abs, []byte(stdout), 0o644)
 }

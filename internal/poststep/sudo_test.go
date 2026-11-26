@@ -153,10 +153,11 @@ func TestSymlinkIfNeededUsesSudoInAnUnwritableDirectory(t *testing.T) {
 	f.wantLn("-s", "-f", f.source, f.target())
 }
 
-func TestSymlinkWithSudoFalseStaysInThePrefix(t *testing.T) {
+func TestSymlinkWithSudoFalseLinksDirectlyOutsideThePrefix(t *testing.T) {
 	f := newSudoFixture(t)
-	if err := f.run(f.step(`,"sudo":false`)); err == nil {
-		t.Error("a plain symlink outside the prefix should still be refused")
+	f.mustRun(f.step(`,"sudo":false`))
+	if got, err := os.Readlink(f.target()); err != nil || got != f.source {
+		t.Errorf("link = %q, %v", got, err)
 	}
 	if len(f.stub.cmds) != 0 {
 		t.Errorf("runner got %v", f.stub.cmds)

@@ -15,7 +15,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/sudo"
@@ -36,6 +35,9 @@ type Context struct {
 	Staged string // absolute
 	Arch   string // arm or intel
 	AppDir string
+
+	Home string // the user's home, for the home base
+	Temp string // for the temp base
 
 	Sudo   sudo.Runner
 	Remove func(ctx context.Context, path string) error
@@ -207,21 +209,11 @@ func (r *runner) uninstallLink(s step) error {
 	if err != nil {
 		return err
 	}
-	rel, err := r.inside(abs)
-	if err != nil && s.Sudo == sudoNever {
-		return err
-	}
 	want := r.expand(s.Source.Path)
 	if s.Source.Base != "relative" {
 		if want, err = r.resolve(*s.Source); err != nil {
 			return err
 		}
-	}
-	if s.Sudo == sudoNever {
-		if got, err := r.c.Root.Readlink(rel); err != nil || got != want {
-			return nil
-		}
-		return r.c.Root.Remove(rel)
 	}
 	if fi, err := os.Lstat(abs); err != nil || fi.Mode()&fs.ModeSymlink == 0 {
 		return nil
@@ -337,6 +329,15 @@ func (r *runner) token(name string) (string, bool) {
 
 func (r *runner) base(name, formula string) (string, error) {
 	c := r.c
+	switch name {
+	case "home":
+		if c.Home != "" {
+			return c.Home, nil
+		}
+		return os.UserHomeDir()
+	case "temp":
+		return r.tempDir(), nil
+	}
 	if c.cask() {
 		switch name {
 		case "homebrew_prefix":
@@ -346,7 +347,10 @@ func (r *runner) base(name, formula string) (string, error) {
 		case "caskroom_path":
 			return filepath.Join(c.Prefix, "Caskroom", c.Token), nil
 		}
-		return "", fmt.Errorf("unsupported base %q for a cask", name)
+		if dir, ok := r.configDir(name); ok {
+			return dir, nil
+		}
+		return "", fmt.Errorf("unknown install step base: %s", name)
 	}
 	keg := filepath.Join(c.Prefix, c.Keg)
 	switch name {
@@ -381,19 +385,87 @@ func (r *runner) base(name, formula string) (string, error) {
 	case "formula_opt_prefix":
 		return filepath.Join(c.Prefix, "opt", path.Base(formula)), nil
 	}
-	return "", fmt.Errorf("unsupported base %q", name)
+	return "", fmt.Errorf("unknown install step base: %s", name)
+}
+
+// expandPath is Pathname#expand_path: ~ is the home and a relative path starts at the working directory.
+func (r *runner) expandPath(p string) (string, error) {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		home, err := r.base("home", "")
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, p[1:]), nil
+	}
+	return filepath.Abs(p)
+}
+
+// tempDir is HOMEBREW_TEMP, which brew defaults per OS.
+func (r *runner) tempDir() string {
+	if r.c.Temp != "" {
+		return r.c.Temp
+	}
+	if dir := os.Getenv("HOMEBREW_TEMP"); dir != "" {
+		return dir
+	}
+	if r.c.OS == "darwin" {
+		return "/private/tmp"
+	}
+	return "/tmp"
+}
+
+// configDir is a directory of the cask's config, which brew's context_path reads
+// when the cask has no method of that name.
+func (r *runner) configDir(name string) (string, bool) {
+	prefix := r.c.Prefix
+	switch name {
+	case "appdir":
+		return r.c.AppDir, r.c.AppDir != ""
+	case "binarydir":
+		return filepath.Join(prefix, "bin"), true
+	case "manpagedir":
+		return filepath.Join(prefix, "share/man"), true
+	case "bash_completion":
+		return filepath.Join(prefix, "etc/bash_completion.d"), true
+	case "zsh_completion":
+		return filepath.Join(prefix, "share/zsh/site-functions"), true
+	case "fish_completion":
+		return filepath.Join(prefix, "share/fish/vendor_completions.d"), true
+	case "pwsh_completion":
+		return filepath.Join(prefix, "share/pwsh/completions"), true
+	}
+	home, err := r.base("home", "")
+	if err != nil {
+		return "", false
+	}
+	sub, ok := defaultDirs[name]
+	return filepath.Join(home, sub), ok
+}
+
+var defaultDirs = map[string]string{
+	"appimagedir":          "Applications",
+	"colorpickerdir":       "Library/ColorPickers",
+	"prefpanedir":          "Library/PreferencePanes",
+	"qlplugindir":          "Library/QuickLook",
+	"mdimporterdir":        "Library/Spotlight",
+	"dictionarydir":        "Library/Dictionaries",
+	"fontdir":              "Library/Fonts",
+	"servicedir":           "Library/Services",
+	"input_methoddir":      "Library/Input Methods",
+	"internet_plugindir":   "Library/Internet Plug-Ins",
+	"audio_unit_plugindir": "Library/Audio/Plug-Ins/Components",
+	"vst_plugindir":        "Library/Audio/Plug-Ins/VST",
+	"vst3_plugindir":       "Library/Audio/Plug-Ins/VST3",
+	"screen_saverdir":      "Library/Screen Savers",
 }
 
 func (r *runner) resolve(s pathSpec) (string, error) {
 	p := r.expand(s.Path)
 	switch s.Base {
 	case "", "absolute":
-		if !filepath.IsAbs(p) {
-			return "", fmt.Errorf("%q is relative and has no base", p)
-		}
-		return filepath.Clean(p), nil
+		return r.expandPath(p)
 	case "relative":
-		return "", errors.New("a relative base only works for a symlink source")
+		return filepath.Abs(p)
 	}
 	root, err := r.base(s.Base, s.Formula)
 	if err != nil {
@@ -402,23 +474,11 @@ func (r *runner) resolve(s pathSpec) (string, error) {
 	return filepath.Join(root, p), nil
 }
 
-func (r *runner) inside(abs string) (string, error) {
-	rel, err := filepath.Rel(r.c.Prefix, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%s is outside the prefix", abs)
-	}
-	return rel, nil
-}
-
-func (r *runner) target(s *pathSpec) (abs, rel string, err error) {
+func (r *runner) target(s *pathSpec) (string, error) {
 	if s == nil {
-		return "", "", errors.New("the step has no path")
+		return "", errors.New("the step has no path")
 	}
-	if abs, err = r.resolve(*s); err != nil {
-		return "", "", err
-	}
-	rel, err = r.inside(abs)
-	return abs, rel, err
+	return r.resolve(*s)
 }
 
 func (r *runner) logf(format string, args ...any) {
@@ -430,19 +490,23 @@ func (r *runner) logf(format string, args ...any) {
 func (r *runner) do(s step) error {
 	switch s.Type {
 	case "mkdir_p":
-		_, rel, err := r.target(s.Path)
+		abs, err := r.target(s.Path)
 		if err != nil {
 			return err
 		}
-		return r.c.Root.MkdirAll(rel, 0o755)
+		return r.mkdirAll(abs)
 	case "mkdir":
-		_, rel, err := r.target(s.Path)
+		abs, err := r.target(s.Path)
 		if err != nil {
 			return err
 		}
-		return r.c.Root.Mkdir(rel, 0o755)
+		return r.mkdir(abs)
 	case "touch":
-		return r.touch(s)
+		abs, err := r.target(s.Path)
+		if err != nil {
+			return err
+		}
+		return r.touchAt(abs)
 	case "symlink":
 		return r.symlink(s)
 	case "remove":
@@ -474,84 +538,6 @@ func (r *runner) do(s step) error {
 	return fmt.Errorf("unsupported step %q", s.Type)
 }
 
-func (r *runner) touch(s step) error {
-	_, rel, err := r.target(s.Path)
-	if err != nil {
-		return err
-	}
-	if err := r.c.Root.MkdirAll(path.Dir(rel), 0o755); err != nil {
-		return err
-	}
-	if _, err := r.c.Root.Lstat(rel); err == nil {
-		now := time.Now()
-		return r.c.Root.Chtimes(rel, now, now)
-	}
-	return r.c.Root.WriteFile(rel, nil, 0o644)
-}
-
-// removeFile ignores a missing file and leaves a directory alone.
-func (r *runner) removeFile(rel string) error {
-	fi, err := r.c.Root.Lstat(rel)
-	if err != nil || fi.IsDir() {
-		return nil
-	}
-	return r.c.Root.Remove(rel)
-}
-
-func (r *runner) symlink(s step) error {
-	if s.Sudo != sudoNever {
-		return r.symlinkWithSudo(s)
-	}
-	_, rel, err := r.target(s.Target)
-	if err != nil {
-		return err
-	}
-	if s.SourceGlob {
-		sources, err := r.glob(*s.Source)
-		if err != nil {
-			return err
-		}
-		sources = slices.DeleteFunc(sources, func(p string) bool { _, err := os.Lstat(p); return err != nil })
-		if len(sources) == 0 {
-			return nil
-		}
-		if fi, err := r.c.Root.Lstat(rel); len(sources) > 1 || (err == nil && fi.IsDir()) {
-			if err := r.c.Root.MkdirAll(rel, 0o755); err != nil {
-				return err
-			}
-			for _, src := range sources {
-				if err := r.link(src, path.Join(rel, filepath.Base(src)), s.Force); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		return r.link(sources[0], rel, s.Force)
-	}
-	if s.Source == nil {
-		return errors.New("the step has no source")
-	}
-	text := r.expand(s.Source.Path)
-	if s.Source.Base != "relative" {
-		if text, err = r.resolve(*s.Source); err != nil {
-			return err
-		}
-	}
-	return r.link(text, rel, s.Force)
-}
-
-func (r *runner) link(sourceText, rel string, force bool) error {
-	if force {
-		if err := r.removeFile(rel); err != nil {
-			return err
-		}
-	}
-	if err := r.c.Root.MkdirAll(path.Dir(rel), 0o755); err != nil {
-		return err
-	}
-	return r.c.Root.Symlink(sourceText, rel)
-}
-
 func (r *runner) remove(s step) error {
 	for _, spec := range s.Paths {
 		matches, err := r.glob(spec)
@@ -559,11 +545,6 @@ func (r *runner) remove(s step) error {
 			return err
 		}
 		for _, abs := range matches {
-			if s.Sudo == sudoNever {
-				if _, err := r.inside(abs); err != nil {
-					return err
-				}
-			}
 			fi, err := os.Lstat(abs)
 			if err != nil {
 				continue
@@ -635,19 +616,15 @@ func (r *runner) copy(s step) error {
 	if err != nil {
 		return err
 	}
-	targetAbs, _, err := r.target(s.Target)
+	dest, err := r.target(s.Target)
 	if err != nil {
 		return err
 	}
-	dest := destination(source, targetAbs)
-	rel, err := r.inside(dest)
-	if err != nil {
+	dest = destination(source, dest)
+	if err := r.mkdirAll(filepath.Dir(dest)); err != nil {
 		return err
 	}
-	if err := r.c.Root.MkdirAll(path.Dir(rel), 0o755); err != nil {
-		return err
-	}
-	_, existsErr := r.c.Root.Lstat(rel)
+	_, existsErr := os.Lstat(dest)
 	exists := existsErr == nil
 	overwrite := s.Overwrite == nil || *s.Overwrite
 	if exists && !overwrite {
@@ -655,51 +632,17 @@ func (r *runner) copy(s step) error {
 	}
 	if exists {
 		if s.Recursive {
-			if err := r.c.Root.RemoveAll(rel); err != nil {
+			if err := r.removeTree(dest); err != nil {
 				return err
 			}
-		} else if err := r.removeFile(rel); err != nil {
+		} else if err := r.removeAny(dest); err != nil {
 			return err
 		}
 	}
 	if s.Recursive {
-		return r.copyTree(source, rel)
+		return r.copyTree(source, dest)
 	}
-	return r.copyFile(source, rel)
-}
-
-func (r *runner) copyFile(source, rel string) error {
-	f, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	fi, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	return r.c.Root.WriteFrom(rel, f, fi.Mode().Perm(), time.Time{})
-}
-
-func (r *runner) copyTree(source, rel string) error {
-	return filepath.WalkDir(source, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		sub, _ := filepath.Rel(source, p)
-		dst := path.Join(rel, filepath.ToSlash(sub))
-		switch {
-		case d.IsDir():
-			return r.c.Root.MkdirAll(dst, 0o755)
-		case d.Type()&fs.ModeSymlink != 0:
-			target, err := os.Readlink(p)
-			if err != nil {
-				return err
-			}
-			return r.c.Root.Symlink(target, dst)
-		}
-		return r.copyFile(p, dst)
-	})
+	return r.copyFile(source, dest)
 }
 
 func (r *runner) move(s step) error {
@@ -707,31 +650,23 @@ func (r *runner) move(s step) error {
 	if err != nil {
 		return err
 	}
-	srcRel, err := r.inside(source)
+	dest, err := r.target(s.Target)
 	if err != nil {
 		return err
 	}
-	targetAbs, _, err := r.target(s.Target)
-	if err != nil {
+	dest = destination(source, dest)
+	if err := r.mkdirAll(filepath.Dir(dest)); err != nil {
 		return err
 	}
-	dest := destination(source, targetAbs)
-	rel, err := r.inside(dest)
-	if err != nil {
-		return err
-	}
-	if err := r.c.Root.MkdirAll(path.Dir(rel), 0o755); err != nil {
-		return err
-	}
-	if _, err := r.c.Root.Lstat(rel); err == nil {
+	if _, err := os.Lstat(dest); err == nil {
 		if s.Overwrite != nil && !*s.Overwrite {
 			return fmt.Errorf("%s already exists", dest)
 		}
-		if err := r.c.Root.RemoveAll(rel); err != nil {
+		if err := r.removeTree(dest); err != nil {
 			return err
 		}
 	}
-	return r.c.Root.Rename(srcRel, rel)
+	return r.rename(source, dest)
 }
 
 func (r *runner) linkDir(s step) error {
@@ -739,7 +674,7 @@ func (r *runner) linkDir(s step) error {
 	if err != nil {
 		return err
 	}
-	targetAbs, _, err := r.target(s.Target)
+	targetAbs, err := r.target(s.Target)
 	if err != nil {
 		return err
 	}
@@ -752,20 +687,16 @@ func (r *runner) linkDir(s step) error {
 			return nil
 		}
 		dst := filepath.Join(targetAbs, sub)
-		rel, err := r.inside(dst)
-		if err != nil {
-			return err
-		}
-		if fi, err := r.c.Root.Lstat(rel); err == nil && fi.IsDir() {
+		if fi, err := os.Lstat(dst); err == nil && fi.IsDir() {
 			return nil
 		}
-		if err := r.removeFile(rel); err != nil {
+		if err := r.removeAny(dst); err != nil {
 			return err
 		}
 		if d.IsDir() {
-			return r.c.Root.MkdirAll(rel, 0o755)
+			return r.mkdirAll(dst)
 		}
-		return r.relativeLink(p, rel)
+		return r.relativeLink(p, dst)
 	})
 }
 
@@ -774,11 +705,11 @@ func (r *runner) linkChildren(s step) error {
 	if err != nil {
 		return err
 	}
-	targetAbs, targetRel, err := r.target(s.Target)
+	targetAbs, err := r.target(s.Target)
 	if err != nil {
 		return err
 	}
-	if err := r.c.Root.MkdirAll(targetRel, 0o755); err != nil {
+	if err := r.mkdirAll(targetAbs); err != nil {
 		return err
 	}
 	entries, err := os.ReadDir(source)
@@ -787,48 +718,41 @@ func (r *runner) linkChildren(s step) error {
 	}
 	for _, e := range entries {
 		dst := filepath.Join(targetAbs, r.expand(s.Prefix)+e.Name()+r.expand(s.Suffix))
-		rel, err := r.inside(dst)
-		if err != nil {
-			return err
-		}
-		if err := r.relativeLink(filepath.Join(source, e.Name()), rel); err != nil {
+		if err := r.relativeLink(filepath.Join(source, e.Name()), dst); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *runner) relativeLink(source, rel string) error {
-	dir := filepath.Join(r.c.Prefix, path.Dir(rel))
-	text, err := filepath.Rel(dir, source)
+func (r *runner) relativeLink(source, dest string) error {
+	text, err := filepath.Rel(filepath.Dir(dest), source)
 	if err != nil {
 		return err
 	}
-	if err := r.c.Root.MkdirAll(path.Dir(rel), 0o755); err != nil {
+	if err := r.mkdirAll(filepath.Dir(dest)); err != nil {
 		return err
 	}
-	return r.c.Root.Symlink(text, rel)
+	return r.symlinkAt(text, dest)
 }
 
 func (r *runner) write(s step) error {
-	_, rel, err := r.target(s.Path)
+	abs, err := r.target(s.Path)
 	if err != nil {
 		return err
 	}
-	exists := false
-	if _, err := r.c.Root.Lstat(rel); err == nil {
-		exists = true
-	}
+	_, existsErr := os.Lstat(abs)
+	exists := existsErr == nil
 	if exists && (s.Overwrite == nil || !*s.Overwrite) {
 		return nil
 	}
-	if err := r.c.Root.MkdirAll(path.Dir(rel), 0o755); err != nil {
+	if err := r.mkdirAll(filepath.Dir(abs)); err != nil {
 		return err
 	}
 	if exists {
-		if err := r.c.Root.Remove(rel); err != nil {
+		if err := r.removeAny(abs); err != nil {
 			return err
 		}
 	}
-	return r.c.Root.WriteFile(rel, []byte(r.expand(s.Content)), 0o644)
+	return r.writeFile(abs, []byte(r.expand(s.Content)), 0o644)
 }

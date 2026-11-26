@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -24,17 +23,17 @@ func (r *runner) initDataDir(s step) error {
 	default:
 		return fmt.Errorf("unknown data directory initialiser: %s", s.Using)
 	}
-	data, rel, err := r.target(s.Path)
+	data, err := r.target(s.Path)
 	if err != nil {
 		return err
 	}
-	if err := r.c.Root.MkdirAll(rel, 0o755); err != nil {
+	if err := r.mkdirAll(data); err != nil {
 		return err
 	}
 	if os.Getenv("HOMEBREW_GITHUB_ACTIONS") != "" {
 		return nil
 	}
-	if _, err := r.c.Root.Lstat(path.Join(rel, marker)); err == nil {
+	if _, err := os.Lstat(filepath.Join(data, marker)); err == nil {
 		return nil
 	}
 
