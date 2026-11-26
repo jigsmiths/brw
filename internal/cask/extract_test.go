@@ -223,7 +223,12 @@ func TestExtractDmg(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("disk images need macOS")
 	}
-	src := t.TempDir()
+	if _, err := exec.LookPath("hdiutil"); err != nil {
+		t.Skip("hdiutil is not installed")
+	}
+	root := t.TempDir()
+	t.Cleanup(func() { detachImagesUnder(t, root) })
+	src := filepath.Join(root, "src")
 	writeFile(t, filepath.Join(src, "Slack.app", "Contents", "Info.plist"), []byte("<plist/>"), 0o444)
 	writeFile(t, filepath.Join(src, ".DS_Store"), []byte("x"), 0o644)
 	writeFile(t, filepath.Join(src, ".background", "bg.png"), []byte("x"), 0o644)
@@ -233,11 +238,11 @@ func TestExtractDmg(t *testing.T) {
 	}
 	// UDBZ images start like a bzip2 file.
 	for _, format := range []string{"UDZO", "UDBZ"} {
-		file := filepath.Join(t.TempDir(), "Slack.dmg")
+		file := filepath.Join(root, format+".dmg")
 		if out, err := exec.Command("hdiutil", "create", "-quiet", "-srcfolder", src, "-volname", "Slack", "-format", format, file).CombinedOutput(); err != nil {
 			t.Skipf("cannot make a disk image: %v %s", err, out)
 		}
-		dest := filepath.Join(t.TempDir(), "slack", "1.0")
+		dest := filepath.Join(root, format, "slack", "1.0")
 		if err := os.MkdirAll(dest, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -249,8 +254,50 @@ func TestExtractDmg(t *testing.T) {
 		if fi, err := os.Stat(filepath.Join(dest, "Slack.app/Contents/Info.plist")); err != nil || fi.Mode().Perm()&0o200 == 0 {
 			t.Errorf("%s: files from a disk image should be writable: %v %v", format, fi, err)
 		}
-		if out, _ := exec.Command("hdiutil", "info").Output(); strings.Contains(string(out), file) {
-			t.Errorf("%s: the disk image is still attached:\n%s", format, out)
+		if leaked := attachedImagesUnder(t, root); len(leaked) > 0 {
+			t.Errorf("%s: the disk image is still attached: %v", format, leaked)
+		}
+	}
+}
+
+func attachedImagesUnder(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out, err := exec.Command("hdiutil", "info").Output()
+	if err != nil {
+		t.Fatalf("hdiutil info: %v", err)
+	}
+	prefixes := []string{dir}
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		prefixes = append(prefixes, real)
+	}
+	images := map[string]string{}
+	var path string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "===="):
+			path = ""
+		case strings.HasPrefix(line, "image-path"):
+			_, p, _ := strings.Cut(line, ":")
+			p = strings.TrimSpace(p)
+			for _, prefix := range prefixes {
+				if strings.HasPrefix(p, prefix+string(filepath.Separator)) {
+					path = p
+				}
+			}
+		case path != "" && strings.HasPrefix(line, "/dev/disk"):
+			images[strings.Fields(line)[0]] = path
+			path = ""
+		}
+	}
+	return images
+}
+
+func detachImagesUnder(t *testing.T, dir string) {
+	t.Helper()
+	for dev, path := range attachedImagesUnder(t, dir) {
+		t.Errorf("leaked disk image %s at %s", dev, path)
+		if out, err := exec.Command("hdiutil", "detach", "-force", dev).CombinedOutput(); err != nil {
+			t.Errorf("hdiutil detach %s: %v: %s", dev, err, out)
 		}
 	}
 }
