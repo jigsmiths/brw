@@ -126,8 +126,7 @@ func (m *sudoMode) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// RequiresSudo is brew's sudo_required? without the optional steps: only `sudo: true`
-// and a keychain certificate deletion count.
+// RequiresSudo mirrors brew's sudo_required? minus optional steps.
 func RequiresSudo(steps []json.RawMessage) bool {
 	for _, raw := range steps {
 		var s step

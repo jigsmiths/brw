@@ -17,7 +17,6 @@ func (l sudoLink) installSteps(t *testing.T, steps string) error {
 	return l.ti.in.Install(context.Background(), l.ti.cask(t, `[{"app":["App.app"]},{"postflight_steps":[{"steps":[`+steps+`]}]}]`))
 }
 
-// recordRuns replaces the runner so that no command runs, not even the fake's.
 func (l sudoLink) recordRuns() *[]sudo.Command {
 	var got []sudo.Command
 	l.ti.in.Run = func(_ context.Context, c sudo.Command) (sudo.Result, error) {
