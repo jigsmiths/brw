@@ -9,6 +9,7 @@ import (
 )
 
 // Spec is one command to run under a profile; the executable is left open on InheritanceFD for the child to find.
+// On macOS the child runs on a pseudo-terminal, so its stdout and stderr arrive merged on Stdout.
 type Spec struct {
 	Profile string
 	Exe     string
@@ -16,8 +17,10 @@ type Spec struct {
 	Env     []string
 	Dir     string
 	Stdin   io.Reader
-	Stdout  io.Writer
-	Stderr  io.Writer
+	// PassStdin sends Stdin to the child, as brew does unless a parent prompt needs the terminal.
+	PassStdin bool
+	Stdout    io.Writer
+	Stderr    io.Writer
 }
 
 func (s Spec) Argv() []string {
@@ -33,10 +36,10 @@ func Run(ctx context.Context, s Spec) (int, error) {
 	defer func() { _ = exe.Close() }()
 	argv := s.Argv()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Env, cmd.Dir, cmd.Stdin, cmd.Stdout, cmd.Stderr = s.Env, s.Dir, s.Stdin, s.Stdout, s.Stderr
+	cmd.Env, cmd.Dir = s.Env, s.Dir
 	cmd.ExtraFiles = make([]*os.File, InheritanceFD-2)
 	cmd.ExtraFiles[InheritanceFD-3] = exe
-	err = cmd.Run()
+	err = execute(cmd, s)
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		return exitErr.ExitCode(), nil
 	}

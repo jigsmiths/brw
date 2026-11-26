@@ -85,8 +85,35 @@ func TestRunLeavesTheExecutableOnTheInheritanceDescriptor(t *testing.T) {
 		Args:   []string{"-c", fmt.Sprintf("test -e /dev/fd/%d && echo held", InheritanceFD)},
 		Stdout: &out,
 	})
-	if err != nil || code != 0 || out.String() != "held\n" {
+	if err != nil || code != 0 || strings.TrimSpace(out.String()) != "held" {
 		t.Errorf("code = %d, err = %v, out = %q", code, err, out.String())
+	}
+}
+
+func TestTheChildRunsOnItsOwnTerminal(t *testing.T) {
+	if runtime.GOOS != "darwin" || !Available() {
+		t.Skip("sandbox-exec is the point of this test and only macOS has it")
+	}
+	if Nested() {
+		t.Skip("this process is already sandboxed, and a sandbox cannot be nested")
+	}
+	var out bytes.Buffer
+	script := `echo out; echo err >&2; echo to-dev-tty > /dev/tty; test -t 0 && echo has-tty; tty; exit 7`
+	code, err := Run(t.Context(), Spec{Profile: sandboxProbeProfile, Exe: "/bin/sh", Args: []string{"-c", script}, Stdout: &out})
+	if err != nil || code != 7 {
+		t.Fatalf("code = %d, err = %v", code, err)
+	}
+	got := strings.ReplaceAll(out.String(), "\r\n", "\n")
+	for _, want := range []string{"out\n", "err\n", "to-dev-tty\n", "has-tty\n", "/dev/ttys"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the child's terminal output lacks %q: %q", want, got)
+		}
+	}
+	if parent, err := os.Open("/dev/tty"); err == nil {
+		defer func() { _ = parent.Close() }()
+		if name := parent.Name(); strings.Contains(got, "\n"+name+"\n") {
+			t.Errorf("the child ran on the parent's terminal %s", name)
+		}
 	}
 }
 
