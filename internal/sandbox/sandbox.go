@@ -54,6 +54,8 @@ func expandRealpath(path string) string {
 	}
 }
 
+func (s *Sandbox) AllowReadLiteral(path string)   { s.add(true, "file-read*", literal, path) }
+func (s *Sandbox) AllowWriteRegex(pattern string) { s.add(true, "file-write*", regex, pattern) }
 func (s *Sandbox) AllowRead(path string)          { s.add(true, "file-read*", subpath, path) }
 func (s *Sandbox) DenyReadPath(path string)       { s.add(false, "file-read*", subpath, path) }
 func (s *Sandbox) AllowWritePath(path string)     { s.add(true, "file-write*", subpath, path) }

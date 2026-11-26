@@ -144,7 +144,7 @@ func (r *Root) writeTemp(dir string, src io.Reader, perm fs.FileMode) (string, e
 		return "", err
 	}
 	tmp := filepath.Join(dir, ".brw-tmp-"+hex.EncodeToString(b[:]))
-	f, err := r.root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := r.root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
 		return "", err
 	}
@@ -152,10 +152,14 @@ func (r *Root) writeTemp(dir string, src io.Reader, perm fs.FileMode) (string, e
 	if err == nil {
 		err = f.Sync()
 	}
+	needsChmod := false
+	if fi, serr := f.Stat(); err == nil && serr == nil {
+		needsChmod = fi.Mode().Perm() != perm
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
-	if err == nil {
+	if err == nil && needsChmod {
 		err = r.root.Chmod(tmp, perm)
 	}
 	if err != nil {
