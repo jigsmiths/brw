@@ -245,6 +245,8 @@ func (p installPlan) sudoArtifact() string {
 		return "installer"
 	case len(p.pkgs) > 0:
 		return "pkg"
+	case len(p.layouts) > 0:
+		return "keyboard_layout"
 	case poststep.RequiresSudo(p.postflight):
 		return "postflight_steps"
 	}

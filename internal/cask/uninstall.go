@@ -69,7 +69,7 @@ type uninstallStep struct {
 	stagedVersion string
 }
 
-var stepOrder = map[string]int{"preflight_steps": 0, "uninstall_preflight_steps": 1, "uninstall": 2, "app": 3,
+var stepOrder = map[string]int{"preflight_steps": 0, "uninstall_preflight_steps": 1, "uninstall": 2, "app": 3, "keyboard_layout": 3,
 	"binary": 4, "manpage": 5, "bash_completion": 6, "zsh_completion": 6, "fish_completion": 6,
 	"generate_completions_from_executable": 7, "postflight_steps": 8, "uninstall_postflight_steps": 9}
 
@@ -114,6 +114,10 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 			}
 		case "app":
 			if err := in.moveBack(ctx, s.move, force); err != nil {
+				return fmt.Errorf("%s: %w", token, err)
+			}
+		case "keyboard_layout":
+			if err := in.moveBackKeyboardLayout(ctx, s.move, force); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
@@ -200,6 +204,11 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if s.stagedVersion, err = in.Root.Abs(filepath.Join("Caskroom", token, version)); err != nil {
 			return s, err
 		}
+	case "keyboard_layout":
+		if s.move, err = readMove(args, kind, in.Where); err != nil {
+			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
+		}
+		s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
 	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 		if s.move, err = readMove(args, kind, in.Where); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)

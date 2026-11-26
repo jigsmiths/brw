@@ -180,6 +180,11 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
+	for _, m := range p.layouts {
+		if err := in.moveKeyboardLayout(ctx, version, m, undo); err != nil {
+			return fmt.Errorf("%s: %w", c.Token, err)
+		}
+	}
 	for i, m := range p.links {
 		if links[i] == skipLink {
 			continue

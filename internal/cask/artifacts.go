@@ -20,6 +20,18 @@ type Where struct {
 	Prefix string
 	AppDir string
 	Home   string
+
+	// KeyboardLayoutDir defaults to brew's keyboard_layoutdir.
+	KeyboardLayoutDir string
+}
+
+const defaultKeyboardLayoutDir = "/Library/Keyboard Layouts"
+
+func (w Where) keyboardLayouts() string {
+	if w.KeyboardLayoutDir != "" {
+		return w.KeyboardLayoutDir
+	}
+	return defaultKeyboardLayoutDir
 }
 
 func Placeholders(w Where) func(string) string {
@@ -57,7 +69,7 @@ var linkNames = map[string]string{
 }
 
 type installPlan struct {
-	apps, links           []move
+	apps, links, layouts  []move
 	pkgs                  []pkgInstall
 	generators            []generator
 	preflight, postflight []json.RawMessage
@@ -91,7 +103,7 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 		for kind, args := range obj {
 			args = fill(args)
 			switch kind {
-			case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
+			case "app", "keyboard_layout", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 				m, err := readMove(args, kind, w)
 				if badName, ok := errors.AsType[invalidManpageName](err); ok {
 					return installPlan{}, brewError("Cask '%s' definition is invalid: %s", c.Token, badName)
@@ -99,9 +111,12 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
-				if kind == "app" {
+				switch kind {
+				case "app":
 					p.apps = append(p.apps, m)
-				} else {
+				case "keyboard_layout":
+					p.layouts = append(p.layouts, m)
+				default:
 					p.links = append(p.links, m)
 				}
 			case "pkg":
@@ -155,7 +170,7 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 			p.uninstall = append(p.uninstall, map[string]json.RawMessage{kind: args})
 		}
 	}
-	if len(p.apps) == 0 && len(p.links) == 0 && len(p.installers) == 0 && len(p.pkgs) == 0 {
+	if len(p.apps) == 0 && len(p.links) == 0 && len(p.layouts) == 0 && len(p.installers) == 0 && len(p.pkgs) == 0 {
 		return unsupported("no app, binary or pkg")
 	}
 	return p, nil
@@ -252,6 +267,8 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 	}
 	dir := w.AppDir
 	switch kind {
+	case "keyboard_layout":
+		dir = w.keyboardLayouts()
 	case "binary":
 		dir = filepath.Join(w.Prefix, "bin")
 	case "manpage":
