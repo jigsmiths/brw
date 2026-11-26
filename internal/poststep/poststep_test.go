@@ -436,7 +436,7 @@ func TestUnsupported(t *testing.T) {
 		{"type":"gdk_pixbuf_query_loaders"},
 		{"type":"run","command":{"path":"x"}}
 	]`))
-	want := []string{"gdk_pixbuf_query_loaders", "configure_gcc_runtime", "touch with sudo"}
+	want := []string{"gdk_pixbuf_query_loaders", "configure_gcc_runtime"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Unsupported = %v, want %v", got, want)
 	}

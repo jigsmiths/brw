@@ -148,7 +148,7 @@ func Unsupported(steps []json.RawMessage) []string {
 		switch {
 		case !slices.Contains(supported, s.Type):
 			reason = s.Type
-		case s.Type != "symlink" && len(s.Sudo) > 0 && string(s.Sudo) != "null" && string(s.Sudo) != "false":
+		case s.Type == "run" && len(s.Sudo) > 0 && string(s.Sudo) != "null" && string(s.Sudo) != "false":
 			reason = s.Type + " with sudo"
 		default:
 			continue
@@ -227,7 +227,7 @@ func (r *runner) uninstallLink(s step) error {
 	if fi, err := os.Lstat(abs); err != nil || fi.Mode()&fs.ModeSymlink == 0 {
 		return nil
 	}
-	got, err := r.readlink(abs)
+	got, err := r.readlink(s, abs)
 	if err != nil || got != want {
 		return nil
 	}
@@ -556,22 +556,24 @@ func (r *runner) remove(s step) error {
 			return err
 		}
 		for _, abs := range matches {
-			rel, err := r.inside(abs)
-			if err != nil {
-				return err
+			if s.Sudo == sudoNever {
+				if _, err := r.inside(abs); err != nil {
+					return err
+				}
 			}
 			fi, err := os.Lstat(abs)
 			if err != nil {
 				continue
 			}
 			if s.SymlinkTargetContains != "" {
-				target, err := os.Readlink(abs)
-				if err != nil || !strings.Contains(target, r.expand(s.SymlinkTargetContains)) {
+				target, err := r.readlink(s, abs)
+				if fi.Mode()&fs.ModeSymlink == 0 || err != nil || !strings.Contains(target, r.expand(s.SymlinkTargetContains)) {
 					continue
 				}
 			}
 			if s.ContentContains != "" {
-				if !fi.Mode().IsRegular() {
+				target, err := os.Stat(abs)
+				if err != nil || !target.Mode().IsRegular() {
 					continue
 				}
 				b, err := os.ReadFile(abs)
@@ -579,17 +581,25 @@ func (r *runner) remove(s step) error {
 					continue
 				}
 			}
-			if s.Recursive {
-				err = r.c.Root.RemoveAll(rel)
-			} else {
-				err = r.removeFile(rel)
-			}
-			if err != nil {
+			if err := r.removePath(s, abs); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func (r *runner) removePath(s step, abs string) error {
+	switch {
+	case r.needsSudo(s, filepath.Dir(abs)):
+		if r.c.Remove == nil {
+			return errors.New("no way to remove a path with sudo")
+		}
+		return r.c.Remove(r.ctx, abs)
+	case s.Recursive:
+		return r.removeTree(abs)
+	}
+	return r.removeAny(abs)
 }
 
 func destination(source, target string) string {

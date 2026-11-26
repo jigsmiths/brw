@@ -113,9 +113,16 @@ func (r *runner) removeAny(abs string) error {
 	return os.Remove(abs) //fsx:allow brew's FileUtils.rm_f on a path the step named
 }
 
-func (r *runner) readlink(abs string) (string, error) {
+func (r *runner) removeTree(abs string) error {
+	if rel, err := r.inside(abs); err == nil {
+		return r.c.Root.RemoveAll(rel)
+	}
+	return os.RemoveAll(abs) //fsx:allow brew's FileUtils.rm_rf on a path the step named
+}
+
+func (r *runner) readlink(s step, abs string) (string, error) {
 	got, err := os.Readlink(abs)
-	if !errors.Is(err, fs.ErrPermission) {
+	if !errors.Is(err, fs.ErrPermission) || s.Sudo == sudoNever {
 		return got, err
 	}
 	res, err := r.sudo(readlinkPath, "-n", abs)

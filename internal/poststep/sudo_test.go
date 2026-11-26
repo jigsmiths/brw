@@ -88,7 +88,7 @@ func (f *sudoFixture) linked() bool {
 	return err == nil && got == f.source
 }
 
-func TestUnsupportedKeepsSudoOnlyForSymlinks(t *testing.T) {
+func TestUnsupportedStillRefusesRunWithSudo(t *testing.T) {
 	raw := func(s string) []json.RawMessage {
 		var r []json.RawMessage
 		if err := json.Unmarshal([]byte(s), &r); err != nil {
@@ -102,7 +102,7 @@ func TestUnsupportedKeepsSudoOnlyForSymlinks(t *testing.T) {
 		}
 	}
 	got := Unsupported(raw(`[{"type":"remove","sudo":true,"paths":[]},{"type":"run","sudo":"if_needed","command":{"path":"x"}}]`))
-	if want := []string{"remove with sudo", "run with sudo"}; !slices.Equal(got, want) {
+	if want := []string{"run with sudo"}; !slices.Equal(got, want) {
 		t.Errorf("Unsupported = %v, want %v", got, want)
 	}
 }
