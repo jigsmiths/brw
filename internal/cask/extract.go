@@ -207,9 +207,13 @@ func unpackDmg(ctx context.Context, file, dir string) (err error) {
 		}
 	}
 	mounts := mountPoints(out)
+	dev := imageDevice(out)
 	defer func() {
 		for _, m := range mounts {
-			err = errors.Join(err, eject(m))
+			err = errors.Join(err, eject(m, dev))
+		}
+		if len(mounts) == 0 {
+			err = errors.Join(err, release(dev, nil))
 		}
 	}()
 	if len(mounts) == 0 {
@@ -256,10 +260,55 @@ func attachHdiutil(ctx context.Context, file, mnt string) ([]byte, error) {
 	return out, nil
 }
 
-func ejectDiskutil(mount string) error {
+var (
+	runTool        = func(name string, args ...string) ([]byte, error) { return exec.Command(name, args...).CombinedOutput() }
+	isMounted      = mounted
+	deviceAttached = func(dev string) bool { _, err := os.Stat("/dev/" + dev); return err == nil }
+	pause          = time.Sleep
+)
+
+func imageDevice(plist []byte) string {
+	devs := plistStrings(plist, "dev-entry")
+	if len(devs) == 0 {
+		return ""
+	}
+	return strings.TrimPrefix(devs[0], "/dev/")
+}
+
+// Unlike brew, which stops once the volume is unmounted, a leftover image is detached by device.
+func ejectDiskutil(mount, dev string) error { return release(dev, ejectVolume(mount)) }
+
+func detach(mount, dev string) error { return release(dev, detachVolume(mount)) }
+
+// release detaches the image behind dev, forcing it on the last try, and reports err only if it stays attached.
+func release(dev string, err error) error {
+	if dev == "" {
+		return err
+	}
+	for try := range 3 {
+		if !deviceAttached(dev) {
+			return nil
+		}
+		args := []string{"detach", "-quiet", "/dev/" + dev}
+		if try == 2 {
+			args = []string{"detach", "-quiet", "-force", "/dev/" + dev}
+		}
+		out, derr := runTool("hdiutil", args...)
+		if derr != nil {
+			err = errors.Join(err, fmt.Errorf("hdiutil detach %s: %w: %s", dev, derr, bytes.TrimSpace(out)))
+			pause(time.Second)
+		}
+	}
+	if deviceAttached(dev) {
+		return err
+	}
+	return nil
+}
+
+func ejectVolume(mount string) error {
 	var err error
 	for try := range 3 {
-		if !mounted(mount) {
+		if !isMounted(mount) {
 			return nil
 		}
 		if try < 2 {
@@ -270,7 +319,7 @@ func ejectDiskutil(mount string) error {
 		if err == nil {
 			return nil
 		}
-		time.Sleep(time.Second)
+		pause(time.Second)
 	}
 	return err
 }
@@ -288,7 +337,7 @@ func mounted(path string) bool {
 }
 
 func ejectStores(mount string) error {
-	info, err := exec.Command("diskutil", "info", "-plist", mount).Output()
+	info, err := runTool("diskutil", "info", "-plist", mount)
 	if err != nil {
 		return fmt.Errorf("diskutil info %s: %w", mount, err)
 	}
@@ -305,7 +354,7 @@ func ejectStores(mount string) error {
 }
 
 func diskutil(args ...string) error {
-	if out, err := exec.Command("diskutil", args...).CombinedOutput(); err != nil {
+	if out, err := runTool("diskutil", args...); err != nil {
 		return fmt.Errorf("diskutil %s: %w: %s", strings.Join(args, " "), err, bytes.TrimSpace(out))
 	}
 	return nil
@@ -333,10 +382,10 @@ func copyVolume(ctx context.Context, volume, dir string) error {
 	return nil
 }
 
-func detach(mount string) error {
+func detachVolume(mount string) error {
 	var err error
 	for try := range 3 {
-		if !mounted(mount) {
+		if !isMounted(mount) {
 			return nil
 		}
 		args := []string{"detach", "-quiet", mount}
@@ -344,11 +393,11 @@ func detach(mount string) error {
 			args = []string{"detach", "-quiet", "-force", mount}
 		}
 		var out []byte
-		if out, err = exec.Command("hdiutil", args...).CombinedOutput(); err == nil {
+		if out, err = runTool("hdiutil", args...); err == nil {
 			return nil
 		}
 		err = fmt.Errorf("hdiutil detach %s: %w: %s", mount, err, bytes.TrimSpace(out))
-		time.Sleep(time.Second)
+		pause(time.Second)
 	}
 	return err
 }
