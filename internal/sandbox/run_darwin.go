@@ -35,7 +35,6 @@ func ioctl(fd uintptr, request uintptr, arg unsafe.Pointer) error {
 	return nil
 }
 
-// openPTY is PTY.open: a master to read the child's output from and the slave the child is given.
 func openPTY() (controller, worker *os.File, err error) {
 	controller, err = os.OpenFile(ptmxPath, os.O_RDWR|syscall.O_NOCTTY, 0) //fsx:allow the pseudo-terminal master; nothing on disk is written
 	if err != nil {
@@ -65,7 +64,6 @@ func windowSize(f *os.File) (winsize, error) {
 	return ws, ioctl(f.Fd(), tiocGWinSz, unsafe.Pointer(&ws))
 }
 
-// terminalSize is the parent's terminal when stdout is one, otherwise what tput reports, as brew does.
 func terminalSize() winsize {
 	if ws, err := windowSize(os.Stdout); err == nil {
 		return ws
@@ -86,7 +84,6 @@ func isTerminal(f *os.File) bool {
 	return err == nil
 }
 
-// watchWindowSize keeps the child's terminal as big as ours, until the returned stop is called.
 func watchWindowSize(controller *os.File) (stop func()) {
 	resize := func() {
 		ws := terminalSize()
@@ -109,7 +106,6 @@ func watchWindowSize(controller *os.File) (stop func()) {
 	return func() { signal.Stop(winch); close(finished) }
 }
 
-// rawStdin puts a terminal stdin in raw mode while input is passed through, as brew's stty calls do.
 func rawStdin(s Spec) (restore func()) {
 	in, isFile := s.Stdin.(*os.File)
 	if !s.PassStdin || !isFile || !isTerminal(in) {

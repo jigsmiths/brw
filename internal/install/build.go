@@ -90,7 +90,6 @@ func buildpath(dir string) (string, error) {
 	return dir, nil
 }
 
-// PostInstallAction is a tap formula's post_install, run in the sandboxed child.
 const PostInstallAction = "formula_post_install"
 
 type postInstallRequest struct {
@@ -100,7 +99,6 @@ type postInstallRequest struct {
 	Code  []byte `json:"code"`
 }
 
-// ChildActions is what the sandboxed child can do besides run steps.
 func ChildActions() poststep.Actions {
 	return poststep.Actions{PostInstallAction: runPostInstallInChild}
 }
@@ -126,7 +124,6 @@ func runPostInstallInChild(_ context.Context, c poststep.Context, extra json.Raw
 	})
 }
 
-// tapPostInstall is run_post_install: the user's PATH and a temporary home, in the sandbox as brew's postinstall.rb is.
 func (in *Installer) tapPostInstall(f *api.Formula, pctx poststep.Context) error {
 	if in.LoadSource == nil {
 		return ErrNoSource

@@ -68,7 +68,6 @@ func (f *sandboxFixture) skipUnlessRealSandbox(t *testing.T) {
 
 const echoAction = "test_echo"
 
-// echoChild writes its extra to the file it names, so a test can see what the sandboxed child was able to do.
 func echoChild(_ context.Context, c Context, extra json.RawMessage, _, _ io.Writer) error {
 	var req struct{ Path, Body string }
 	if err := json.Unmarshal(extra, &req); err != nil {

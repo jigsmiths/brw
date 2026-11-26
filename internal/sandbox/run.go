@@ -11,13 +11,12 @@ import (
 // Spec is one command to run under a profile; the executable is left open on InheritanceFD for the child to find.
 // On macOS the child runs on a pseudo-terminal, so its stdout and stderr arrive merged on Stdout.
 type Spec struct {
-	Profile string
-	Exe     string
-	Args    []string
-	Env     []string
-	Dir     string
-	Stdin   io.Reader
-	// PassStdin sends Stdin to the child, as brew does unless a parent prompt needs the terminal.
+	Profile   string
+	Exe       string
+	Args      []string
+	Env       []string
+	Dir       string
+	Stdin     io.Reader
 	PassStdin bool
 	Stdout    io.Writer
 	Stderr    io.Writer

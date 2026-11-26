@@ -109,8 +109,7 @@ func NewSandboxPolicy(prefix, cache, logs, repository string, child []string, st
 	return p
 }
 
-// postinstallNetworkAllowed is Formula#network_access_allowed?(:postinstall): HOMEBREW_FORMULA_POSTINSTALL_NETWORK
-// when set, else the formula's DSL default, which is to allow (API formulae carry no DSL).
+// Unset means allow: API formulae carry no DSL to say otherwise.
 func postinstallNetworkAllowed() bool {
 	if v := os.Getenv(postinstallNetwork); v != "" {
 		return v == networkAllow
@@ -237,7 +236,6 @@ func (r *runner) runInSandbox(raw []json.RawMessage, ph phase) (bool, error) {
 	return true, r.runChild(r.stepsAction(), nil, raw, ph)
 }
 
-// RunAction runs a named action in the sandboxed child when the sandbox applies, and inProcess otherwise.
 func RunAction(ctx context.Context, c Context, action string, extra json.RawMessage, inProcess func() error) error {
 	if c.Sandbox != Sandboxed && c.Sandbox != Unsandboxed {
 		return errors.New("the context does not say whether steps are sandboxed")
@@ -369,7 +367,6 @@ func (r *runner) scratch(p payload, tmp string) (home, payloadPath string, clean
 	return filepath.Join(abs, scratchHomeName), filepath.Join(abs, payloadName), func() { _ = r.c.Root.RemoveAll(rel) }, nil
 }
 
-// formulaScratch is what postinstall.rb does: a home made under HOMEBREW_TEMP, which is the sandbox's own directory, with a .bazelrc (Formula#setup_home).
 func (r *runner) formulaScratch(body []byte, tmp string) (home, payloadPath string, cleanup func(), err error) {
 	home, err = os.MkdirTemp(tmp, r.c.Name+"-postinstall-") //fsx:allow brew's Dir.mktmpdir inside the sandbox directory
 	if err != nil {
@@ -386,7 +383,6 @@ func (r *runner) formulaScratch(body []byte, tmp string) (home, payloadPath stri
 	return home, payloadPath, func() {}, nil
 }
 
-// originalPaths is brew's ORIGINAL_PATHS: HOMEBREW_PATH, else PATH, each entry made absolute.
 func originalPaths() string {
 	path, set := os.LookupEnv(homebrewPathEnv)
 	if !set {
@@ -419,7 +415,6 @@ func (r *runner) childEnv(home, tmp, socket string) []string {
 	return append(env, r.commonSandboxEnv(home, tmp)...)
 }
 
-// packageManagerCache is Homebrew::PackageManagerCache.env; the cache directories are in HOMEBREW_CACHE.
 func (r *runner) packageManagerCache() map[string]string {
 	dir := func(name string) string { return filepath.Join(r.c.SandboxPolicy.Cache, name) }
 	return map[string]string{
@@ -432,7 +427,6 @@ func (r *runner) packageManagerCache() map[string]string {
 	}
 }
 
-// commonSandboxEnv is Formula#common_sandbox_env, which brew gives formula post_install only.
 func (r *runner) commonSandboxEnv(home, tmp string) []string {
 	env := r.packageManagerCache()
 	env["_JAVA_OPTIONS"] += " -Djava.io.tmpdir=" + tmp

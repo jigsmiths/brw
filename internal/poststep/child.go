@@ -55,7 +55,6 @@ func (c *childChannel) request(index int) error {
 	return fmt.Errorf("The parent process failed to run privileged cask install step %d.", index) //nolint:staticcheck // brew's message, shown to the user
 }
 
-// Action is work other than a step list that the sandboxed child can be asked to do.
 type Action func(ctx context.Context, c Context, extra json.RawMessage, stdout, stderr io.Writer) error
 
 type Actions map[string]Action
@@ -75,7 +74,6 @@ func ChildMain(args []string, stdout, stderr io.Writer, actions Actions) int {
 	return 0
 }
 
-// dialParent connects to the parent's socket and waits for it to greet, so a child with a stale or forged variable does not run.
 func dialParent() (net.Conn, *bufio.Reader, error) {
 	socket := os.Getenv(errorPipeEnv)
 	if socket == "" {
