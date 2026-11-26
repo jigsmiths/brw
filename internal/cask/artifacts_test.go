@@ -137,6 +137,26 @@ func TestSudoArtifactFollowsBrewsArtifactOrder(t *testing.T) {
 	}
 }
 
+func TestSudoArtifactCountsEveryStepBrewElevates(t *testing.T) {
+	for step, want := range map[string]string{
+		`{"type":"run","sudo":true,"command":{"path":"/a"}}`:           "postflight_steps",
+		`{"type":"remove","sudo":true,"paths":[{"path":"/a"}]}`:        "postflight_steps",
+		`{"type":"terminate_process","sudo":true,"name":"x"}`:          "postflight_steps",
+		`{"type":"delete_keychain_certificate","name":"x"}`:            "postflight_steps",
+		`{"type":"remove","sudo":"if_needed","paths":[{"path":"/a"}]}`: "",
+		`{"type":"terminate_process","name":"x"}`:                      "",
+	} {
+		c := api.Cask{Token: "x", Artifacts: raws(t, `[{"app":["X.app"]},{"postflight_steps":[{"steps":[`+step+`]}]}]`)}
+		p, err := plan(c, where)
+		if err != nil {
+			t.Fatalf("%s: %v", step, err)
+		}
+		if got := p.sudoArtifact(); got != want {
+			t.Errorf("%s: sudoArtifact = %q, want %q", step, got, want)
+		}
+	}
+}
+
 func TestPlanPkg(t *testing.T) {
 	c := api.Cask{Token: "p", Artifacts: raws(t, `[
 		{"pkg":["Sub/P.pkg",{"choices":[{"choiceIdentifier":"a","choiceAttribute":"selected","attributeSetting":1}]},{"allow_untrusted":true}]},

@@ -69,6 +69,14 @@ type step struct {
 	Chdir      *pathSpec  `json:"chdir"`
 	Paths      []pathSpec `json:"paths"`
 
+	MatchingCertificate *pathSpec `json:"matching_certificate"`
+	Notices             []string  `json:"notices"`
+	Name                string    `json:"name"`
+	Match               string    `json:"match"`
+	FailureMessage      string    `json:"failure_message"`
+	Attempts            *int      `json:"attempts"`
+	MustSucceed         bool      `json:"must_succeed"`
+
 	Args []string          `json:"args"`
 	Env  map[string]string `json:"env"`
 
@@ -118,11 +126,12 @@ func (m *sudoMode) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// RequiresSudo is brew's sudo_required? without the optional steps: only `sudo: true` counts.
+// RequiresSudo is brew's sudo_required? without the optional steps: only `sudo: true`
+// and a keychain certificate deletion count.
 func RequiresSudo(steps []json.RawMessage) bool {
 	for _, raw := range steps {
 		var s step
-		if json.Unmarshal(raw, &s) == nil && s.Sudo == sudoAlways {
+		if json.Unmarshal(raw, &s) == nil && (s.Sudo == sudoAlways || s.Type == "delete_keychain_certificate") {
 			return true
 		}
 	}
@@ -131,7 +140,7 @@ func RequiresSudo(steps []json.RawMessage) bool {
 
 var supported = []string{
 	"mkdir", "mkdir_p", "touch", "symlink", "copy", "move", "remove", "link_dir", "link_children",
-	"write", "warn", "set_permissions", "run", "init_data_dir",
+	"write", "warn", "set_permissions", "run", "init_data_dir", "terminate_process", "delete_keychain_certificate",
 }
 
 // Unsupported has no repeats.
@@ -458,6 +467,10 @@ func (r *runner) do(s step) error {
 		return r.run(s)
 	case "init_data_dir":
 		return r.initDataDir(s)
+	case "terminate_process":
+		return r.terminateProcess(s)
+	case "delete_keychain_certificate":
+		return r.deleteKeychainCertificate(s)
 	}
 	return fmt.Errorf("unsupported step %q", s.Type)
 }
