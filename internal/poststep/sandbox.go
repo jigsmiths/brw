@@ -31,7 +31,6 @@ const (
 	Unsandboxed
 )
 
-// ChildCommand is the hidden subcommand brw runs under the sandbox.
 const ChildCommand = "__sandboxed-steps"
 
 const (
@@ -64,14 +63,12 @@ var privilegedGroups = []string{"admin", "staff", "root", "wheel"}
 
 var sensitiveName = regexp.MustCompile(`(?i)(cookie|key|token|password|passphrase|auth)`)
 
-// SandboxPolicy is what brew's sandboxes need to know about the install.
 type SandboxPolicy struct {
-	Cache      string
-	Logs       string
-	Repository string
-	BrewFile   string
-	Prefix     string
-	// Child is the brw executable and the hidden subcommand that runs the steps.
+	Cache         string
+	Logs          string
+	Repository    string
+	BrewFile      string
+	Prefix        string
 	Child         []string
 	Stdin         io.Reader
 	Verbose       bool
@@ -201,7 +198,6 @@ func (c *childResult) setHandler(err error) {
 	}
 }
 
-// runInSandbox runs the steps in a child brw under sandbox-exec, as brew does, and returns false when the sandbox is not used.
 func (r *runner) runInSandbox(raw []json.RawMessage, ph phase) (bool, error) {
 	use, err := r.useSandbox()
 	if err != nil || !use {
@@ -310,7 +306,6 @@ func (r *runner) recordLog(start time.Time, failed bool) {
 	_ = sandbox.RecordLog(start, logfile, failed, policy.Verbose, r.c.Log)
 }
 
-// scratch is the child's home and the payload: under var/homebrew/sandbox for a cask, a temporary home for a formula.
 func (r *runner) scratch(p payload) (home, payloadPath string, cleanup func(), err error) {
 	body, err := json.Marshal(p)
 	if err != nil {
@@ -358,7 +353,6 @@ func formulaEnvironment(home string) []string {
 	}
 }
 
-// serve reads the child's lines: privileged step requests get an answer, anything else is its error report.
 func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *childResult) {
 	parent := &runner{ctx: r.ctx, c: r.c, guards: map[string]bool{}}
 	parent.c.Sandbox = Unsandboxed
@@ -389,7 +383,6 @@ func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *c
 	}
 }
 
-// parseRequest vets a privileged step request: the child is untrusted and may only name a step by index, in order.
 func parseRequest(line string, last int) (int, error) {
 	var req struct {
 		Type  string          `json:"type"`
@@ -416,7 +409,7 @@ func (r *runner) homeWritePaths(home string) []string {
 	return paths
 }
 
-// profile is the rule set brew builds for this kind of step list, in brew's order.
+// Rules are added in brew's order: of the rules with a path filter that match, seatbelt applies the last.
 func (r *runner) profile(raw []json.RawMessage, ph phase, home, payloadPath, tmp string) (*sandbox.Sandbox, error) {
 	c, policy := r.c, r.c.SandboxPolicy
 	sb := &sandbox.Sandbox{}
@@ -493,7 +486,6 @@ func isDir(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// writePaths is Runner#sandbox_write_paths.
 func (r *runner) writePaths(raw []json.RawMessage, ph phase) ([]string, error) {
 	var out []string
 	add := func(spec *pathSpec, parent bool) error {

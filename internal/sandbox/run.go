@@ -8,21 +8,18 @@ import (
 	"os/exec"
 )
 
-// Spec is one command to run under a profile.
 type Spec struct {
-	Profile string
-	Exe     string
-	Args    []string
-	Env     []string
-	Dir     string
-	Stdin   io.Reader
-	Stdout  io.Writer
-	Stderr  io.Writer
-	// Inheritance is left open on InheritanceFD for the child to find.
+	Profile     string
+	Exe         string
+	Args        []string
+	Env         []string
+	Dir         string
+	Stdin       io.Reader
+	Stdout      io.Writer
+	Stderr      io.Writer
 	Inheritance *os.File
 }
 
-// Argv is the command line brew's sandbox_command builds.
 func (s Spec) Argv() []string {
 	return append([]string{Exec, "-p", s.Profile, s.Exe}, s.Args...)
 }

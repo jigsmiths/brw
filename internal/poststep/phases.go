@@ -15,7 +15,6 @@ const (
 	phaseUninstall phase = "uninstall"
 )
 
-// requiresSudo is brew's sudo_required? for one step; the optional kinds count when routing steps out of the sandbox.
 func (s step) requiresSudo(includeOptional bool) bool {
 	return s.Sudo == sudoAlways || s.Type == "delete_keychain_certificate" ||
 		(includeOptional && (s.Sudo == sudoIfNeeded || s.Type == "set_ownership"))
@@ -49,7 +48,6 @@ func execute(ctx context.Context, c Context, raw []json.RawMessage, ph phase) er
 	return r.plan(raw, ph, nil)
 }
 
-// plan runs the steps in order; steps that need sudo go to privileged when there is one.
 func (r *runner) plan(raw []json.RawMessage, ph phase, privileged func(index int) error) error {
 	for i, b := range raw {
 		s, err := r.parse(ph, i, b)
@@ -99,7 +97,6 @@ func (r *runner) apply(ph phase, i int, s step) error {
 	return nil
 }
 
-// stepAt is one step of a plan the parent already vetted, run on the parent's behalf.
 func (r *runner) stepAt(ph phase, raw []json.RawMessage, index int) error {
 	if index < 0 || index >= len(raw) {
 		return fmt.Errorf("Invalid privileged cask install step index: %d", index) //nolint:staticcheck // brew's message, shown to the user

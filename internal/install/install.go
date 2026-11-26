@@ -51,8 +51,7 @@ type Installer struct {
 	BuiltOn    cellar.BuiltOn
 	// MacVersion is such as "27.2".
 	SDK, MacVersion string
-	// Sandbox says whether post_install steps run under the sandbox, as brew does.
-	Sandbox poststep.SandboxMode
+	Sandbox         poststep.SandboxMode
 	// Run nil runs commands for real.
 	Run     RunFunc
 	DepInfo func(fullName string) (pkgVersion, license, bottleURL, bottleSHA256 string)

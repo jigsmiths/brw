@@ -26,7 +26,6 @@ type childChannel struct {
 	in   *bufio.Reader
 }
 
-// request asks the parent to run step index, which needs privileges the sandbox withholds.
 func (c *childChannel) request(index int) error {
 	if c == nil {
 		return fmt.Errorf("Privileged cask install step %d requires a parent message channel.", index) //nolint:staticcheck // brew's message, shown to the user
@@ -45,7 +44,6 @@ func (c *childChannel) request(index int) error {
 	return fmt.Errorf("The parent process failed to run privileged cask install step %d.", index) //nolint:staticcheck // brew's message, shown to the user
 }
 
-// ChildMain runs a payload as the sandboxed child and returns its exit code.
 func ChildMain(args []string, stdout, stderr io.Writer) int {
 	conn, err := dialParent()
 	if err != nil {

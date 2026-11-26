@@ -13,7 +13,6 @@ import (
 	"time"
 )
 
-// InheritanceFD is the descriptor on which a sandbox hands its child the executable, so the child knows it is inside one.
 const InheritanceFD = 198
 
 const (
@@ -40,10 +39,9 @@ type Options struct {
 	AvoidNested     bool
 	DefaultPrefix   bool
 	Prefix          string
-	PrivilegedGroup string // the first of admin, staff, root and wheel the user is in; empty when in none
+	PrivilegedGroup string
 }
 
-// Decide is Sandbox.use_for?: whether to sandbox step, and what to warn about when not.
 func Decide(step string, o Options) (Decision, string, error) {
 	if o.Inherited {
 		return Skip, "", nil
@@ -83,7 +81,6 @@ func Nested() bool {
 	return nestedResult
 }
 
-// Inherited is Sandbox.inherited_sandbox?: a sandbox started by brw leaves its executable on InheritanceFD.
 func Inherited(exe, brewFile string) (bool, error) {
 	var held, want syscall.Stat_t
 	if err := syscall.Fstat(InheritanceFD, &held); err != nil {
@@ -120,7 +117,6 @@ func filterLog(logs string) string {
 	return keep.String()
 }
 
-// RecordLog is OS::Mac::Sandbox#record_sandbox_log: what the kernel denied since start, kept in logfile when there is one.
 func RecordLog(start time.Time, logfile string, failed, verbose bool, display io.Writer) error {
 	time.Sleep(logSettleDelay)
 	since := fmt.Sprint(start.Unix())
