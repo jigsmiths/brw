@@ -134,6 +134,14 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				} else {
 					p.postflight = append(p.postflight, steps...)
 				}
+			case "uninstall_preflight_steps", "uninstall_postflight_steps":
+				steps, err := readSteps(args)
+				if err != nil {
+					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
+				}
+				if bad := unsupportedSteps(steps); bad != "" {
+					return unsupported(kind + " " + bad)
+				}
 			case "installer":
 				steps, err := readInstallers(c.Token, args)
 				if err != nil {
