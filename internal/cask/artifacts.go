@@ -26,6 +26,11 @@ type Where struct {
 
 const DefaultKeyboardLayoutDir = "/Library/Keyboard Layouts"
 
+func (w Where) WithKeyboardLayoutDir(dir string) Where {
+	w.KeyboardLayoutDir = dir
+	return w
+}
+
 func NewWhere(prefix, appDir, home string) Where {
 	return Where{Prefix: prefix, AppDir: appDir, Home: home, KeyboardLayoutDir: DefaultKeyboardLayoutDir}
 }
