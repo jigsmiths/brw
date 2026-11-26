@@ -21,7 +21,6 @@ type Where struct {
 	AppDir string
 	Home   string
 
-	// KeyboardLayoutDir defaults to brew's keyboard_layoutdir.
 	KeyboardLayoutDir string
 }
 

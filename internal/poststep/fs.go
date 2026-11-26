@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-// A step may name any path, as brew's do. The prefix goes through the journaled
-// root and everything else straight to the filesystem.
-
 func (r *runner) within(abs string) (string, bool) {
 	rel, err := filepath.Rel(r.c.Prefix, abs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -89,7 +86,6 @@ func (r *runner) chmod(abs string, perm fs.FileMode) error {
 	return os.Chmod(abs, perm) //fsx:allow brew's FileUtils.chmod on a path the step named
 }
 
-// overwrite rewrites a file in place outside the prefix, where hard links must see the change.
 func (r *runner) overwrite(abs string, data []byte, perm fs.FileMode) error {
 	if _, ok := r.within(abs); !ok {
 		return os.WriteFile(abs, data, perm) //fsx:allow brew's in place rewrite of a path the step named
@@ -118,7 +114,6 @@ func (r *runner) removeTree(abs string) error {
 	return os.RemoveAll(abs) //fsx:allow brew's FileUtils.rm_rf on a path the step named
 }
 
-// rename is FileUtils.mv: across file systems, and into or out of the prefix, it copies and removes.
 func (r *runner) rename(source, dest string) error {
 	sRel, sIn := r.within(source)
 	dRel, dIn := r.within(dest)
@@ -152,7 +147,6 @@ func (r *runner) copyFile(source, dest string) error {
 
 func (r *runner) copyTree(source, dest string) error { return r.copyTreeWith(source, dest, false) }
 
-// copyTreeOver is FileUtils.cp_r of "source/." onto an existing directory: files in the way are replaced.
 func (r *runner) copyTreeOver(source, dest string) error { return r.copyTreeWith(source, dest, true) }
 
 func (r *runner) copyTreeWith(source, dest string, replace bool) error {

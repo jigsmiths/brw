@@ -9,15 +9,12 @@ import (
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
-// SandboxPolicy is what brew's cask_sandbox needs to know about the install. A nil policy runs steps unsandboxed.
 type SandboxPolicy struct {
 	Cache      string
 	Logs       string
 	Repository string
-	// Available defaults to the presence of sandbox-exec.
-	Available func() bool
-	// Warn is told once per message that the sandbox is missing.
-	Warn func(message string)
+	Available  func() bool
+	Warn       func(message string)
 }
 
 const sandboxUnavailable = "Sandbox unavailable: running cask artifact operations without sandboxing!"
@@ -31,7 +28,6 @@ func (p *SandboxPolicy) available() bool {
 	return sandbox.Available()
 }
 
-// sandboxFor builds the profile brew gives a cask's steps, for one command.
 func (r *runner) sandboxFor(s step, home string) (*sandbox.Sandbox, error) {
 	c := r.c
 	policy := c.Sandbox
@@ -85,7 +81,6 @@ func (r *runner) sandboxFor(s step, home string) (*sandbox.Sandbox, error) {
 	return sb, nil
 }
 
-// runSandboxed returns false when the command is not sandboxed: brew has no sandbox on linux or for sudo steps.
 func (r *runner) runSandboxed(s step, program string, args, env []string, dir, input string) (ran bool, err error) {
 	policy := r.c.Sandbox
 	if policy == nil || r.c.OS != "darwin" || s.Sudo == sudoAlways || !r.c.cask() {

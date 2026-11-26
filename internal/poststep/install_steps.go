@@ -38,7 +38,6 @@ func (r *runner) runner() sudo.Runner {
 	return sudo.Exec
 }
 
-// runCommand is brew's run_command: as the user, with its output shown.
 func (r *runner) runCommand(exe string, args ...string) error {
 	c := sudo.Command{Exe: exe, Args: args, Privilege: sudo.User, MustSucceed: true, Stdout: r.c.Log, Stderr: r.stderr()}
 	_, err := r.sudoCommand(c)
@@ -51,7 +50,6 @@ func (r *runner) commandOutput(exe string, args ...string) (string, error) {
 	return res.Stdout, err
 }
 
-// sudoIfNeeded is a command with sudo: nil: as the user, then with sudo if that fails and sudo is usable.
 func (r *runner) sudoIfNeeded(exe string, args ...string) error {
 	c := sudo.Command{Exe: exe, Args: args, Privilege: sudo.User, MustSucceed: true}
 	if !sudo.EnvSet("HOMEBREW_NO_SUDO") {
@@ -255,7 +253,6 @@ func (r *runner) setOwnership(s step) error {
 	return r.sudoIfNeeded(chownPath, append(args, paths...)...)
 }
 
-// appManagementGranted is Cask::Quarantine.app_management_permissions_granted?.
 func (r *runner) appManagementGranted(app string) (bool, error) {
 	if fi, err := os.Stat(app); err != nil || !fi.IsDir() {
 		return true, nil
@@ -358,7 +355,6 @@ func (r *runner) hostArch() string {
 	return runtime.GOARCH
 }
 
-// ensureWritable is Utils::Path.ensure_writable.
 func (r *runner) ensureWritable(file string, do func() error) (err error) {
 	if syscall.Access(file, accessWrite) != nil {
 		fi, err := os.Stat(file)
@@ -452,7 +448,6 @@ func sudoCommandFor(exe string, args ...string) sudo.Command {
 	return sudo.Command{Exe: exe, Args: args, Privilege: sudo.User}
 }
 
-// mvTo is FileUtils.mv onto a path: a file in the way is replaced.
 func (r *runner) mvTo(source, dest string) error {
 	if fi, err := os.Lstat(dest); err == nil && !fi.IsDir() {
 		if err := r.removeAny(dest); err != nil {
@@ -497,7 +492,6 @@ func (r *runner) installSymlink(dir, source, name string) error {
 	return r.symlinkAt(text, dest)
 }
 
-// atomicWrite is Pathname#atomic_write: the file is replaced.
 func (r *runner) atomicWrite(file, content string) error {
 	if err := r.mkdirAll(filepath.Dir(file)); err != nil {
 		return err

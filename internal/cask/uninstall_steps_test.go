@@ -24,7 +24,7 @@ func uninstallStepsCask(log, app string) string {
 
 func TestUninstallStepsRunAroundTheOtherArtifactsOnlyWhenUninstalling(t *testing.T) {
 	l := newSudoLink(t)
-	l.ti.in.Run, l.ti.in.Exec = nil, nil // the steps run for real, under the sandbox where macOS has one
+	l.ti.in.Run, l.ti.in.Exec = nil, nil
 	log := filepath.Join(t.TempDir(), "log")
 	app := filepath.Join(l.ti.appDir, "App.app")
 	if err := l.ti.in.Install(context.Background(), l.ti.cask(t, uninstallStepsCask(log, app))); err != nil {

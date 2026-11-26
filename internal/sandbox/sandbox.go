@@ -37,7 +37,6 @@ func (s *Sandbox) add(allow bool, operation string, k kind, path string) {
 	s.rules = append(s.rules, rule{allow: allow, operation: operation, kind: k, path: path})
 }
 
-// expandRealpath resolves the links of the deepest part of path that exists, as Sandbox#expand_realpath does.
 func expandRealpath(path string) string {
 	path, _ = filepath.Abs(path)
 	rest := ""
@@ -60,7 +59,6 @@ func (s *Sandbox) DenyWriteLiteral(path string)   { s.add(false, "file-write*", 
 func (s *Sandbox) DenyAllNetwork()                { s.add(false, "network*", anything, "") }
 func (s *Sandbox) allowWriteRegex(pattern string) { s.add(true, "file-write*", regex, pattern) }
 
-// AllowWriteSystemTemp is the macOS override of Sandbox#allow_write_system_temp, plus HOMEBREW_TEMP.
 func (s *Sandbox) AllowWriteSystemTemp(homebrewTemp string) {
 	s.AllowWritePath("/private/tmp")
 	s.AllowWritePath("/private/var/tmp")
@@ -85,9 +83,6 @@ var credentialPaths = []string{
 	"Library/CloudStorage", "Dropbox", "Google Drive", "OneDrive",
 }
 
-// DenyReadHome is Sandbox#deny_read_home: the whole home, or only its personal
-// folders when a path the command needs lies inside it. A personal folder that
-// contains a needed path cannot be denied; brew warns about it and so do we, through warn.
 func (s *Sandbox) DenyReadHome(home string, readable []string, warn func(string)) {
 	home = realpath(home)
 	var paths []string
@@ -117,7 +112,6 @@ func (s *Sandbox) DenyReadHome(home string, readable []string, warn func(string)
 	}
 }
 
-// DenyWriteHomebrewRepository is Sandbox#deny_write_homebrew_repository.
 func (s *Sandbox) DenyWriteHomebrewRepository(brewFile, prefix, repository string) {
 	s.DenyWriteLiteral(brewFile)
 	if Within(realpath(repository), realpath(prefix)) {
@@ -141,7 +135,6 @@ func Within(dir, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// NetworkAllowed is false once any rule denies all network access.
 func (s *Sandbox) NetworkAllowed() bool {
 	return !slices.ContainsFunc(s.rules, func(r rule) bool { return !r.allow && r.operation == "network*" && r.kind == anything })
 }
@@ -175,7 +168,6 @@ func (r rule) String() string {
 	return b.String()
 }
 
-// Profile is OS::Mac::Sandbox#seatbelt_profile.
 func (s *Sandbox) Profile() string {
 	network := s.NetworkAllowed()
 	var b strings.Builder
@@ -230,7 +222,6 @@ func (s *Sandbox) Profile() string {
 	return b.String()
 }
 
-// Available is Sandbox.available? on macOS.
 func Available() bool {
 	fi, err := os.Stat(Exec)
 	return err == nil && fi.Mode()&0o111 != 0 && !fi.IsDir()

@@ -503,7 +503,6 @@ func TestCaskSteps(t *testing.T) {
 			t.Errorf("%s was not made", p)
 		}
 	}
-	// A formula's bases mean nothing here, and an unset appdir has no folder.
 	for _, base := range []string{"bin", "prefix", "var", "appdir", "nonsense"} {
 		if err := f.run(`[{"type":"touch","path":{"base":"` + base + `","path":"x"}}]`); err == nil {
 			t.Errorf("a cask step with base %s ran", base)

@@ -29,7 +29,7 @@ type Context struct {
 	OS      string // darwin or linux
 	User    string
 	Log     io.Writer
-	Err     io.Writer // where a command's stderr goes; Log when unset
+	Err     io.Writer
 
 	// Cask steps have their own bases in place of a formula's.
 	Token  string
@@ -37,10 +37,9 @@ type Context struct {
 	Arch   string // arm or intel
 	AppDir string
 
-	Home string // the user's home, for the home base
-	Temp string // for the temp base
+	Home string
+	Temp string
 
-	// The host, for the steps that configure it; each defaults to the running system.
 	MacVersion string // product version, darwin only
 	Kernel     string // uname -r
 	HostArch   string // GOARCH
@@ -415,7 +414,6 @@ func (r *runner) base(name, formula string) (string, error) {
 	return "", fmt.Errorf("unknown install step base: %s", name)
 }
 
-// expandPath is Pathname#expand_path: ~ is the home and a relative path starts at the working directory.
 func (r *runner) expandPath(p string) (string, error) {
 	if p == "~" || strings.HasPrefix(p, "~/") {
 		home, err := r.base("home", "")
@@ -427,7 +425,6 @@ func (r *runner) expandPath(p string) (string, error) {
 	return filepath.Abs(p)
 }
 
-// tempDir is HOMEBREW_TEMP, which brew defaults per OS.
 func (r *runner) tempDir() string {
 	if r.c.Temp != "" {
 		return r.c.Temp
@@ -441,8 +438,6 @@ func (r *runner) tempDir() string {
 	return "/tmp"
 }
 
-// configDir is a directory of the cask's config, which brew's context_path reads
-// when the cask has no method of that name.
 func (r *runner) configDir(name string) (string, bool) {
 	prefix := r.c.Prefix
 	switch name {

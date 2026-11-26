@@ -284,8 +284,7 @@ func (r *Root) Symlink(target, name string) error {
 	return r.symlink(target, rel)
 }
 
-// SymlinkAny is Symlink for a target anywhere, as install steps may point a
-// link in the prefix at a path outside it.
+// SymlinkAny is Symlink for a target anywhere.
 func (r *Root) SymlinkAny(target, name string) error {
 	rel, err := r.rel(name)
 	if err != nil {

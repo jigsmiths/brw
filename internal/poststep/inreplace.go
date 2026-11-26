@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-// Ruby's Regexp option bits, as the steps carry them.
 const (
 	rubyIgnoreCase = 1
 	rubyExtended   = 2
@@ -84,8 +83,7 @@ func compilePattern(before string, isRegexp bool, options int) (*regexp.Regexp, 
 
 var errRegexpFeature = errors.New("not supported by this regular expression engine")
 
-// translateRegexp maps Ruby's syntax onto RE2's. Lookarounds, backreferences and atomic
-// or possessive groups have no RE2 form and are refused.
+// Lookarounds, backreferences and atomic or possessive groups have no RE2 form and are refused.
 func translateRegexp(src string, options int) (string, error) {
 	var b strings.Builder
 	b.WriteString("(?m")
@@ -166,7 +164,6 @@ func translateRegexp(src string, options int) (string, error) {
 	return b.String(), nil
 }
 
-// substitute is String#sub! and gsub!, with Ruby's backslash sequences in the replacement.
 func substitute(text string, re *regexp.Regexp, repl string, global bool) (string, bool) {
 	matches := re.FindAllStringSubmatchIndex(text, -1)
 	if !global && len(matches) > 1 {
@@ -232,7 +229,6 @@ func expandReplacement(repl, text string, m []int, re *regexp.Regexp) string {
 	return b.String()
 }
 
-// rubyInspect is String#inspect, as brew's error shows the strings.
 func rubyInspect(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')

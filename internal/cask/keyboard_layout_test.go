@@ -21,7 +21,6 @@ func newLayoutInstall(t *testing.T) layoutInstall {
 	l := newSudoLink(t)
 	layouts := t.TempDir()
 	l.ti.in.Where.KeyboardLayoutDir = layouts
-	// The fake runner would run the cache command for real; only record it.
 	l.f.handle = map[string]func([]string) ([]byte, error){"/usr/bin/sudo": func([]string) ([]byte, error) { return nil, nil }}
 	return layoutInstall{sudoLink: l, layouts: layouts}
 }

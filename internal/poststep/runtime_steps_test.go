@@ -14,7 +14,6 @@ import (
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
-// answers makes the stub runner reply to a command by its executable's base name and first argument.
 func (f *sudoFixture) answers(replies map[string]string) {
 	f.ctx.Sudo = func(_ context.Context, c sudo.Command) (sudo.Result, error) {
 		f.stub.cmds = append(f.stub.cmds, c)

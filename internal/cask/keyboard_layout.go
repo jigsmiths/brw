@@ -18,8 +18,6 @@ func occupied(path string) bool {
 	return err == nil
 }
 
-// moveKeyboardLayout is brew's KeyboardLayout#install_phase: the layout goes
-// to the system folder, which needs privileges the Apps root does not have.
 func (in *Installer) moveKeyboardLayout(ctx context.Context, version string, m move, undo *[]func() error) error {
 	staged := filepath.Join(version, m.source)
 	abs, err := in.Root.Abs(staged)
@@ -75,7 +73,6 @@ func (in *Installer) deleteKeyboardLayoutCache(ctx context.Context) error {
 	return err
 }
 
-// moveBackKeyboardLayout is brew's KeyboardLayout#uninstall_phase.
 func (in *Installer) moveBackKeyboardLayout(ctx context.Context, m move, force bool) error {
 	staged := m.source
 	if dest, err := in.Root.Readlink(staged); err == nil && dest == m.target {
