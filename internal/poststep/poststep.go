@@ -37,14 +37,10 @@ type Context struct {
 	Arch   string // arm or intel
 	AppDir string
 
-	Home string
-	Temp string
+	Host
 
-	MacVersion string // product version, darwin only
-	Kernel     string // uname -r
-	HostArch   string // GOARCH
-
-	Sandbox *SandboxPolicy
+	Sandbox       SandboxMode
+	SandboxPolicy SandboxPolicy
 
 	Sudo   sudo.Runner
 	Remove func(ctx context.Context, path string) error
@@ -191,6 +187,9 @@ func Unsupported(steps []json.RawMessage) []string {
 func Run(ctx context.Context, c Context, raw []json.RawMessage) error {
 	if u := Unsupported(raw); len(u) > 0 {
 		return fmt.Errorf("unsupported post_install steps: %s", strings.Join(u, ", "))
+	}
+	if c.Sandbox != Sandboxed && c.Sandbox != Unsandboxed {
+		return errors.New("the context does not say whether steps are sandboxed")
 	}
 	r := &runner{ctx: ctx, c: c, guards: map[string]bool{}}
 	for i, b := range raw {
@@ -357,12 +356,15 @@ func (r *runner) base(name, formula string) (string, error) {
 	c := r.c
 	switch name {
 	case "home":
-		if c.Home != "" {
-			return c.Home, nil
+		if c.Home == "" {
+			return "", errors.New("the home directory is not known")
 		}
-		return os.UserHomeDir()
+		return c.Home, nil
 	case "temp":
-		return r.tempDir(), nil
+		if c.Temp == "" {
+			return "", errors.New("the temporary directory is not known")
+		}
+		return c.Temp, nil
 	}
 	if c.cask() {
 		switch name {
@@ -425,18 +427,7 @@ func (r *runner) expandPath(p string) (string, error) {
 	return filepath.Abs(p)
 }
 
-func (r *runner) tempDir() string {
-	if r.c.Temp != "" {
-		return r.c.Temp
-	}
-	if dir := os.Getenv("HOMEBREW_TEMP"); dir != "" {
-		return dir
-	}
-	if r.c.OS == "darwin" {
-		return "/private/tmp"
-	}
-	return "/tmp"
-}
+func (r *runner) tempDir() string { return r.c.Temp }
 
 func (r *runner) configDir(name string) (string, bool) {
 	prefix := r.c.Prefix

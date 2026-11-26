@@ -39,23 +39,18 @@ func (in *Installer) stepContext(token, version, staged string) poststep.Context
 	if in.Where.Prefix == "/opt/homebrew" {
 		repository = in.Where.Prefix
 	}
-	policy := &poststep.SandboxPolicy{
-		Cache: in.Fetcher.Dir, Logs: filepath.Join(in.Where.Home, "Library/Logs/Homebrew"), Repository: repository,
-		Warn: func(m string) {
-			if !in.warnedSandbox {
-				in.warnf("%s", m)
-				in.warnedSandbox = true
-			}
-		},
-	}
-	if in.noSandbox {
-		policy = nil
-	}
+	policy := poststep.NewSandboxPolicy(in.Fetcher.Dir, filepath.Join(in.Where.Home, "Library/Logs/Homebrew"), repository, func(m string) {
+		if !in.warnedSandbox {
+			in.warnf("%s", m)
+			in.warnedSandbox = true
+		}
+	})
 	return poststep.Context{
-		Sandbox: policy,
-		Root:    in.Root, Prefix: in.Where.Prefix, Name: token, Version: version, OS: in.Host.OS,
-		User: os.Getenv("USER"), Log: in.Log, Token: token, Staged: staged, Arch: arch, AppDir: in.Where.AppDir,
-		Home: in.Where.Home, Err: in.Warn, Sudo: in.stepRunner(), Remove: in.gainPermissionsRemove,
+		Sandbox: in.Sandbox, SandboxPolicy: policy,
+		Root: in.Root, Prefix: in.Where.Prefix, Name: token, Version: version, OS: in.Host.OS,
+		User: os.Getenv("USER"), Log: in.Log, Err: poststep.OrDiscard(in.Warn), Token: token, Staged: staged, Arch: arch, AppDir: in.Where.AppDir,
+		Host: poststep.CurrentHost(in.Host.OS, in.Where.Home, in.Host.MacVersion),
+		Sudo: in.stepRunner(), Remove: in.gainPermissionsRemove,
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/outdated"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/progress"
 	"github.com/jigsmiths/brw/internal/uninstall"
 )
@@ -109,6 +110,7 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 			Root: root, Apps: apps,
 			Where:       cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
 			Host:        e.host,
+			Sandbox:     poststep.Sandboxed,
 			Verbose:     trace.verbose,
 			Debug:       trace.debug,
 			Run:         e.sudoRun,
@@ -312,6 +314,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 		Root: root, Apps: apps,
 		Where:   cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
 		Host:    e.host,
+		Sandbox: poststep.Sandboxed,
 		Fetcher: fetcher,
 		Log:     e.out,
 		Warn:    e.err,
@@ -438,10 +441,11 @@ func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks
 func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask, force bool, trace tracing) error {
 	appDir := caskroom.AppDir(prefix, c.Token)
 	in := &cask.Installer{
-		Root:  root,
-		Where: cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
-		Host:  e.host,
-		Log:   e.out, Warn: e.err,
+		Root:    root,
+		Where:   cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
+		Host:    e.host,
+		Sandbox: poststep.Sandboxed,
+		Log:     e.out, Warn: e.err,
 		Verbose: trace.verbose, Debug: trace.debug, Run: e.sudoRun, FindService: e.findService,
 	}
 	e.setTracing(trace)

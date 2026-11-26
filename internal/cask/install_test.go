@@ -18,6 +18,7 @@ import (
 	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 )
 
 type testInstall struct {
@@ -44,7 +45,7 @@ func newTestInstall(t *testing.T, body []byte) *testInstall {
 	srv, hits := server(t, body, nil)
 	out, warn := &bytes.Buffer{}, &bytes.Buffer{}
 	in := &Installer{
-		Warn: warn,
+		Warn: warn, Sandbox: poststep.Unsandboxed,
 		Root: root, Apps: apps,
 		Where:   Where{Prefix: prefix, AppDir: appDir, Home: "/Users/me"},
 		Host:    platform.Host{OS: "darwin", MacVersion: "26.1", Arch: "arm64"},

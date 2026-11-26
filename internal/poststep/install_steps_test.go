@@ -386,7 +386,7 @@ func TestGtkIconCachePrefersGtk4WhenAnyVersionIsInstalled(t *testing.T) {
 
 func TestConfigureClangSystemWritesTheConfigFilesOnMacOS(t *testing.T) {
 	f := newSudoFixture(t)
-	f.ctx.MacVersion, f.ctx.Kernel, f.ctx.HostArch = "27.0.1", "27.1.0", "arm64"
+	f.ctx.MacVersion, f.ctx.Kernel, f.ctx.GOARCH = "27.0.1", "27.1.0", "arm64"
 	f.mustRun(`[{"type":"configure_clang_system"}]`)
 	dir := filepath.Join(f.prefix, "etc/clang")
 	want := "-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX27.sdk\n"
@@ -446,7 +446,7 @@ func TestConfigureGlibcRuntimeInstallsLocalesAndLinksTheSystemFiles(t *testing.T
 
 func TestChangeDylibIDEditsTheIDAndSignsOnAppleSilicon(t *testing.T) {
 	f := newSudoFixture(t)
-	f.ctx.HostArch = "arm64"
+	f.ctx.GOARCH = "arm64"
 	lib := filepath.Join(f.dir, "libx.dylib")
 	if err := os.WriteFile(lib, tinyDylib("/old/libx.dylib"), 0o444); err != nil {
 		t.Fatal(err)
@@ -466,7 +466,7 @@ func TestChangeDylibIDEditsTheIDAndSignsOnAppleSilicon(t *testing.T) {
 
 func TestChangeDylibIDDoesNotSignOnIntel(t *testing.T) {
 	f := newSudoFixture(t)
-	f.ctx.HostArch = "amd64"
+	f.ctx.GOARCH = "amd64"
 	lib := filepath.Join(f.dir, "libx.dylib")
 	if err := os.WriteFile(lib, tinyDylib("/old/libx.dylib"), 0o644); err != nil {
 		t.Fatal(err)
@@ -479,7 +479,7 @@ func TestChangeDylibIDDoesNotSignOnIntel(t *testing.T) {
 
 func TestChangeDylibIDResolvesASymlinkSourceWhenAsked(t *testing.T) {
 	f := newSudoFixture(t)
-	f.ctx.HostArch = "amd64"
+	f.ctx.GOARCH = "amd64"
 	real := filepath.Join(f.dir, "libx.1.dylib")
 	if err := os.WriteFile(real, tinyDylib("/old/libx.dylib"), 0o644); err != nil {
 		t.Fatal(err)

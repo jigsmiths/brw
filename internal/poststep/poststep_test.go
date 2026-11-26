@@ -31,7 +31,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { _ = root.Close() })
 	f := &fixture{t: t, prefix: prefix}
-	f.ctx = Context{Root: root, Prefix: prefix, Name: "pkg", Version: "1.2.3", Keg: "Cellar/pkg/1.2.3-1", OS: "darwin", User: "tester", Log: &f.log,
+	f.ctx = Context{Root: root, Prefix: prefix, Name: "pkg", Version: "1.2.3", Keg: "Cellar/pkg/1.2.3-1", OS: "darwin", User: "tester", Log: &f.log, Err: &f.log, Sandbox: Unsandboxed,
 		Home: t.TempDir(), Temp: t.TempDir()}
 	f.mkdir("Cellar/pkg/1.2.3-1")
 	return f
@@ -486,7 +486,7 @@ func TestRun(t *testing.T) {
 
 func TestCaskSteps(t *testing.T) {
 	f := newFixture(t)
-	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", Arch: "arm", OS: "darwin", Log: &f.log,
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", Arch: "arm", OS: "darwin", Log: &f.log, Err: &f.log, Sandbox: Unsandboxed,
 		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0"), Home: t.TempDir(), Temp: t.TempDir()}
 	f.write("Caskroom/tool/2.0/tool", "#!/bin/sh\nprintf '%s' \"$1\" > \"$2/out\"\n", 0o755)
 	f.mustRun(`[
@@ -512,7 +512,7 @@ func TestCaskSteps(t *testing.T) {
 
 func TestUninstallRemovesOnlyTheLinksMarkedForIt(t *testing.T) {
 	f := newFixture(t)
-	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log,
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log, Err: &f.log, Host: f.ctx.Host, Sandbox: Unsandboxed,
 		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0")}
 	f.write("Caskroom/tool/2.0/tool", "", 0o755)
 	steps := `[
@@ -713,7 +713,7 @@ func TestMain(m *testing.M) {
 func TestCaskStepsExpandAppdirInArguments(t *testing.T) {
 	f := newFixture(t)
 	apps := t.TempDir()
-	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log,
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log, Err: &f.log, Host: f.ctx.Host, Sandbox: Unsandboxed,
 		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0"), AppDir: apps}
 	f.write("Caskroom/tool/2.0/tool", "#!/bin/sh\nprintf '%s' \"$1\" > \"$2/out\"\n", 0o755)
 	f.mustRun(`[{"type":"run","command":{"path":"{{staged_path}}/tool"},"args":["{{appdir}}/Tool.app","{{caskroom_path}}"]}]`)

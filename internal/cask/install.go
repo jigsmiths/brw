@@ -18,6 +18,7 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
@@ -47,6 +48,7 @@ type Installer struct {
 	Debug       bool
 	FindService func(ctx context.Context, label string, privilege sudo.Privilege) (bool, error)
 	Adopt       bool
+	Sandbox     poststep.SandboxMode
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
 	// SatisfyDependencies installs what c needs; nil leaves it to the caller, and Install then fails if it is missing.
@@ -55,7 +57,6 @@ type Installer struct {
 	upgrading     bool
 	reopen        []string
 	warnedSandbox bool
-	noSandbox     bool
 
 	ancestors      []string
 	ancestorsKnown bool

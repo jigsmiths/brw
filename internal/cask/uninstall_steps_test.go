@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
@@ -25,6 +26,7 @@ func uninstallStepsCask(log, app string) string {
 func TestUninstallStepsRunAroundTheOtherArtifactsOnlyWhenUninstalling(t *testing.T) {
 	l := newSudoLink(t)
 	l.ti.in.Run, l.ti.in.Exec = nil, nil
+	l.ti.in.Sandbox = poststep.Sandboxed
 	log := filepath.Join(t.TempDir(), "log")
 	app := filepath.Join(l.ti.appDir, "App.app")
 	if err := l.ti.in.Install(context.Background(), l.ti.cask(t, uninstallStepsCask(log, app))); err != nil {

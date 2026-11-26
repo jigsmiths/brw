@@ -22,10 +22,10 @@ func newSandboxFixture(t *testing.T) *sandboxFixture {
 	f.ctx.Staged = filepath.Join(f.prefix, "Caskroom/pkg/1.2.3")
 	f.ctx.Token = "pkg"
 	f.ctx.AppDir = t.TempDir()
-	f.ctx.Sandbox = &SandboxPolicy{
-		Cache: t.TempDir(), Logs: t.TempDir(), Repository: filepath.Join(f.prefix, "Homebrew"),
-		Available: func() bool { return true }, Warn: func(m string) { f.warnings = append(f.warnings, m) },
-	}
+	f.ctx.Sandbox = Sandboxed
+	f.ctx.SandboxPolicy = NewSandboxPolicy(t.TempDir(), t.TempDir(), filepath.Join(f.prefix, "Homebrew"),
+		func(m string) { f.warnings = append(f.warnings, m) })
+	f.ctx.SandboxPolicy.Available = func() bool { return true }
 	return f
 }
 
@@ -109,9 +109,22 @@ func TestSudoRunsAndOtherSystemsAreNotSandboxed(t *testing.T) {
 	}
 }
 
+func TestTheSandboxModeMustBeChosen(t *testing.T) {
+	f := newSandboxFixture(t)
+	f.ctx.Sandbox = 0
+	if err := f.run(`[{"type":"run","command":{"path":"/usr/bin/true"}}]`); err == nil {
+		t.Error("a context without a sandbox mode should be refused")
+	}
+	f.ctx.Sandbox = Unsandboxed
+	f.mustRun(`[{"type":"run","command":{"path":"/usr/bin/true"}}]`)
+	if len(f.stub.cmds) != 0 {
+		t.Errorf("an unsandboxed step reached the runner: %v", f.stub.cmds)
+	}
+}
+
 func TestSandboxUnavailableWarnsAndRunsTheCommandPlainly(t *testing.T) {
 	f := newSandboxFixture(t)
-	f.ctx.Sandbox.Available = func() bool { return false }
+	f.ctx.SandboxPolicy.Available = func() bool { return false }
 	f.mustRun(`[{"type":"run","command":{"path":"/usr/bin/true"}}]`)
 	if len(f.stub.cmds) != 0 {
 		t.Errorf("the command went through the sandbox runner: %v", f.stub.cmds)

@@ -9,6 +9,14 @@ import (
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
+type SandboxMode int
+
+// The zero SandboxMode is no choice at all, and Run refuses it.
+const (
+	Sandboxed SandboxMode = iota + 1
+	Unsandboxed
+)
+
 type SandboxPolicy struct {
 	Cache      string
 	Logs       string
@@ -17,20 +25,18 @@ type SandboxPolicy struct {
 	Warn       func(message string)
 }
 
+// NewSandboxPolicy checks for sandbox-exec itself; warn hears that it is missing.
+func NewSandboxPolicy(cache, logs, repository string, warn func(message string)) SandboxPolicy {
+	return SandboxPolicy{Cache: cache, Logs: logs, Repository: repository, Available: sandbox.Available, Warn: warn}
+}
+
 const sandboxUnavailable = "Sandbox unavailable: running cask artifact operations without sandboxing!"
 
 var kegLinkDirectories = []string{"bin", "etc", "include", "lib", "sbin", "share", "var"}
 
-func (p *SandboxPolicy) available() bool {
-	if p.Available != nil {
-		return p.Available()
-	}
-	return sandbox.Available()
-}
-
 func (r *runner) sandboxFor(s step, home string) (*sandbox.Sandbox, error) {
 	c := r.c
-	policy := c.Sandbox
+	policy := c.SandboxPolicy
 	sb := &sandbox.Sandbox{}
 	sb.AllowRead(c.Staged)
 	temp := r.tempDir()
@@ -82,14 +88,12 @@ func (r *runner) sandboxFor(s step, home string) (*sandbox.Sandbox, error) {
 }
 
 func (r *runner) runSandboxed(s step, program string, args, env []string, dir, input string) (ran bool, err error) {
-	policy := r.c.Sandbox
-	if policy == nil || r.c.OS != "darwin" || s.Sudo == sudoAlways || !r.c.cask() {
+	policy := r.c.SandboxPolicy
+	if r.c.Sandbox == Unsandboxed || r.c.OS != "darwin" || s.Sudo == sudoAlways || !r.c.cask() {
 		return false, nil
 	}
-	if !policy.available() {
-		if policy.Warn != nil {
-			policy.Warn(sandboxUnavailable)
-		}
+	if !policy.Available() {
+		policy.Warn(sandboxUnavailable)
 		return false, nil
 	}
 	home, err := os.MkdirTemp(r.tempDir(), "brw-cask-home-") //fsx:allow brew's scratch home for the sandboxed child

@@ -145,10 +145,7 @@ func (r *runner) runWithSudo(s step, c sudo.Command) error {
 }
 
 func (r *runner) stderr() io.Writer {
-	if r.c.Err != nil {
-		return r.c.Err
-	}
-	return r.c.Log
+	return r.c.Err
 }
 
 func (r *runner) captureStdout(s step, stdout string) error {

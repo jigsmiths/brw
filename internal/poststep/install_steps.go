@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -50,18 +49,26 @@ func (r *runner) commandOutput(exe string, args ...string) (string, error) {
 	return res.Stdout, err
 }
 
-func (r *runner) sudoIfNeeded(exe string, args ...string) error {
-	c := sudo.Command{Exe: exe, Args: args, Privilege: sudo.User, MustSucceed: true}
-	if !sudo.EnvSet("HOMEBREW_NO_SUDO") {
-		c.Stderr = io.Discard
+// runAsUserThenSudo is brew's `sudo: nil`: the command runs as the user and, only if it fails
+// and sudo is usable, once more with sudo. The user's attempt is quiet while sudo may follow.
+func (r *runner) runAsUserThenSudo(exe string, args ...string) error {
+	asUser := sudo.Command{Exe: exe, Args: args, Privilege: sudo.User, MustSucceed: true}
+	sudoMayFollow := !sudo.EnvSet("HOMEBREW_NO_SUDO")
+	if sudoMayFollow {
+		asUser.Stderr = io.Discard
 	}
-	_, err := r.sudoCommand(c)
-	if err == nil || !sudo.IsFailure(err) || !sudo.Available(r.ctx, r.runner()) {
-		return err
+	_, userErr := r.sudoCommand(asUser)
+	if !r.worthRetryingWithSudo(userErr) {
+		return userErr
 	}
-	c.Privilege, c.Stderr = sudo.Sudo, nil
-	_, err = r.sudoCommand(c)
+	withSudo := asUser
+	withSudo.Privilege, withSudo.Stderr = sudo.Sudo, nil
+	_, err := r.sudoCommand(withSudo)
 	return err
+}
+
+func (r *runner) worthRetryingWithSudo(userErr error) bool {
+	return userErr != nil && sudo.IsFailure(userErr) && sudo.Available(r.ctx, r.runner())
 }
 
 func (r *runner) keg(name string) string {
@@ -250,7 +257,7 @@ func (r *runner) setOwnership(s step) error {
 		group = defaultGroup
 	}
 	args = append(args, "--", owner+":"+group)
-	return r.sudoIfNeeded(chownPath, append(args, paths...)...)
+	return r.runAsUserThenSudo(chownPath, append(args, paths...)...)
 }
 
 func (r *runner) appManagementGranted(app string) (bool, error) {
@@ -270,9 +277,9 @@ func (r *runner) appManagementGranted(app string) (bool, error) {
 			return false, err
 		}
 	} else {
-		err := r.sudoIfNeeded(touchPath, probe)
+		err := r.runAsUserThenSudo(touchPath, probe)
 		if err == nil {
-			return true, r.sudoIfNeeded(rmPath, probe)
+			return true, r.runAsUserThenSudo(rmPath, probe)
 		}
 		if !strings.Contains(err.Error(), "touch: "+probe+": Operation not permitted") {
 			return false, err
@@ -339,20 +346,13 @@ func (r *runner) changeDylibID(s step) error {
 		if err := r.overwrite(file, m.Bytes(), fi.Mode().Perm()); err != nil {
 			return err
 		}
-		if r.hostArch() == "arm64" {
+		if r.c.GOARCH == "arm64" {
 			if err := r.runCommand(codesignPath, append(slices.Clone(codesignFlags), file)...); err != nil {
 				return fmt.Errorf("%s: signing failed!", file) //nolint:staticcheck // ruby-macho's message, shown to the user
 			}
 		}
 		return nil
 	})
-}
-
-func (r *runner) hostArch() string {
-	if r.c.HostArch != "" {
-		return r.c.HostArch
-	}
-	return runtime.GOARCH
 }
 
 func (r *runner) ensureWritable(file string, do func() error) (err error) {
@@ -380,14 +380,7 @@ func (r *runner) macVersion() string {
 }
 
 func (r *runner) kernelMajor() (string, error) {
-	version := r.c.Kernel
-	if version == "" {
-		var err error
-		if version, err = r.commandOutput("uname", "-r"); err != nil {
-			return "", err
-		}
-	}
-	major, _, _ := strings.Cut(strings.TrimSpace(version), ".")
+	major, _, _ := strings.Cut(strings.TrimSpace(r.c.Kernel), ".")
 	if major == "" {
 		return "", errors.New("Clang system configuration requires a kernel version") //nolint:staticcheck // brew's message, shown to the user
 	}
@@ -406,7 +399,7 @@ func (r *runner) configureClangSystem() error {
 		return err
 	}
 	arch := "x86_64"
-	if r.hostArch() == "arm64" {
+	if r.c.GOARCH == "arm64" {
 		arch = "arm64"
 	}
 	dir := filepath.Join(r.keg("etc"), "clang")
