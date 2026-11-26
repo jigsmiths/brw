@@ -120,6 +120,23 @@ func TestPlanNamesTheStepsArtifactThatRequiresSudo(t *testing.T) {
 	}
 }
 
+func TestSudoArtifactFollowsBrewsArtifactOrder(t *testing.T) {
+	step := `{"steps":[{"type":"symlink","sudo":true,"source":{"path":"/a"},"target":{"path":"/b"}}]}`
+	for name, tc := range map[string]struct{ artifacts, want string }{
+		"preflight before installer": {`{"postflight_steps":[` + step + `]},{"installer":[{"script":{"executable":"i.sh","sudo":true}}]},{"preflight_steps":[` + step + `]}`, "preflight_steps"},
+		"installer before pkg":       {`{"pkg":["P.pkg"]},{"installer":[{"script":{"executable":"i.sh","sudo":true}}]}`, "installer"},
+		"pkg before postflight":      {`{"postflight_steps":[` + step + `]},{"pkg":["P.pkg"]}`, "pkg"},
+	} {
+		p, err := plan(api.Cask{Token: "x", Artifacts: raws(t, `[`+tc.artifacts+`]`)}, where)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := p.sudoArtifact(); got != tc.want {
+			t.Errorf("%s: sudoArtifact = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
 func TestPlanPkg(t *testing.T) {
 	c := api.Cask{Token: "p", Artifacts: raws(t, `[
 		{"pkg":["Sub/P.pkg",{"choices":[{"choiceIdentifier":"a","choiceAttribute":"selected","attributeSetting":1}]},{"allow_untrusted":true}]},
