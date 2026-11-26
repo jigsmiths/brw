@@ -29,6 +29,7 @@ type Context struct {
 	OS      string // darwin or linux
 	User    string
 	Log     io.Writer
+	Err     io.Writer // where a command's stderr goes; Log when unset
 
 	// Cask steps have their own bases in place of a formula's.
 	Token  string

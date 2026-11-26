@@ -37,7 +37,7 @@ func (in *Installer) stepContext(token, version, staged string) poststep.Context
 	return poststep.Context{
 		Root: in.Root, Prefix: in.Where.Prefix, Name: token, Version: version, OS: in.Host.OS,
 		User: os.Getenv("USER"), Log: in.Log, Token: token, Staged: staged, Arch: arch, AppDir: in.Where.AppDir,
-		Home: in.Where.Home, Sudo: in.stepRunner(), Remove: in.gainPermissionsRemove,
+		Home: in.Where.Home, Err: in.Warn, Sudo: in.stepRunner(), Remove: in.gainPermissionsRemove,
 	}
 }
 

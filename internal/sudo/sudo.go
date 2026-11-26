@@ -54,7 +54,10 @@ func (c Command) Format(f fmt.State, _ rune) {
 		hide(c.Exe), args, env, hide(c.Input), c.Privilege, c.MustSucceed, len(c.Secrets))
 }
 
-type Result struct{ Stdout, Stderr string }
+type Result struct {
+	Stdout, Stderr string
+	Failed         bool // the command exited unsuccessfully and did not have to succeed
+}
 
 type Runner func(ctx context.Context, c Command) (Result, error)
 
@@ -135,7 +138,7 @@ func Exec(ctx context.Context, c Command) (Result, error) {
 	exitErr, ok := errors.AsType[*exec.ExitError](err)
 	if !ok || !c.MustSucceed {
 		if ok {
-			err = nil
+			err, result.Failed = nil, true
 		}
 		return result, err
 	}

@@ -18,11 +18,12 @@ type stubSudo struct {
 	removed []string
 	stdout  string
 	err     error
+	failed  bool
 }
 
 func (s *stubSudo) run(_ context.Context, c sudo.Command) (sudo.Result, error) {
 	s.cmds = append(s.cmds, c)
-	return sudo.Result{Stdout: s.stdout}, s.err
+	return sudo.Result{Stdout: s.stdout, Failed: s.failed}, s.err
 }
 
 func (s *stubSudo) remove(_ context.Context, path string) error {

@@ -100,8 +100,8 @@ func (r *runner) run(s step) error {
 	if s.PrintStdout && r.c.Log != nil {
 		_, _ = r.c.Log.Write(stdout.Bytes())
 	}
-	if !s.SuppressStderr && r.c.Log != nil {
-		_, _ = r.c.Log.Write(stderr.Bytes())
+	if w := r.stderr(); !s.SuppressStderr && w != nil {
+		_, _ = w.Write(stderr.Bytes())
 	}
 	if err != nil {
 		if s.AllowFailure {
@@ -126,21 +126,26 @@ func (r *runner) environment(s step) ([]string, error) {
 }
 
 func (r *runner) runWithSudo(s step, c sudo.Command) error {
-	c.Privilege, c.MustSucceed = sudo.Sudo, true
+	c.Privilege, c.MustSucceed = sudo.Sudo, !s.AllowFailure
 	if s.PrintStdout {
 		c.Stdout = r.c.Log
 	}
+	c.Stderr = r.stderr()
 	if s.SuppressStderr {
 		c.Stderr = io.Discard
 	}
 	res, err := r.sudoCommand(c)
-	if err != nil {
-		if s.AllowFailure && sudo.IsFailure(err) && !sudo.EnvSet("HOMEBREW_NO_SUDO") {
-			return nil
-		}
+	if err != nil || res.Failed {
 		return err
 	}
 	return r.captureStdout(s, res.Stdout)
+}
+
+func (r *runner) stderr() io.Writer {
+	if r.c.Err != nil {
+		return r.c.Err
+	}
+	return r.c.Log
 }
 
 func (r *runner) captureStdout(s step, stdout string) error {

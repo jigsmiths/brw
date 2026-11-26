@@ -40,19 +40,13 @@ func (r *runner) runner() sudo.Runner {
 
 // runCommand is brew's run_command: as the user, with its output shown.
 func (r *runner) runCommand(exe string, args ...string) error {
-	c := sudo.Command{Exe: exe, Args: args, Privilege: sudo.User, MustSucceed: true}
-	if r.c.Log != nil {
-		c.Stdout, c.Stderr = r.c.Log, r.c.Log
-	}
+	c := sudo.Command{Exe: exe, Args: args, Privilege: sudo.User, MustSucceed: true, Stdout: r.c.Log, Stderr: r.stderr()}
 	_, err := r.sudoCommand(c)
 	return err
 }
 
 func (r *runner) commandOutput(exe string, args ...string) (string, error) {
-	c := sudo.Command{Exe: exe, Args: args, Privilege: sudo.User, MustSucceed: true}
-	if r.c.Log != nil {
-		c.Stderr = r.c.Log
-	}
+	c := sudo.Command{Exe: exe, Args: args, Privilege: sudo.User, MustSucceed: true, Stderr: r.stderr()}
 	res, err := r.sudoCommand(c)
 	return res.Stdout, err
 }
