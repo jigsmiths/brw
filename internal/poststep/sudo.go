@@ -86,13 +86,16 @@ func (r *runner) createLink(s step, source, target string) error {
 }
 
 func (r *runner) sudo(exe string, args ...string) (sudo.Result, error) {
+	return r.sudoCommand(sudo.Command{Exe: exe, Args: args, Privilege: sudo.Sudo, MustSucceed: true})
+}
+
+func (r *runner) sudoCommand(c sudo.Command) (sudo.Result, error) {
 	run := r.c.Sudo
 	if run == nil {
 		run = sudo.Exec
 	}
-	return run(r.ctx, sudo.Command{
-		Exe: exe, Args: args, Privilege: sudo.Sudo, MustSucceed: true, Secrets: sudo.SensitiveValues(),
-	})
+	c.Secrets = sudo.SensitiveValues()
+	return run(r.ctx, c)
 }
 
 func (r *runner) mkdirAll(abs string) error {

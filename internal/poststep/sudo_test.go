@@ -16,12 +16,13 @@ import (
 type stubSudo struct {
 	cmds    []sudo.Command
 	removed []string
+	stdout  string
 	err     error
 }
 
 func (s *stubSudo) run(_ context.Context, c sudo.Command) (sudo.Result, error) {
 	s.cmds = append(s.cmds, c)
-	return sudo.Result{}, s.err
+	return sudo.Result{Stdout: s.stdout}, s.err
 }
 
 func (s *stubSudo) remove(_ context.Context, path string) error {
@@ -88,7 +89,7 @@ func (f *sudoFixture) linked() bool {
 	return err == nil && got == f.source
 }
 
-func TestUnsupportedStillRefusesRunWithSudo(t *testing.T) {
+func TestUnsupportedAcceptsEveryStepWithSudo(t *testing.T) {
 	raw := func(s string) []json.RawMessage {
 		var r []json.RawMessage
 		if err := json.Unmarshal([]byte(s), &r); err != nil {
@@ -96,14 +97,12 @@ func TestUnsupportedStillRefusesRunWithSudo(t *testing.T) {
 		}
 		return r
 	}
-	for _, value := range []string{`true`, `"if_needed"`, `false`, `null`} {
-		if got := Unsupported(raw(`[{"type":"symlink","sudo":` + value + `,"source":{"path":"/a"},"target":{"path":"/b"}}]`)); len(got) != 0 {
-			t.Errorf("symlink with sudo %s: Unsupported = %v", value, got)
+	for _, typ := range []string{"symlink", "remove", "run", "touch"} {
+		for _, value := range []string{`true`, `"if_needed"`, `false`, `null`} {
+			if got := Unsupported(raw(`[{"type":"` + typ + `","sudo":` + value + `}]`)); len(got) != 0 {
+				t.Errorf("%s with sudo %s: Unsupported = %v", typ, value, got)
+			}
 		}
-	}
-	got := Unsupported(raw(`[{"type":"remove","sudo":true,"paths":[]},{"type":"run","sudo":"if_needed","command":{"path":"x"}}]`))
-	if want := []string{"run with sudo"}; !slices.Equal(got, want) {
-		t.Errorf("Unsupported = %v, want %v", got, want)
 	}
 }
 

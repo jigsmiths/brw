@@ -45,6 +45,10 @@ func (in *Installer) stepRunner() sudo.Runner {
 	return func(ctx context.Context, c sudo.Command) (sudo.Result, error) {
 		cmd := in.command(c.Privilege, c.Exe, c.Args...)
 		cmd.MustSucceed = c.MustSucceed
+		cmd.Env, cmd.Input, cmd.Dir, cmd.Stdout = c.Env, c.Input, c.Dir, c.Stdout
+		if c.Stderr != nil {
+			cmd.Stderr = c.Stderr
+		}
 		return in.runner()(ctx, cmd)
 	}
 }

@@ -128,6 +128,17 @@ func TestAvailable(t *testing.T) {
 	}
 }
 
+func TestExecRunsInTheGivenDirectory(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := Exec(context.Background(), Command{Exe: "/bin/pwd", Args: []string{"-P"}, Dir: dir, MustSucceed: true})
+	if err != nil || strings.TrimSpace(res.Stdout) != dir {
+		t.Errorf("pwd = %q, %v, want %q", res.Stdout, err, dir)
+	}
+}
+
 func TestEnvTrue(t *testing.T) {
 	for value, want := range map[string]bool{"": false, " ": false, "1": true, "yes": true, "0": false, "False": false, "OFF": false} {
 		t.Setenv("SUDO_TEST_FLAG", value)

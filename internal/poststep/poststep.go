@@ -90,6 +90,7 @@ type step struct {
 	SourceGlob     bool  `json:"source_glob"`
 	AllowFailure   bool  `json:"allow_failure"`
 	SuppressStderr bool  `json:"suppress_stderr"`
+	PrintStdout    bool  `json:"print_stdout"`
 	Overwrite      *bool `json:"overwrite"`
 	Uninstall      bool  `json:"uninstall"`
 }
@@ -138,23 +139,13 @@ func Unsupported(steps []json.RawMessage) []string {
 	var out []string
 	for _, raw := range steps {
 		var s struct {
-			Type string          `json:"type"`
-			Sudo json.RawMessage `json:"sudo"`
+			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(raw, &s); err != nil {
 			s.Type = "unreadable step"
 		}
-		var reason string
-		switch {
-		case !slices.Contains(supported, s.Type):
-			reason = s.Type
-		case s.Type == "run" && len(s.Sudo) > 0 && string(s.Sudo) != "null" && string(s.Sudo) != "false":
-			reason = s.Type + " with sudo"
-		default:
-			continue
-		}
-		if !slices.Contains(out, reason) {
-			out = append(out, reason)
+		if !slices.Contains(supported, s.Type) && !slices.Contains(out, s.Type) {
+			out = append(out, s.Type)
 		}
 	}
 	return out
