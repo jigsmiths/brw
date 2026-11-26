@@ -45,6 +45,8 @@ type Context struct {
 	Kernel     string // uname -r
 	HostArch   string // GOARCH
 
+	Sandbox *SandboxPolicy
+
 	Sudo   sudo.Runner
 	Remove func(ctx context.Context, path string) error
 }
@@ -109,6 +111,9 @@ type step struct {
 	PrintStdout    bool  `json:"print_stdout"`
 	Overwrite      *bool `json:"overwrite"`
 	Uninstall      bool  `json:"uninstall"`
+
+	WritablePaths []pathSpec `json:"writable_paths"`
+	NetworkAccess bool       `json:"network_access"`
 
 	Before        string `json:"before"`
 	After         string `json:"after"`

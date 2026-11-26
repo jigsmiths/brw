@@ -55,6 +55,7 @@ type Installer struct {
 	upgrading     bool
 	reopen        []string
 	warnedSandbox bool
+	noSandbox     bool // tests that run real commands
 
 	ancestors      []string
 	ancestorsKnown bool

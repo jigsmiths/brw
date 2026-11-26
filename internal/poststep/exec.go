@@ -88,6 +88,9 @@ func (r *runner) run(s step) error {
 	if s.Sudo == sudoAlways {
 		return r.runWithSudo(s, sudo.Command{Exe: program, Args: args, Env: env, Input: input, Dir: dir})
 	}
+	if ran, err := r.runSandboxed(s, program, args, env, dir, input); ran || err != nil {
+		return err
+	}
 	cmd := exec.Command(program, args...)
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Dir = dir

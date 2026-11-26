@@ -14,8 +14,8 @@ import (
 
 func uninstallStepsCask(log, app string) string {
 	step := func(name, test string) string {
-		return fmt.Sprintf(`{"steps":[{"type":"run","command":{"path":"/bin/sh"},"args":["-c","if [ %s -d %s ]; then echo %s >> %s; fi"]}]}`,
-			test, app, name, log)
+		return fmt.Sprintf(`{"steps":[{"type":"run","command":{"path":"/bin/sh"},"writable_paths":[{"path":%q}],"args":["-c","if [ %s -d %s ]; then echo %s >> %s; fi"]}]}`,
+			filepath.Dir(log), test, app, name, log)
 	}
 	return `[{"app":["App.app"]},
 		{"uninstall_preflight_steps":[` + step("preflight-app-present", "") + `]},
@@ -24,6 +24,7 @@ func uninstallStepsCask(log, app string) string {
 
 func TestUninstallStepsRunAroundTheOtherArtifactsOnlyWhenUninstalling(t *testing.T) {
 	l := newSudoLink(t)
+	l.ti.in.Run, l.ti.in.Exec = nil, nil // the steps run for real, under the sandbox where macOS has one
 	log := filepath.Join(t.TempDir(), "log")
 	app := filepath.Join(l.ti.appDir, "App.app")
 	if err := l.ti.in.Install(context.Background(), l.ti.cask(t, uninstallStepsCask(log, app))); err != nil {
