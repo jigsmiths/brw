@@ -138,6 +138,11 @@ func (r *Root) write(name string, src io.Reader, perm fs.FileMode) error {
 	return r.log("write %s", rel)
 }
 
+// modeNeedsChmod is true when the file's mode is unknown or not perm.
+func modeNeedsChmod(fi fs.FileInfo, statErr error, perm fs.FileMode) bool {
+	return statErr != nil || fi.Mode().Perm() != perm
+}
+
 func (r *Root) writeTemp(dir string, src io.Reader, perm fs.FileMode) (string, error) {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -152,10 +157,8 @@ func (r *Root) writeTemp(dir string, src io.Reader, perm fs.FileMode) (string, e
 	if err == nil {
 		err = f.Sync()
 	}
-	needsChmod := false
-	if fi, serr := f.Stat(); err == nil && serr == nil {
-		needsChmod = fi.Mode().Perm() != perm
-	}
+	fi, statErr := f.Stat()
+	needsChmod := modeNeedsChmod(fi, statErr, perm)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

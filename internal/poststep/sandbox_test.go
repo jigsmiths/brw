@@ -143,8 +143,8 @@ func TestParentAnswersPrivilegedRequestsInOrder(t *testing.T) {
 		}
 		return c.request(2)
 	})
-	if err != nil || res.handler != nil {
-		t.Fatalf("child err = %v, parent err = %v", err, res.handler)
+	if err != nil || res.handlerErr != nil {
+		t.Fatalf("child err = %v, parent err = %v", err, res.handlerErr)
 	}
 	if len(f.stub.cmds) != 2 || f.stub.cmds[0].Exe != "/a" || f.stub.cmds[1].Exe != "/b" {
 		t.Errorf("parent ran %v", f.stub.cmds)
@@ -174,8 +174,8 @@ func TestParentRefusesWhatBrewRefuses(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f := newSandboxFixture(t)
 			res, childErr := f.serveRequests(steps, tt.send)
-			if res.handler == nil || res.handler.Error() != tt.want {
-				t.Errorf("parent err = %v, want %q", res.handler, tt.want)
+			if res.handlerErr == nil || res.handlerErr.Error() != tt.want {
+				t.Errorf("parent err = %v, want %q", res.handlerErr, tt.want)
 			}
 			if name != "not a request" && name != "not an integer" && (childErr == nil || !strings.Contains(childErr.Error(), "The parent process failed to run privileged cask install step")) {
 				t.Errorf("child err = %v, want the failure report", childErr)
@@ -196,9 +196,19 @@ func TestChildErrorsAreCollectedForTheParent(t *testing.T) {
 	}
 }
 
+func TestRequestOrderHasNoRequestYet(t *testing.T) {
+	var order requestOrder
+	if !order.permits(0) {
+		t.Error("the first request, even for step 0, must be allowed")
+	}
+	order = order.after(0)
+	if order.permits(0) || !order.permits(1) {
+		t.Error("after step 0 only a later step may be requested")
+	}
+}
+
 func TestAChildWithoutAChannelCannotRunPrivilegedSteps(t *testing.T) {
-	var c *childChannel
-	if err := c.request(3); err == nil || err.Error() != "Privileged cask install step 3 requires a parent message channel." {
+	if err := (noChannel{}).request(3); err == nil || err.Error() != "Privileged cask install step 3 requires a parent message channel." {
 		t.Errorf("err = %v", err)
 	}
 }

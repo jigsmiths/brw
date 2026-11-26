@@ -55,6 +55,10 @@ const (
 	formulaAction      = "formula_steps"
 )
 
+var ciPathVariables = []string{"GITHUB_WORKSPACE", "RUNNER_WORKSPACE", "RUNNER_TEMP"}
+
+const maxMessageBytes = 1 << 20
+
 var kegLinkDirectories = []string{"bin", "etc", "include", "lib", "sbin", "share", "var"}
 
 var defaultPrefixes = []string{"/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew"}
@@ -93,18 +97,18 @@ func NewSandboxPolicy(prefix, cache, logs, repository string, child []string, st
 	return p
 }
 
-func privilegedGroup() string {
+func privilegedGroup() sandbox.PrivilegedGroup {
 	u, err := user.Current()
 	if err != nil {
-		return ""
+		return sandbox.PrivilegedGroup{}
 	}
 	ids, _ := u.GroupIds()
 	for _, name := range privilegedGroups {
 		if g, err := user.LookupGroup(name); err == nil && slices.Contains(ids, g.Gid) {
-			return name
+			return sandbox.PrivilegedGroup{Name: name, Member: true}
 		}
 	}
-	return ""
+	return sandbox.PrivilegedGroup{}
 }
 
 func (r *runner) sandboxStep() string {
@@ -177,24 +181,25 @@ func randomName() (string, error) {
 }
 
 type childResult struct {
-	mu      sync.Mutex
-	errData string
-	handler error
+	mu         sync.Mutex
+	reported   bool
+	errData    string
+	handlerErr error
 }
 
 func (c *childResult) setError(line string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.errData == "" {
-		c.errData = line
+	if !c.reported {
+		c.reported, c.errData = true, line
 	}
 }
 
 func (c *childResult) setHandler(err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.handler == nil {
-		c.handler = err
+	if c.handlerErr == nil {
+		c.handlerErr = err
 	}
 }
 
@@ -246,18 +251,13 @@ func (r *runner) runChild(raw []json.RawMessage, ph phase) error {
 		r.serve(conn, raw, ph, result)
 	})
 
-	exe, err := os.Open(policy.Child[0])
-	if err != nil {
-		return err
-	}
-	defer func() { _ = exe.Close() }()
 	stdin := policy.Stdin
 	if slices.ContainsFunc(raw, func(b json.RawMessage) bool { var s step; return json.Unmarshal(b, &s) == nil && s.requiresSudo(true) }) {
 		stdin = nil
 	}
 	spec := sandbox.Spec{
 		Profile: sb.Profile(), Exe: policy.Child[0], Args: append(slices.Clone(policy.Child[1:]), payloadPath, hex.EncodeToString(sum[:])),
-		Env: r.childEnv(home, tmp, socketPath), Dir: tmp, Stdin: stdin, Stdout: c.Log, Stderr: c.Err, Inheritance: exe,
+		Env: r.childEnv(home, tmp, socketPath), Dir: tmp, Stdin: stdin, Stdout: c.Log, Stderr: c.Err,
 	}
 	start := time.Now()
 	code, runErr := sandbox.Run(r.ctx, spec)
@@ -266,13 +266,13 @@ func (r *runner) runChild(raw []json.RawMessage, ph phase) error {
 	failed := runErr != nil || code != 0
 	r.recordLog(start, failed)
 	switch {
-	case result.handler != nil:
-		return result.handler
+	case result.handlerErr != nil:
+		return result.handlerErr
 	case runErr != nil:
 		return runErr
 	case code == interruptExitCode:
 		return errors.New("interrupted")
-	case result.errData != "":
+	case result.reported:
 		return childError(result.errData)
 	case code != 0:
 		return fmt.Errorf("Failure while executing; `%s` exited with %d.", strings.Join(spec.Argv(), " "), code) //nolint:staticcheck // brew's message, shown to the user
@@ -293,17 +293,15 @@ func childError(line string) error {
 
 func (r *runner) recordLog(start time.Time, failed bool) {
 	policy := r.c.SandboxPolicy
-	logfile := ""
-	if !r.c.cask() {
-		logfile = filepath.Join(policy.Logs, r.c.Name, "postinstall.sandbox.log")
-	}
-	if logfile == "" && (!failed || !policy.Verbose) {
+	if r.c.cask() {
+		if failed && policy.Verbose {
+			_ = sandbox.RecordLog(start, sandbox.NoLogFile, failed, policy.Verbose, r.c.Log)
+		}
 		return
 	}
-	if logfile != "" {
-		_ = os.MkdirAll(filepath.Dir(logfile), dirMode) //fsx:allow brew's formula log folder, outside the prefix
-	}
-	_ = sandbox.RecordLog(start, logfile, failed, policy.Verbose, r.c.Log)
+	logfile := filepath.Join(policy.Logs, r.c.Name, "postinstall.sandbox.log")
+	_ = os.MkdirAll(filepath.Dir(logfile), dirMode) //fsx:allow brew's formula log folder, outside the prefix
+	_ = sandbox.RecordLog(start, sandbox.LogTo(logfile), failed, policy.Verbose, r.c.Log)
 }
 
 func (r *runner) scratch(p payload) (home, payloadPath string, cleanup func(), err error) {
@@ -356,9 +354,9 @@ func formulaEnvironment(home string) []string {
 func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *childResult) {
 	parent := &runner{ctx: r.ctx, c: r.c, guards: map[string]bool{}}
 	parent.c.Sandbox = Unsandboxed
-	last := -1
+	var order requestOrder
 	sc := bufio.NewScanner(conn)
-	sc.Buffer(nil, 1<<20)
+	sc.Buffer(nil, maxMessageBytes)
 	for sc.Scan() {
 		line := sc.Text()
 		var msg map[string]json.RawMessage
@@ -368,7 +366,7 @@ func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *c
 				continue
 			}
 		}
-		index, err := parseRequest(line, last)
+		index, err := parseRequest(line, order)
 		if err == nil {
 			err = parent.stepAt(ph, raw, index)
 		}
@@ -376,14 +374,26 @@ func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *c
 			result.setHandler(err)
 			return
 		}
-		last = index
+		order = order.after(index)
 		if _, err := fmt.Fprintln(conn, privilegedSucceed); err != nil {
 			return
 		}
 	}
 }
 
-func parseRequest(line string, last int) (int, error) {
+// requestOrder remembers the last privileged step run; before the first request there is none.
+type requestOrder struct {
+	last      int
+	requested bool
+}
+
+func (o requestOrder) permits(index int) bool { return !o.requested || index > o.last }
+
+func (o requestOrder) after(index int) requestOrder {
+	return requestOrder{last: index, requested: true}
+}
+
+func parseRequest(line string, order requestOrder) (int, error) {
 	var req struct {
 		Type  string          `json:"type"`
 		Index json.RawMessage `json:"index"`
@@ -395,7 +405,7 @@ func parseRequest(line string, last int) (int, error) {
 	if err := json.Unmarshal(req.Index, &index); err != nil {
 		return 0, fmt.Errorf("Invalid privileged cask install step index: %s", req.Index) //nolint:staticcheck // brew's message, shown to the user
 	}
-	if index <= last {
+	if !order.permits(index) {
 		return 0, errors.New("Privileged cask install steps must be requested in order.") //nolint:staticcheck // brew's message, shown to the user
 	}
 	return index, nil
@@ -437,8 +447,12 @@ func (r *runner) profile(raw []json.RawMessage, ph phase, home, payloadPath, tmp
 	sb.AllowWriteSystemTemp(c.Temp)
 	sb.AllowWritePath(policy.Cache)
 	sb.DenyWriteHomebrewRepository(policy.BrewFile, c.Prefix, policy.Repository)
-	readable := []string{c.Prefix, policy.Repository, policy.Cache, policy.Logs, c.Temp,
-		os.Getenv("GITHUB_WORKSPACE"), os.Getenv("RUNNER_WORKSPACE"), os.Getenv("RUNNER_TEMP"), trust.Path()}
+	readable := []string{c.Prefix, policy.Repository, policy.Cache, policy.Logs, c.Temp, trust.Path()}
+	for _, name := range ciPathVariables {
+		if p, set := os.LookupEnv(name); set && p != "" {
+			readable = append(readable, p)
+		}
+	}
 	for _, p := range r.homeWritePaths(realHome) {
 		if _, err := os.Stat(p); err == nil {
 			readable = append(readable, p)

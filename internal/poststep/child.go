@@ -21,15 +21,23 @@ const (
 	childFailureExit = 1
 )
 
+// parentChannel is how the child asks its parent to run a privileged step.
+type parentChannel interface {
+	request(index int) error
+}
+
+type noChannel struct{}
+
+func (noChannel) request(index int) error {
+	return fmt.Errorf("Privileged cask install step %d requires a parent message channel.", index) //nolint:staticcheck // brew's message, shown to the user
+}
+
 type childChannel struct {
 	conn net.Conn
 	in   *bufio.Reader
 }
 
 func (c *childChannel) request(index int) error {
-	if c == nil {
-		return fmt.Errorf("Privileged cask install step %d requires a parent message channel.", index) //nolint:staticcheck // brew's message, shown to the user
-	}
 	body, err := json.Marshal(map[string]any{"type": privilegedRequest, "index": index})
 	if err != nil {
 		return err
@@ -96,10 +104,10 @@ func runChild(args []string, conn net.Conn, stdout, stderr io.Writer) error {
 		Log: stdout, Err: stderr, Token: cp.Token, Staged: cp.Staged, Arch: cp.Arch, AppDir: cp.AppDir, Host: cp.Host,
 		Sandbox: Unsandboxed,
 	}
-	var channel *childChannel
+	var channel parentChannel = noChannel{}
 	if os.Getenv(messageChannelEnv) != "" {
 		channel = &childChannel{conn: conn, in: bufio.NewReader(conn)}
 	}
 	r := &runner{ctx: context.Background(), c: c, guards: map[string]bool{}}
-	return r.plan(p.Steps, p.Phase, channel.request)
+	return r.plan(p.Steps, p.Phase, privilegedDelegate{enabled: true, run: channel.request})
 }

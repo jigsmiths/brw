@@ -45,10 +45,16 @@ func execute(ctx context.Context, c Context, raw []json.RawMessage, ph phase) er
 			return err
 		}
 	}
-	return r.plan(raw, ph, nil)
+	return r.plan(raw, ph, privilegedDelegate{})
 }
 
-func (r *runner) plan(raw []json.RawMessage, ph phase, privileged func(index int) error) error {
+// privilegedDelegate hands steps that need sudo to the parent; when disabled they run here.
+type privilegedDelegate struct {
+	enabled bool
+	run     func(index int) error
+}
+
+func (r *runner) plan(raw []json.RawMessage, ph phase, delegate privilegedDelegate) error {
 	for i, b := range raw {
 		s, err := r.parse(ph, i, b)
 		if err != nil {
@@ -57,8 +63,8 @@ func (r *runner) plan(raw []json.RawMessage, ph phase, privileged func(index int
 		if ph == phaseInstall && !r.guardsMatch(s) {
 			continue
 		}
-		if privileged != nil && s.requiresSudo(true) {
-			if err := privileged(i); err != nil {
+		if delegate.enabled && s.requiresSudo(true) {
+			if err := delegate.run(i); err != nil {
 				return err
 			}
 			continue

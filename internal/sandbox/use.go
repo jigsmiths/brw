@@ -28,9 +28,16 @@ const (
 type Decision int
 
 const (
-	Use Decision = iota + 1
+	Invalid Decision = iota
+	Use
 	Skip
 )
+
+// PrivilegedGroup says whether the user is in one of admin, staff, root and wheel, and which.
+type PrivilegedGroup struct {
+	Name   string
+	Member bool
+}
 
 type Options struct {
 	Inherited       bool
@@ -39,8 +46,18 @@ type Options struct {
 	AvoidNested     bool
 	DefaultPrefix   bool
 	Prefix          string
-	PrivilegedGroup string
+	PrivilegedGroup PrivilegedGroup
 }
+
+// LogDestination is where RecordLog keeps what the kernel denied.
+type LogDestination struct {
+	path string
+	kept bool
+}
+
+var NoLogFile = LogDestination{}
+
+func LogTo(path string) LogDestination { return LogDestination{path: path, kept: true} }
 
 func Decide(step string, o Options) (Decision, string, error) {
 	if o.Inherited {
@@ -53,10 +70,10 @@ func Decide(step string, o Options) (Decision, string, error) {
 		return Use, "", nil
 	}
 	if o.DefaultPrefix {
-		return 0, "", fmt.Errorf("Refusing to skip the sandbox: `$HOMEBREW_AVOID_NESTED_SANDBOXING` is set inside another sandbox but brw is using its default prefix (%s); this is only supported in a custom prefix.", o.Prefix) //nolint:staticcheck // brew's message, shown to the user
+		return Invalid, "", fmt.Errorf("Refusing to skip the sandbox: `$HOMEBREW_AVOID_NESTED_SANDBOXING` is set inside another sandbox but brw is using its default prefix (%s); this is only supported in a custom prefix.", o.Prefix) //nolint:staticcheck // brew's message, shown to the user
 	}
-	if o.PrivilegedGroup != "" {
-		return 0, "", fmt.Errorf("Refusing to skip the sandbox: `$HOMEBREW_AVOID_NESTED_SANDBOXING` is set inside another sandbox but you are in the privileged `%s` group; this is only supported for an unprivileged user.", o.PrivilegedGroup) //nolint:staticcheck // brew's message, shown to the user
+	if o.PrivilegedGroup.Member {
+		return Invalid, "", fmt.Errorf("Refusing to skip the sandbox: `$HOMEBREW_AVOID_NESTED_SANDBOXING` is set inside another sandbox but you are in the privileged `%s` group; this is only supported for an unprivileged user.", o.PrivilegedGroup.Name) //nolint:staticcheck // brew's message, shown to the user
 	}
 	return Skip, fmt.Sprintf("%s without brw's sandbox; relying on the outer sandbox.", upperFirst(step)), nil
 }
@@ -117,7 +134,7 @@ func filterLog(logs string) string {
 	return keep.String()
 }
 
-func RecordLog(start time.Time, logfile string, failed, verbose bool, display io.Writer) error {
+func RecordLog(start time.Time, dest LogDestination, failed, verbose bool, display io.Writer) error {
 	time.Sleep(logSettleDelay)
 	since := fmt.Sprint(start.Unix())
 	out, _ := exec.Command(syslogCommand,
@@ -129,8 +146,8 @@ func RecordLog(start time.Time, logfile string, failed, verbose bool, display io
 	if logs == "" {
 		return nil
 	}
-	if logfile != "" {
-		if err := os.WriteFile(logfile, []byte(logs+logFooter), logFileMode); err != nil { //fsx:allow brew's sandbox log, outside the prefix
+	if dest.kept {
+		if err := os.WriteFile(dest.path, []byte(logs+logFooter), logFileMode); err != nil { //fsx:allow brew's sandbox log, outside the prefix
 			return err
 		}
 	}
