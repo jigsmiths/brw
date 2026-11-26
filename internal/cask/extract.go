@@ -280,7 +280,6 @@ func ejectDiskutil(mount, dev string) error { return release(dev, ejectVolume(mo
 
 func detach(mount, dev string) error { return release(dev, detachVolume(mount)) }
 
-// release detaches the image behind dev, forcing it on the last try, and reports err only if it stays attached.
 func release(dev string, err error) error {
 	if dev == "" {
 		return err

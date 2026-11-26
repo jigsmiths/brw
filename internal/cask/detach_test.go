@@ -10,7 +10,6 @@ import (
 
 const fakeDev = "disk7"
 
-// fakeDisk models an image whose eject unmounts the volume but fails to detach it.
 type fakeDisk struct {
 	mounted, attached bool
 	calls             []string

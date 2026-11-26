@@ -260,7 +260,6 @@ func TestExtractDmg(t *testing.T) {
 	}
 }
 
-// attachedImagesUnder maps the device of each attached image stored under dir to its path.
 func attachedImagesUnder(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	out, err := exec.Command("hdiutil", "info").Output()
@@ -293,7 +292,6 @@ func attachedImagesUnder(t *testing.T, dir string) map[string]string {
 	return images
 }
 
-// detachImagesUnder detaches only the images stored under dir, which this test made.
 func detachImagesUnder(t *testing.T, dir string) {
 	t.Helper()
 	for dev, path := range attachedImagesUnder(t, dir) {
