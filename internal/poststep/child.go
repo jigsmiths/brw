@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jigsmiths/brw/internal/fsx"
 )
@@ -19,6 +20,8 @@ import (
 const (
 	childUsage       = "usage: %s PAYLOAD SHA256"
 	childFailureExit = 1
+	parentGreeting   = "brw-sandbox-parent"
+	handshakeTimeout = 10 * time.Second
 )
 
 // parentChannel is how the child asks its parent to run a privileged step.
@@ -52,14 +55,19 @@ func (c *childChannel) request(index int) error {
 	return fmt.Errorf("The parent process failed to run privileged cask install step %d.", index) //nolint:staticcheck // brew's message, shown to the user
 }
 
-func ChildMain(args []string, stdout, stderr io.Writer) int {
-	conn, err := dialParent()
+// Action is work other than a step list that the sandboxed child can be asked to do.
+type Action func(ctx context.Context, c Context, extra json.RawMessage, stdout, stderr io.Writer) error
+
+type Actions map[string]Action
+
+func ChildMain(args []string, stdout, stderr io.Writer, actions Actions) int {
+	conn, in, err := dialParent()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "brw: %v\n", err)
 		return childFailureExit
 	}
 	defer func() { _ = conn.Close() }()
-	if err := runChild(args, conn, stdout, stderr); err != nil {
+	if err := runChild(args, conn, in, stdout, stderr, actions); err != nil {
 		report, _ := json.Marshal(map[string]string{"json_class": "RuntimeError", "m": err.Error()})
 		_, _ = fmt.Fprintf(conn, "%s\n", report)
 		return childFailureExit
@@ -67,15 +75,27 @@ func ChildMain(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func dialParent() (net.Conn, error) {
+// dialParent connects to the parent's socket and waits for it to greet, so a child with a stale or forged variable does not run.
+func dialParent() (net.Conn, *bufio.Reader, error) {
 	socket := os.Getenv(errorPipeEnv)
 	if socket == "" {
-		return nil, errors.New("this command only runs as a sandboxed step runner")
+		return nil, nil, errors.New("this command only runs as a sandboxed step runner")
 	}
-	return net.Dial("unix", socket)
+	conn, err := net.Dial("unix", socket)
+	if err != nil {
+		return nil, nil, err
+	}
+	in := bufio.NewReader(conn)
+	_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
+	greeting, err := in.ReadString('\n')
+	if err != nil || strings.TrimSuffix(greeting, "\n") != parentGreeting {
+		_ = conn.Close()
+		return nil, nil, errors.New("the parent process did not answer")
+	}
+	return conn, in, conn.SetReadDeadline(time.Time{})
 }
 
-func runChild(args []string, conn net.Conn, stdout, stderr io.Writer) error {
+func runChild(args []string, conn net.Conn, in *bufio.Reader, stdout, stderr io.Writer, actions Actions) error {
 	if len(args) != 2 {
 		return fmt.Errorf(childUsage, ChildCommand)
 	}
@@ -90,7 +110,8 @@ func runChild(args []string, conn net.Conn, stdout, stderr io.Writer) error {
 	if err := json.Unmarshal(body, &p); err != nil {
 		return err
 	}
-	if p.Action != installStepsAction && p.Action != formulaAction {
+	action, custom := actions[p.Action]
+	if !custom && p.Action != installStepsAction && p.Action != formulaAction {
 		return fmt.Errorf("unknown sandboxed cask action: %s", p.Action)
 	}
 	root, err := fsx.Open(p.Context.Prefix, nil)
@@ -104,9 +125,12 @@ func runChild(args []string, conn net.Conn, stdout, stderr io.Writer) error {
 		Log: stdout, Err: stderr, Token: cp.Token, Staged: cp.Staged, Arch: cp.Arch, AppDir: cp.AppDir, Host: cp.Host,
 		Sandbox: Unsandboxed,
 	}
+	if custom {
+		return action(context.Background(), c, p.Extra, stdout, stderr)
+	}
 	var channel parentChannel = noChannel{}
 	if os.Getenv(messageChannelEnv) != "" {
-		channel = &childChannel{conn: conn, in: bufio.NewReader(conn)}
+		channel = &childChannel{conn: conn, in: in}
 	}
 	r := &runner{ctx: context.Background(), c: c, guards: map[string]bool{}}
 	return r.plan(p.Steps, p.Phase, privilegedDelegate{enabled: true, run: channel.request})

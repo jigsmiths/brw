@@ -311,29 +311,34 @@ func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs)
 		result.PostInstallErr = err
 		return result
 	}
+	pctx := in.postInstallContext(f, keg)
 	if len(f.PostInstallSteps) > 0 {
-		goos := cmp.Or(in.OS, runtime.GOOS)
-		home, _ := os.UserHomeDir()
-		self, err := os.Executable()
-		if err != nil {
-			self = os.Args[0]
-		}
-		repository := filepath.Join(in.Prefix, "Homebrew")
-		if in.Prefix == "/opt/homebrew" {
-			repository = in.Prefix
-		}
-		policy := poststep.NewSandboxPolicy(in.Prefix, filepath.Dir(in.Fetcher.Dir), filepath.Join(home, "Library/Logs/Homebrew"), repository,
-			[]string{self, poststep.ChildCommand}, nil, false, func(m string) { _, _ = fmt.Fprintf(poststep.OrDiscard(in.Log), "Warning: %s\n", m) })
-		result.PostInstallErr = poststep.Run(context.Background(), poststep.Context{
-			Root: in.Root, Prefix: in.Prefix, Name: f.Name, Version: f.Versions.Stable, Keg: keg,
-			OS: goos, User: in.User, Log: in.Log, Err: poststep.OrDiscard(in.Log),
-			Host: poststep.CurrentHost(goos, home, in.MacVersion), Sandbox: in.Sandbox, SandboxPolicy: policy,
-		}, f.PostInstallSteps)
+		result.PostInstallErr = poststep.Run(context.Background(), pctx, f.PostInstallSteps)
 	}
 	if tapDefined && result.PostInstallErr == nil {
-		result.PostInstallErr = in.tapPostInstall(f)
+		result.PostInstallErr = in.tapPostInstall(f, pctx)
 	}
 	return result
+}
+
+func (in *Installer) postInstallContext(f *api.Formula, keg string) poststep.Context {
+	goos := cmp.Or(in.OS, runtime.GOOS)
+	home, _ := os.UserHomeDir()
+	self, err := os.Executable()
+	if err != nil {
+		self = os.Args[0]
+	}
+	repository := filepath.Join(in.Prefix, "Homebrew")
+	if in.Prefix == "/opt/homebrew" {
+		repository = in.Prefix
+	}
+	policy := poststep.NewSandboxPolicy(in.Prefix, filepath.Dir(in.Fetcher.Dir), filepath.Join(home, "Library/Logs/Homebrew"), repository,
+		[]string{self, poststep.ChildCommand}, nil, false, func(m string) { _, _ = fmt.Fprintf(poststep.OrDiscard(in.Log), "Warning: %s\n", m) })
+	return poststep.Context{
+		Root: in.Root, Prefix: in.Prefix, Name: f.Name, Version: f.Versions.Stable, Keg: keg,
+		OS: goos, User: in.User, Log: in.Log, Err: poststep.OrDiscard(in.Log),
+		Host: poststep.CurrentHost(goos, home, in.MacVersion), Sandbox: in.Sandbox, SandboxPolicy: policy,
+	}
 }
 
 type oldKegs struct {

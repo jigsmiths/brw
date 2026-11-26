@@ -27,7 +27,7 @@ func tapBottleStore(t *testing.T) (e *env, prefix, origin string, reg *installte
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOMEBREW_NO_REQUIRE_TAP_TRUST", "")
 	t.Setenv("HOMEBREW_NO_ENV_HINTS", "1")
-	t.Setenv("HOMEBREW_TEMP", t.TempDir())
+	t.Setenv("HOMEBREW_TEMP", shortTempDir(t))
 	s := newStore(t)
 	s.formula(installtest.Bottle{Name: "app", Version: "1.0", Files: []installtest.File{file("bin/app", "app", 0o755)}}, nil, nil)
 	e, prefix = s.env()
@@ -114,8 +114,10 @@ func TestInstallRunsATapFormulasPostInstall(t *testing.T) {
 	if fi, err := os.Stat(filepath.Join(prefix, "var/tool")); err != nil || !fi.IsDir() {
 		t.Errorf("var/tool: %v", err)
 	}
-	if want := "==> Running post_install for tool\n==> Open Tool.app to finish\n"; !strings.Contains(out, want) {
-		t.Errorf("output lacks %q:\n%s", want, out)
+	for _, want := range []string{"==> Running post_install for tool\n", "==> Open Tool.app to finish\n"} {
+		if !strings.Contains(strings.ReplaceAll(out, "\r\n", "\n"), want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
 	}
 
 	writeTapFormula(t, origin, "tool", strings.Replace(code, "(var/\"tool\").mkpath", "raise \"no\"", 1))

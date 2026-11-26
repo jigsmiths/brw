@@ -14,6 +14,7 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
+	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/services"
@@ -111,7 +112,7 @@ func main() {
 		os.Exit(1)
 	}
 	if os.Args[1] == poststep.ChildCommand {
-		os.Exit(poststep.ChildMain(os.Args[2:], os.Stdout, os.Stderr))
+		os.Exit(poststep.ChildMain(os.Args[2:], os.Stdout, os.Stderr, install.ChildActions()))
 	}
 	host := platform.Current(macVersion())
 	e := newEnv(host)

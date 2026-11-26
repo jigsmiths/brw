@@ -2,6 +2,7 @@ package poststep
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"os"
 	"os/user"
@@ -57,7 +59,15 @@ const (
 
 var ciPathVariables = []string{"GITHUB_WORKSPACE", "RUNNER_WORKSPACE", "RUNNER_TEMP"}
 
-const maxMessageBytes = 1 << 20
+const (
+	maxMessageBytes     = 1 << 20
+	homebrewPathEnv     = "HOMEBREW_PATH"
+	bazelrcName         = ".bazelrc"
+	releaseCooldownDays = "1"
+	releaseCooldownAge  = "1 day"
+	postinstallNetwork  = "HOMEBREW_FORMULA_POSTINSTALL_NETWORK"
+	networkAllow        = "allow"
+)
 
 var kegLinkDirectories = []string{"bin", "etc", "include", "lib", "sbin", "share", "var"}
 
@@ -75,6 +85,7 @@ type SandboxPolicy struct {
 	Prefix        string
 	Child         []string
 	Stdin         io.Reader
+	PassStdin     bool
 	Verbose       bool
 	NetworkAccess bool
 	AvoidNested   bool
@@ -88,13 +99,23 @@ type SandboxPolicy struct {
 func NewSandboxPolicy(prefix, cache, logs, repository string, child []string, stdin io.Reader, verbose bool, warn func(message string)) SandboxPolicy {
 	p := SandboxPolicy{
 		Cache: cache, Logs: logs, Repository: repository, Prefix: prefix, BrewFile: filepath.Join(prefix, "bin/brew"),
-		Child: child, Stdin: stdin, Verbose: verbose, Warn: warn,
+		Child: child, Stdin: stdin, PassStdin: stdin != nil, Verbose: verbose, Warn: warn,
+		NetworkAccess: postinstallNetworkAllowed(),
 		AvoidNested:   sudo.EnvTrue(avoidNestedEnv),
 		DefaultPrefix: slices.Contains(defaultPrefixes, prefix),
 		Available:     sandbox.Available, Nested: sandbox.Nested,
 	}
 	p.Inherited = func() (bool, error) { return sandbox.Inherited(child[0], p.BrewFile) }
 	return p
+}
+
+// postinstallNetworkAllowed is Formula#network_access_allowed?(:postinstall): HOMEBREW_FORMULA_POSTINSTALL_NETWORK
+// when set, else the formula's DSL default, which is to allow (API formulae carry no DSL).
+func postinstallNetworkAllowed() bool {
+	if v := os.Getenv(postinstallNetwork); v != "" {
+		return v == networkAllow
+	}
+	return true
 }
 
 func privilegedGroup() sandbox.PrivilegedGroup {
@@ -156,17 +177,21 @@ type contextPayload struct {
 type payload struct {
 	Action  string            `json:"action"`
 	Context contextPayload    `json:"context"`
+	Extra   json.RawMessage   `json:"extra,omitempty"`
 	Phase   phase             `json:"phase"`
 	Steps   []json.RawMessage `json:"steps"`
 }
 
-func (r *runner) payload(raw []json.RawMessage, ph phase) payload {
-	c := r.c
-	action := formulaAction
-	if c.cask() {
-		action = installStepsAction
+func (r *runner) stepsAction() string {
+	if r.c.cask() {
+		return installStepsAction
 	}
-	return payload{Action: action, Phase: ph, Steps: raw, Context: contextPayload{
+	return formulaAction
+}
+
+func (r *runner) payload(action string, extra json.RawMessage, raw []json.RawMessage, ph phase) payload {
+	c := r.c
+	return payload{Action: action, Extra: extra, Phase: ph, Steps: raw, Context: contextPayload{
 		Prefix: c.Prefix, Name: c.Name, Version: c.Version, Keg: c.Keg, OS: c.OS, User: c.User, Token: c.Token,
 		Staged: c.Staged, Arch: c.Arch, AppDir: c.AppDir, Host: c.Host,
 	}}
@@ -209,17 +234,36 @@ func (r *runner) runInSandbox(raw []json.RawMessage, ph phase) (bool, error) {
 		return false, err
 	}
 	r.c.SandboxPolicy.Warn(disclaimUnavail)
-	return true, r.runChild(raw, ph)
+	return true, r.runChild(r.stepsAction(), nil, raw, ph)
 }
 
-func (r *runner) runChild(raw []json.RawMessage, ph phase) error {
+// RunAction runs a named action in the sandboxed child when the sandbox applies, and inProcess otherwise.
+func RunAction(ctx context.Context, c Context, action string, extra json.RawMessage, inProcess func() error) error {
+	if c.Sandbox != Sandboxed && c.Sandbox != Unsandboxed {
+		return errors.New("the context does not say whether steps are sandboxed")
+	}
+	if c.Sandbox == Sandboxed && c.OS == "darwin" {
+		r := &runner{ctx: ctx, c: c, guards: map[string]bool{}}
+		use, err := r.useSandbox()
+		if err != nil {
+			return err
+		}
+		if use {
+			c.SandboxPolicy.Warn(disclaimUnavail)
+			return r.runChild(action, extra, nil, phaseInstall)
+		}
+	}
+	return inProcess()
+}
+
+func (r *runner) runChild(action string, extra json.RawMessage, raw []json.RawMessage, ph phase) error {
 	c, policy := r.c, r.c.SandboxPolicy
 	tmp, err := os.MkdirTemp(c.Temp, sandboxDirPrefix) //fsx:allow brew's Mktemp for the sandbox, outside the prefix
 	if err != nil {
 		return err
 	}
 	defer func() { _ = os.RemoveAll(tmp) }() //fsx:allow brew's Mktemp for the sandbox, outside the prefix
-	home, payloadPath, cleanup, err := r.scratch(r.payload(raw, ph))
+	home, payloadPath, cleanup, err := r.scratch(r.payload(action, extra, raw, ph), tmp)
 	if err != nil {
 		return err
 	}
@@ -251,13 +295,11 @@ func (r *runner) runChild(raw []json.RawMessage, ph phase) error {
 		r.serve(conn, raw, ph, result)
 	})
 
-	stdin := policy.Stdin
-	if slices.ContainsFunc(raw, func(b json.RawMessage) bool { var s step; return json.Unmarshal(b, &s) == nil && s.requiresSudo(true) }) {
-		stdin = nil
-	}
+	needsParent := slices.ContainsFunc(raw, func(b json.RawMessage) bool { var s step; return json.Unmarshal(b, &s) == nil && s.requiresSudo(true) })
 	spec := sandbox.Spec{
 		Profile: sb.Profile(), Exe: policy.Child[0], Args: append(slices.Clone(policy.Child[1:]), payloadPath, hex.EncodeToString(sum[:])),
-		Env: r.childEnv(home, tmp, socketPath), Dir: tmp, Stdin: stdin, Stdout: c.Log, Stderr: c.Err,
+		Env: r.childEnv(home, tmp, socketPath), Dir: tmp, Stdin: policy.Stdin, PassStdin: policy.PassStdin && !needsParent,
+		Stdout: c.Log, Stderr: c.Err,
 	}
 	start := time.Now()
 	code, runErr := sandbox.Run(r.ctx, spec)
@@ -304,19 +346,19 @@ func (r *runner) recordLog(start time.Time, failed bool) {
 	_ = sandbox.RecordLog(start, sandbox.LogTo(logfile), failed, policy.Verbose, r.c.Log)
 }
 
-func (r *runner) scratch(p payload) (home, payloadPath string, cleanup func(), err error) {
+func (r *runner) scratch(p payload, tmp string) (home, payloadPath string, cleanup func(), err error) {
 	body, err := json.Marshal(p)
 	if err != nil {
 		return "", "", nil, err
+	}
+	if !r.c.cask() {
+		return r.formulaScratch(body, tmp)
 	}
 	name, err := randomName()
 	if err != nil {
 		return "", "", nil, err
 	}
 	rel := filepath.Join(scratchRoot, "cask-"+name)
-	if !r.c.cask() {
-		rel = filepath.Join(scratchRoot, r.c.Name+"-postinstall-"+name)
-	}
 	if err := r.c.Root.MkdirAll(filepath.Join(rel, scratchHomeName), dirMode); err != nil {
 		return "", "", nil, err
 	}
@@ -327,33 +369,97 @@ func (r *runner) scratch(p payload) (home, payloadPath string, cleanup func(), e
 	return filepath.Join(abs, scratchHomeName), filepath.Join(abs, payloadName), func() { _ = r.c.Root.RemoveAll(rel) }, nil
 }
 
+// formulaScratch is what postinstall.rb does: a home made under HOMEBREW_TEMP, which is the sandbox's own directory, with a .bazelrc (Formula#setup_home).
+func (r *runner) formulaScratch(body []byte, tmp string) (home, payloadPath string, cleanup func(), err error) {
+	home, err = os.MkdirTemp(tmp, r.c.Name+"-postinstall-") //fsx:allow brew's Dir.mktmpdir inside the sandbox directory
+	if err != nil {
+		return "", "", nil, err
+	}
+	bazelrc := "startup --output_user_root=" + filepath.Join(home, "_bazel") + "\n"
+	if err := os.WriteFile(filepath.Join(home, bazelrcName), []byte(bazelrc), fileMode); err != nil { //fsx:allow brew's setup_home inside the sandbox directory
+		return "", "", nil, err
+	}
+	payloadPath = filepath.Join(tmp, payloadName)
+	if err := os.WriteFile(payloadPath, body, fileMode); err != nil { //fsx:allow the payload inside the sandbox directory
+		return "", "", nil, err
+	}
+	return home, payloadPath, func() {}, nil
+}
+
+// originalPaths is brew's ORIGINAL_PATHS: HOMEBREW_PATH, else PATH, each entry made absolute.
+func originalPaths() string {
+	path, set := os.LookupEnv(homebrewPathEnv)
+	if !set {
+		path = os.Getenv("PATH")
+	}
+	var dirs []string
+	for _, dir := range filepath.SplitList(path) {
+		if abs, err := filepath.Abs(dir); err == nil {
+			dirs = append(dirs, abs)
+		}
+	}
+	return strings.Join(dirs, string(os.PathListSeparator))
+}
+
 func (r *runner) childEnv(home, tmp, socket string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if name, _, _ := strings.Cut(kv, "="); !sensitiveName.MatchString(name) {
+		name, _, _ := strings.Cut(kv, "=")
+		if !sensitiveName.MatchString(name) && name != homebrewPathEnv && name != "PATH" {
 			env = append(env, kv)
 		}
 	}
-	env = append(env,
+	env = append(env, "PATH="+originalPaths(),
 		"HOME="+home, "HOMEBREW_TEMP="+tmp, "TMPDIR="+tmp, "TEMP="+tmp, "TMP="+tmp,
 		errorPipeEnv+"="+socket,
 	)
 	if r.c.cask() {
 		return append(env, messageChannelEnv+"=1")
 	}
-	return append(env, formulaEnvironment(home)...)
+	return append(env, r.commonSandboxEnv(home, tmp)...)
 }
 
-func formulaEnvironment(home string) []string {
-	return []string{
-		"GIT_TERMINAL_PROMPT=0", "GOENV=off", "PIP_CONFIG_FILE=" + os.DevNull, "NPM_CONFIG_USERCONFIG=" + os.DevNull,
-		"CURL_HOME=" + home, "PYTHONDONTWRITEBYTECODE=1", "XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
+// packageManagerCache is Homebrew::PackageManagerCache.env; the cache directories are in HOMEBREW_CACHE.
+func (r *runner) packageManagerCache() map[string]string {
+	dir := func(name string) string { return filepath.Join(r.c.SandboxPolicy.Cache, name) }
+	return map[string]string{
+		"_JAVA_OPTIONS": "-Duser.home=" + dir("java_cache"), "BUNDLE_GLOBAL_GEM_CACHE": "true", "BUNDLE_USER_CACHE": dir("bundler_cache"),
+		"CABAL_DIR": dir("cabal_cache"), "CARGO_HOME": dir("cargo_cache"), "COMPOSER_CACHE_DIR": dir("composer_cache"),
+		"GEM_SPEC_CACHE": dir("gem_cache"), "GOCACHE": dir("go_cache"), "GOPATH": dir("go_mod_cache"), "HEX_HOME": dir("hex_cache"),
+		"NPM_CONFIG_CACHE": dir("npm_cache"), "NPM_CONFIG_STORE_DIR": dir("pnpm_cache"), "NUGET_PACKAGES": dir("nuget_cache"),
+		"PIP_CACHE_DIR": dir("pip_cache"), "UV_CACHE_DIR": dir("uv_cache"), "YARN_CACHE_FOLDER": dir("yarn_cache"),
+		"ZIG_GLOBAL_CACHE_DIR": dir("zig_cache"),
 	}
+}
+
+// commonSandboxEnv is Formula#common_sandbox_env, which brew gives formula post_install only.
+func (r *runner) commonSandboxEnv(home, tmp string) []string {
+	env := r.packageManagerCache()
+	env["_JAVA_OPTIONS"] += " -Djava.io.tmpdir=" + tmp
+	curlHome := home
+	if v, set := os.LookupEnv("CURL_HOME"); set {
+		curlHome = v
+	}
+	maps.Copy(env, map[string]string{
+		"HOME": home, "TMPDIR": tmp, "TEMP": tmp, "TMP": tmp,
+		"GIT_CONFIG_GLOBAL": os.DevNull, "GIT_TERMINAL_PROMPT": "0", "GOENV": "off",
+		"CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE": releaseCooldownAge, "BUNDLE_COOLDOWN": releaseCooldownDays,
+		"PIP_CONFIG_FILE": os.DevNull, "NPM_CONFIG_USERCONFIG": os.DevNull, "CURL_HOME": curlHome,
+		"PYTHONDONTWRITEBYTECODE": "1", "XDG_CONFIG_HOME": filepath.Join(home, ".config"),
+	})
+	out := make([]string, 0, len(env))
+	for _, k := range slices.Sorted(maps.Keys(env)) {
+		out = append(out, k+"="+env[k])
+	}
+	return out
 }
 
 func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *childResult) {
 	parent := &runner{ctx: r.ctx, c: r.c, guards: map[string]bool{}}
 	parent.c.Sandbox = Unsandboxed
+	if _, err := fmt.Fprintln(conn, parentGreeting); err != nil {
+		return
+	}
 	var order requestOrder
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(nil, maxMessageBytes)

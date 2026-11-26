@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func TestChildHelper(t *testing.T) {
 		t.Skip("runs only as the sandboxed child of another test")
 	}
 	args := os.Args
-	os.Exit(ChildMain(args[slices.Index(args, "--")+1:], os.Stdout, os.Stderr))
+	os.Exit(ChildMain(args[slices.Index(args, "--")+1:], os.Stdout, os.Stderr, Actions{echoAction: echoChild}))
 }
 
 type sandboxFixture struct {
@@ -63,6 +64,55 @@ func (f *sandboxFixture) skipUnlessRealSandbox(t *testing.T) {
 		t.Skip("this process is already sandboxed, and a sandbox cannot be nested")
 	}
 	t.Setenv(childHelperEnv, "1")
+}
+
+const echoAction = "test_echo"
+
+// echoChild writes its extra to the file it names, so a test can see what the sandboxed child was able to do.
+func echoChild(_ context.Context, c Context, extra json.RawMessage, _, _ io.Writer) error {
+	var req struct{ Path, Body string }
+	if err := json.Unmarshal(extra, &req); err != nil {
+		return err
+	}
+	return os.WriteFile(req.Path, []byte(req.Body), 0o644)
+}
+
+func TestACustomActionRunsInTheSandboxedChild(t *testing.T) {
+	f := newSandboxFixture(t)
+	f.skipUnlessRealSandbox(t)
+	allowed, denied := filepath.Join(f.prefix, "bin/echoed"), filepath.Join(f.prefix, "var/homebrew/locks/echoed")
+	for _, dir := range []string{filepath.Dir(denied), filepath.Dir(allowed)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.ctx.Token = ""
+	ran := false
+	extra := func(path string) json.RawMessage {
+		b, _ := json.Marshal(map[string]string{"Path": path, "Body": "x"})
+		return b
+	}
+	if err := RunAction(t.Context(), f.ctx, echoAction, extra(allowed), func() error { ran = true; return nil }); err != nil || ran {
+		t.Fatalf("err = %v, ran in process = %v", err, ran)
+	}
+	if _, err := os.Stat(allowed); err != nil {
+		t.Errorf("the action could not write an allowed path: %v", err)
+	}
+	if err := RunAction(t.Context(), f.ctx, echoAction, extra(denied), func() error { return nil }); err == nil {
+		t.Error("the action wrote a denied path")
+	}
+	if _, err := os.Stat(denied); err == nil {
+		t.Error("the denied file exists")
+	}
+}
+
+func TestRunActionRunsInProcessWhenUnsandboxed(t *testing.T) {
+	f := newSandboxFixture(t)
+	f.ctx.Sandbox = Unsandboxed
+	ran := false
+	if err := RunAction(t.Context(), f.ctx, echoAction, nil, func() error { ran = true; return nil }); err != nil || !ran {
+		t.Errorf("err = %v, ran = %v", err, ran)
+	}
 }
 
 func TestAFileStepIsConfinedByTheSandbox(t *testing.T) {
@@ -124,6 +174,9 @@ func (f *sandboxFixture) serveRequests(steps string, send func(c *childChannel) 
 		f.runner().serve(p.parent, raw, phaseInstall, res)
 		_ = p.parent.Close()
 	}()
+	if greeting, _ := p.child.in.ReadString('\n'); greeting != parentGreeting+"\n" {
+		f.t.Errorf("the parent greeted with %q", greeting)
+	}
 	childErr = send(p.child)
 	_ = p.child.conn.Close()
 	<-done
@@ -219,12 +272,136 @@ func TestChildRefusesABadChecksumAndAMissingPipe(t *testing.T) {
 	if err := os.WriteFile(body, []byte(`{}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := runChild([]string{body, "deadbeef"}, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+	if err := runChild([]string{body, "deadbeef"}, nil, nil, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Errorf("err = %v", err)
 	}
 	t.Setenv(errorPipeEnv, "")
-	if _, err := dialParent(); err == nil {
+	if _, _, err := dialParent(); err == nil {
 		t.Error("the child should refuse to run without its parent's socket")
+	}
+}
+
+func listenOn(t *testing.T, greet string) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "hs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "s")
+	l, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		conn, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		_, _ = fmt.Fprint(conn, greet)
+	}()
+	t.Setenv(errorPipeEnv, socket)
+}
+
+func TestChildNeedsAParentThatAnswers(t *testing.T) {
+	t.Run("the real greeting", func(t *testing.T) {
+		listenOn(t, parentGreeting+"\n")
+		conn, _, err := dialParent()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = conn.Close()
+	})
+	t.Run("a listener that does not greet", func(t *testing.T) {
+		listenOn(t, "hello\n")
+		if _, _, err := dialParent(); err == nil || err.Error() != "the parent process did not answer" {
+			t.Errorf("err = %v", err)
+		}
+	})
+	t.Run("nobody listening", func(t *testing.T) {
+		t.Setenv(errorPipeEnv, filepath.Join(t.TempDir(), "nothing"))
+		if _, _, err := dialParent(); err == nil {
+			t.Error("a socket nobody listens on must be refused")
+		}
+	})
+}
+
+func TestFormulaChildEnvironmentMirrorsBrew(t *testing.T) {
+	f := newSandboxFixture(t)
+	f.ctx.Token = ""
+	f.ctx.SandboxPolicy.Cache = "/cache"
+	t.Setenv("HOMEBREW_PATH", "/opt/a:rel:/opt/b")
+	t.Setenv("PATH", "/ignored")
+	t.Setenv("CURL_HOME", "")
+	t.Setenv("MY_SECRET_TOKEN", "x")
+	env := f.runner().childEnv("/home", "/tmp/sb", "/tmp/sb/socket")
+	has := func(kv string) bool { return slices.Contains(env, kv) }
+	for _, want := range []string{
+		"HOME=/home", "TMPDIR=/tmp/sb", "TEMP=/tmp/sb", "TMP=/tmp/sb", "HOMEBREW_TEMP=/tmp/sb",
+		"_JAVA_OPTIONS=-Duser.home=/cache/java_cache -Djava.io.tmpdir=/tmp/sb",
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_TERMINAL_PROMPT=0", "GOENV=off", "PIP_CONFIG_FILE=/dev/null",
+		"NPM_CONFIG_USERCONFIG=/dev/null", "CURL_HOME=", "PYTHONDONTWRITEBYTECODE=1", "XDG_CONFIG_HOME=/home/.config",
+		"CARGO_REGISTRY_GLOBAL_MIN_PUBLISH_AGE=1 day", "BUNDLE_COOLDOWN=1", "BUNDLE_USER_CACHE=/cache/bundler_cache",
+		"GOPATH=/cache/go_mod_cache", "ZIG_GLOBAL_CACHE_DIR=/cache/zig_cache", "HOMEBREW_ERROR_PIPE=/tmp/sb/socket",
+	} {
+		if !has(want) {
+			t.Errorf("the formula child lacks %s", want)
+		}
+	}
+	for _, e := range env {
+		if strings.HasPrefix(e, "HOMEBREW_PATH=") || strings.HasPrefix(e, "MY_SECRET_TOKEN=") {
+			t.Errorf("the child inherited %s", e)
+		}
+	}
+	wd, _ := os.Getwd()
+	if want := "PATH=/opt/a:" + filepath.Join(wd, "rel") + ":/opt/b"; !has(want) {
+		t.Errorf("PATH = want %s in %q", want, env)
+	}
+}
+
+func TestCaskChildEnvironmentHasOnlyWhatCaskArtifactRbSets(t *testing.T) {
+	f := newSandboxFixture(t)
+	env := f.runner().childEnv("/home", "/tmp/sb", "/tmp/sb/socket")
+	for _, unwanted := range []string{"GOENV=off", "GIT_TERMINAL_PROMPT=0"} {
+		if slices.Contains(env, unwanted) {
+			t.Errorf("a cask child has %s", unwanted)
+		}
+	}
+	for _, want := range []string{"HOME=/home", "TMPDIR=/tmp/sb", "HOMEBREW_CHILD_MESSAGE_CHANNEL=1"} {
+		if !slices.Contains(env, want) {
+			t.Errorf("a cask child lacks %s", want)
+		}
+	}
+}
+
+func TestPostinstallNetworkFollowsBrewsEnvironmentOverride(t *testing.T) {
+	for value, want := range map[string]bool{"": true, "allow": true, "deny": false, "anything": false} {
+		t.Setenv(postinstallNetwork, value)
+		if got := postinstallNetworkAllowed(); got != want {
+			t.Errorf("%s=%q: allowed = %v, want %v", postinstallNetwork, value, got, want)
+		}
+	}
+}
+
+func TestAFormulaGetsAHomeInTheSandboxDirectoryWithABazelrc(t *testing.T) {
+	f := newSandboxFixture(t)
+	f.ctx.Token = ""
+	tmp := t.TempDir()
+	home, payloadPath, _, err := f.runner().scratch(payload{Action: formulaAction}, tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(home) != tmp || !strings.HasPrefix(filepath.Base(home), "pkg-postinstall-") {
+		t.Errorf("home = %s, want pkg-postinstall-* inside %s", home, tmp)
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".bazelrc"))
+	if err != nil || string(b) != "startup --output_user_root="+home+"/_bazel\n" {
+		t.Errorf(".bazelrc = %q, %v", b, err)
+	}
+	if filepath.Dir(payloadPath) != tmp {
+		t.Errorf("payload = %s", payloadPath)
 	}
 }
 
@@ -311,6 +488,14 @@ func TestFormulaProfileGetsPostInstallRules(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(f.prefix, "libexec"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	allowed, err := f.runner().profile(nil, phaseInstall, "", "", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(allowed.Profile(), "(deny network*)") {
+		t.Error("a formula's post_install may use the network unless told otherwise")
+	}
+	f.ctx.SandboxPolicy.NetworkAccess = false
 	sb, err := f.runner().profile(nil, phaseInstall, "", "", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
