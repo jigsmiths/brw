@@ -39,6 +39,20 @@ type Command struct {
 	Secrets        []string
 }
 
+func (c Command) Format(f fmt.State, _ rune) {
+	hide := func(s string) string { return Redact(s, c.Secrets) }
+	args := make([]string, len(c.Args))
+	for i, a := range c.Args {
+		args[i] = hide(a)
+	}
+	env := make([]string, len(c.Env))
+	for i, e := range c.Env {
+		env[i] = hide(e)
+	}
+	_, _ = fmt.Fprintf(f, "sudo.Command{Exe:%s Args:%q Env:%q Input:%q Privilege:%d MustSucceed:%t Secrets:%d}",
+		hide(c.Exe), args, env, hide(c.Input), c.Privilege, c.MustSucceed, len(c.Secrets))
+}
+
 type Result struct{ Stdout, Stderr string }
 
 type Runner func(ctx context.Context, c Command) (Result, error)
@@ -46,6 +60,15 @@ type Runner func(ctx context.Context, c Command) (Result, error)
 type message string
 
 func (m message) Error() string { return string(m) }
+
+type executionError string
+
+func (e executionError) Error() string { return string(e) }
+
+func IsFailure(err error) bool {
+	_, ok := errors.AsType[executionError](err)
+	return ok
+}
 
 func (c Command) Argv() ([]string, error) {
 	if c.Privilege == User {
@@ -83,7 +106,7 @@ func (c Command) Argv() ([]string, error) {
 
 func Exec(ctx context.Context, c Command) (Result, error) {
 	if c.Privilege != User && !Available(ctx, Exec) {
-		return Result{}, message(failureMessage(append([]string{c.Exe}, c.Args...), "exited with 1", "sudo is disabled by HOMEBREW_NO_SUDO.\n", c.Secrets))
+		return Result{}, executionError(failureMessage(append([]string{c.Exe}, c.Args...), "exited with 1", "sudo is disabled by HOMEBREW_NO_SUDO.\n", c.Secrets))
 	}
 	argv, err := c.Argv()
 	if err != nil {
@@ -92,6 +115,8 @@ func Exec(ctx context.Context, c Command) (Result, error) {
 	if c.Trace != nil {
 		_, _ = fmt.Fprintln(c.Trace, Redact(ShellJoin(argv), c.Secrets))
 	}
+	Guard(argv[0])
+	Guard(c.Exe)
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = append(os.Environ(), c.Env...)
 	cmd.Env = append(cmd.Env, "COLUMNS="+strconv.Itoa(columns(stdinColumns, tputColumns)))
@@ -116,7 +141,7 @@ func Exec(ctx context.Context, c Command) (Result, error) {
 	if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
 		reason = "was terminated by uncaught signal " + signalName(ws.Signal())
 	}
-	return result, message(failureMessage(argv, reason, log.render(c.Color), c.Secrets))
+	return result, executionError(failureMessage(argv, reason, log.render(c.Color), c.Secrets))
 }
 
 func failureMessage(argv []string, reason, output string, secrets []string) string {

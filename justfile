@@ -30,7 +30,7 @@ check:
 
 # Compare the read-only commands with the real brew on this machine (slow)
 conformance:
-    BRW_CONFORMANCE=1 go test ./cmd/brw -run Conformance -v -timeout 30m
+    BRW_CONFORMANCE=1 go test ./cmd/brw ./internal/cask -run Conformance -v -timeout 30m
 
 # Point git at the repo hooks
 setup:

@@ -19,11 +19,13 @@ import (
 
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/poststep"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 type Exec func(ctx context.Context, name string, args ...string) ([]byte, error)
 
 func execCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
+	sudo.Guard(name)
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stderr = &stderr
@@ -32,6 +34,13 @@ func execCommand(ctx context.Context, name string, args ...string) ([]byte, erro
 		return out, fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, bytes.TrimSpace(stderr.Bytes()))
 	}
 	return out, nil
+}
+
+func (in *Installer) system(ctx context.Context, name string, args ...string) ([]byte, error) {
+	if in.debug() && (in.Verbose || sudo.EnvTrue("HOMEBREW_VERBOSE")) && in.Warn != nil {
+		_, _ = fmt.Fprintln(in.Warn, sudo.Redact(sudo.ShellJoin(append([]string{"/usr/bin/env", name}, args...)), sudo.SensitiveValues()))
+	}
+	return in.exec(ctx, name, args...)
 }
 
 func (in *Installer) exec(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -52,6 +61,7 @@ func IsPinned(token string) error {
 type uninstallStep struct {
 	kind          string
 	directives    map[string][]string
+	scripts       map[string][]json.RawMessage
 	move          move
 	generator     generator
 	steps         []json.RawMessage
@@ -99,7 +109,7 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 	for _, s := range steps {
 		switch s.kind {
 		case "uninstall":
-			if err := in.runDirectives(ctx, s.directives, apps); err != nil {
+			if err := in.runDirectives(ctx, token, s, apps, force); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		case "app":
@@ -156,8 +166,8 @@ func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, er
 		return nil, err
 	}
 	var receipt struct {
-		UninstallFlightBlocks bool                         `json:"uninstall_flight_blocks"`
-		UninstallArtifacts    []map[string]json.RawMessage `json:"uninstall_artifacts"`
+		UninstallFlightBlocks bool            `json:"uninstall_flight_blocks"`
+		UninstallArtifacts    json.RawMessage `json:"uninstall_artifacts"`
 	}
 	if err := json.Unmarshal(b, &receipt); err != nil {
 		return nil, fmt.Errorf("%s: install receipt: %w", token, err)
@@ -165,10 +175,11 @@ func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, er
 	if receipt.UninstallFlightBlocks {
 		return nil, unsupported(token, "uninstall flight blocks")
 	}
-	if len(receipt.UninstallArtifacts) == 0 {
+	var artifacts []map[string]json.RawMessage
+	if err := json.Unmarshal(receipt.UninstallArtifacts, &artifacts); err != nil || artifacts == nil {
 		return nil, unsupported(token, "no uninstall artifacts in the install receipt")
 	}
-	return receipt.UninstallArtifacts, nil
+	return artifacts, nil
 }
 
 func (in *Installer) readStep(token, version, kind string, args json.RawMessage) (uninstallStep, error) {
@@ -179,8 +190,11 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if bad := unknownDirectives(args); bad != "" {
 			return s, unsupported(token, "uninstall "+bad)
 		}
-		if s.directives, err = readDirectives(args); err != nil {
+		if s.directives, s.scripts, err = readDirectives(args); err != nil {
 			return s, fmt.Errorf("%s: uninstall %s: %w", token, args, err)
+		}
+		if s.stagedVersion, err = in.Root.Abs(filepath.Join("Caskroom", token, version)); err != nil {
+			return s, err
 		}
 	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 		if s.move, err = readMove(args, kind, in.Where); err != nil {
@@ -217,38 +231,71 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 	return s, nil
 }
 
-func readDirectives(args json.RawMessage) (map[string][]string, error) {
+func readDirectives(args json.RawMessage) (map[string][]string, map[string][]json.RawMessage, error) {
 	var list []map[string]json.RawMessage
 	if err := json.Unmarshal(args, &list); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := map[string][]string{}
+	scripts := map[string][]json.RawMessage{}
 	for _, d := range list {
 		for k, v := range d {
-			var one string
-			if json.Unmarshal(v, &one) == nil {
-				out[k] = append(out[k], one)
+			if slices.Contains(scriptDirectives, k) {
+				scripts[k] = append(scripts[k], v)
 				continue
 			}
-			var many []string
-			if err := json.Unmarshal(v, &many); err != nil {
-				return nil, fmt.Errorf("%s: %w", k, err)
+			values, err := flattenStrings(v)
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s: %w", k, err)
 			}
-			out[k] = append(out[k], many...)
+			out[k] = append(out[k], values...)
 		}
 	}
-	return out, nil
+	return out, scripts, nil
 }
 
-func (in *Installer) runDirectives(ctx context.Context, d map[string][]string, apps []string) error {
+func (in *Installer) runDirectives(ctx context.Context, token string, step uninstallStep, apps []string, force bool) error {
+	d := step.directives
+	expand := &bundleIDs{in: in}
+	runScripts := func(directive string) error {
+		for _, raw := range step.scripts[directive] {
+			if err := in.uninstallScript(ctx, token, step.stagedVersion, directive, raw, force); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := runScripts("early_script"); err != nil {
+		return err
+	}
 	if s := d["launchctl"]; len(s) > 0 {
-		in.launchctl(ctx, s)
+		if err := in.launchctl(ctx, s); err != nil {
+			return err
+		}
 	}
 	if s := d["quit"]; len(s) > 0 {
-		in.quit(ctx, s)
+		in.quit(ctx, s, expand)
+	}
+	if s := d["signal"]; len(s) > 0 && (!in.upgrading || slices.Contains(d["on_upgrade"], "signal")) {
+		if err := in.uninstallSignal(ctx, token, s, expand); err != nil {
+			return err
+		}
 	}
 	if s := d["login_item"]; len(s) > 0 {
 		in.loginItems(ctx, apps, s)
+	}
+	if s := d["kext"]; len(s) > 0 {
+		if err := in.uninstallKext(ctx, s); err != nil {
+			return err
+		}
+	}
+	if err := runScripts("script"); err != nil {
+		return err
+	}
+	if s := d["pkgutil"]; len(s) > 0 {
+		if err := in.uninstallPkgutil(ctx, s); err != nil {
+			return err
+		}
 	}
 	if s := d["delete"]; len(s) > 0 {
 		if err := in.deletePaths(ctx, s); err != nil {
@@ -259,13 +306,14 @@ func (in *Installer) runDirectives(ctx context.Context, d map[string][]string, a
 		in.trash(ctx, s)
 	}
 	if s := d["rmdir"]; len(s) > 0 {
-		in.rmdirs(ctx, s)
+		if err := in.rmdirs(ctx, s); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// launchctl looks a system service up without sudo, unlike brew, so a password is asked for only when there is one to remove.
-func (in *Installer) launchctl(ctx context.Context, services []string) {
+func (in *Installer) launchctl(ctx context.Context, services []string) error {
 	var all []string
 	for _, s := range services {
 		if !strings.Contains(s, "*") {
@@ -274,45 +322,51 @@ func (in *Installer) launchctl(ctx context.Context, services []string) {
 		}
 		all = append(all, in.runningServices(ctx, s)...)
 	}
-	uid := fmt.Sprint(os.Getuid())
 	for _, s := range all {
 		in.logf("==> Removing launchctl service %s", s)
-		for _, sudo := range []bool{false, true} {
-			found := false
-			if sudo {
-				_, err := in.exec(ctx, "/bin/launchctl", "print", "system/"+s)
-				found = err == nil
-			} else {
-				for _, domain := range []string{"user/" + uid, "gui/" + uid} {
-					if _, err := in.exec(ctx, "/bin/launchctl", "print", domain+"/"+s); err == nil {
-						found = true
-						break
-					}
-				}
+		for _, asRoot := range []bool{false, true} {
+			if asRoot && !sudo.Available(ctx, in.runner()) {
+				continue
+			}
+			privilege := sudo.User
+			if asRoot {
+				privilege = sudo.Root
+			}
+			found, err := in.FindService(ctx, s, privilege)
+			if err != nil {
+				return err
 			}
 			if found {
-				if _, err := in.privileged(ctx, sudo, "/bin/launchctl", "remove", s); err == nil {
+				if err := in.privileged(ctx, privilege, "/bin/launchctl", "remove", s); err == nil {
 					in.sleep(time.Second)
 				}
 			}
 			for _, dir := range []string{"/Library/LaunchAgents", "/Library/LaunchDaemons"} {
-				if !sudo {
+				if !asRoot {
 					dir = filepath.Join(in.Where.Home, dir)
 				}
 				plist := filepath.Join(dir, s+".plist")
 				if _, err := os.Lstat(plist); err == nil {
-					_, _ = in.privileged(ctx, sudo, "/bin/rm", "-f", "--", plist)
+					_ = in.privileged(ctx, privilege, "/bin/rm", "-f", "--", plist)
 				}
+			}
+			if _, err := os.Stat(s); err == nil {
+				_ = in.privileged(ctx, privilege, "/bin/launchctl", "unload", "-w", "--", s)
+				_ = in.privileged(ctx, privilege, "/bin/rm", "-f", "--", s)
+				in.sleep(time.Second)
 			}
 		}
 	}
+	return nil
 }
 
-func (in *Installer) privileged(ctx context.Context, sudo bool, name string, args ...string) ([]byte, error) {
-	if sudo {
-		return in.exec(ctx, "/usr/bin/sudo", append([]string{"-E", "--", name}, args...)...)
+func (in *Installer) privileged(ctx context.Context, privilege sudo.Privilege, name string, args ...string) error {
+	if privilege == sudo.User {
+		_, err := in.system(ctx, name, args...)
+		return err
 	}
-	return in.exec(ctx, name, args...)
+	_, err := in.capture(ctx, in.command(privilege, name, args...))
+	return err
 }
 
 func (in *Installer) sleep(d time.Duration) {
@@ -324,7 +378,7 @@ func (in *Installer) sleep(d time.Duration) {
 }
 
 func (in *Installer) runningServices(ctx context.Context, pattern string) []string {
-	out, err := in.exec(ctx, "/bin/launchctl", "list")
+	out, err := in.system(ctx, "/bin/launchctl", "list")
 	if err != nil {
 		return nil
 	}
@@ -372,16 +426,20 @@ const automationAccess = `Enable Automation access for "Terminal → System Even
   System Settings → Privacy & Security → Automation
 if you haven't already.`
 
-func (in *Installer) quit(ctx context.Context, ids []string) {
+func (in *Installer) quit(ctx context.Context, patterns []string, expand *bundleIDs) {
+	var ids []string
+	for _, p := range patterns {
+		ids = append(ids, expand.expand(ctx, p)...)
+	}
 	for _, id := range ids {
-		if strings.Contains(id, "*") {
-			in.warnf("brw cannot quit applications matching '%s' yet; skipping.", id)
-			continue
-		}
 		if !in.running(ctx, id) {
 			continue
 		}
-		if host := os.Getenv("__CFBundleIdentifier"); strings.EqualFold(host, id) {
+		if !in.gui(ctx) {
+			in.warnf("Not logged into a GUI; skipping quitting application ID '%s'.", id)
+			continue
+		}
+		if in.hostingBrw(ctx, id) {
 			in.warnf("Skipping quitting application '%s' as `brw` is running inside it.", id)
 			continue
 		}
@@ -389,7 +447,7 @@ func (in *Installer) quit(ctx context.Context, ids []string) {
 		deadline := time.Now().Add(10 * time.Second)
 		quit := false
 		for time.Now().Before(deadline) {
-			if _, err := in.exec(ctx, "osascript", "-l", "JavaScript", "-e", quitScript, id); err == nil && !in.running(ctx, id) {
+			if _, err := in.system(ctx, "osascript", "-l", "JavaScript", "-e", quitScript, id); err == nil && !in.running(ctx, id) {
 				in.logf("Application '%s' quit successfully.", id)
 				quit = true
 				if in.upgrading {
@@ -397,7 +455,6 @@ func (in *Installer) quit(ctx context.Context, ids []string) {
 				}
 				break
 			}
-			in.sleep(100 * time.Millisecond)
 		}
 		if !quit {
 			in.warnf("Application '%s' did not quit. %s", id, automationAccess)
@@ -413,7 +470,7 @@ func (in *Installer) loginItems(ctx context.Context, apps, names []string) {
 		in.logf("==> Removing login item %s", id)
 		quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(id)
 		script := `tell application "System Events" to delete every login item whose ` + property + ` is "` + quoted + `"`
-		if _, err := in.exec(ctx, "osascript", "-e", script); err != nil {
+		if _, err := in.system(ctx, "osascript", "-e", script); err != nil {
 			in.warnf("Removal of login item %s failed. %s", id, automationAccess)
 		}
 		in.sleep(time.Second)
@@ -427,7 +484,7 @@ func (in *Installer) loginItems(ctx context.Context, apps, names []string) {
 }
 
 func (in *Installer) running(ctx context.Context, id string) bool {
-	_, err := in.exec(ctx, "osascript", "-l", "JavaScript", "-e", runningScript, id)
+	_, err := in.system(ctx, "osascript", "-l", "JavaScript", "-e", runningScript, id)
 	return err == nil
 }
 
@@ -458,27 +515,38 @@ func (in *Installer) resolvePaths(action string, paths []string, each func(path 
 	}
 }
 
-const accessWrite = 0x2
+const trashScript = `'use strict';
+ObjC.import('Foundation')
+function run(argv) {
+  var fm = $.NSFileManager.defaultManager
+  return argv.map(function (p) {
+    return fm.trashItemAtURLResultingItemURLError($.NSURL.fileURLWithPath(p), null, null) ? '1' : '0'
+  }).join('\n')
+}`
+
+const (
+	accessWrite = 0x2
+	accessRead  = 0x4
+)
 
 func writable(dir string) bool {
 	return syscall.Access(dir, accessWrite) == nil
 }
 
-// deletePaths tries without sudo first, unlike brew, so most casks need no password.
 func (in *Installer) deletePaths(ctx context.Context, paths []string) error {
 	in.logf("==> Removing files:")
 	var err error
 	in.resolvePaths("delete", paths, func(p string, resolved []string) {
+		if err != nil {
+			return
+		}
 		in.logf("%s", p)
 		if len(resolved) == 0 {
 			return
 		}
-		args := append([]string{"-r", "-f", "--"}, resolved...)
-		if _, e := in.exec(ctx, "/bin/rm", args...); e != nil {
-			if _, e := in.privileged(ctx, true, "/bin/rm", args...); e != nil {
-				err = errors.Join(err, e)
-			}
-		}
+		rm := in.command(sudo.Sudo, xargsPath, "-0", "--", "/bin/rm", "-r", "-f", "--")
+		rm.Input = strings.Join(resolved, "\x00")
+		_, err = in.capture(ctx, rm)
 	})
 	return err
 }
@@ -493,9 +561,19 @@ func (in *Installer) trash(ctx context.Context, paths []string) {
 	for _, p := range shown {
 		in.logf("%s", p)
 	}
+	trashed := in.trashItems(ctx, all)
 	var failed []string
-	for _, p := range all {
-		if _, err := in.exec(ctx, "/usr/bin/trash", p); err != nil {
+	for i, p := range all {
+		if trashed[i] {
+			continue
+		}
+		retry := func(p string) error {
+			if !in.trashItems(ctx, []string{p})[0] {
+				return errors.New("not trashed")
+			}
+			return nil
+		}
+		if in.gainPermissions(ctx, p, []string{"-R"}, retry) != nil {
 			failed = append(failed, p)
 		}
 	}
@@ -507,50 +585,101 @@ func (in *Installer) trash(ctx context.Context, paths []string) {
 	}
 }
 
-func (in *Installer) rmdirs(ctx context.Context, dirs []string) {
+func (in *Installer) trashItems(ctx context.Context, paths []string) []bool {
+	trashed := make([]bool, len(paths))
+	if len(paths) == 0 {
+		return trashed
+	}
+	out, err := in.exec(ctx, "osascript", append([]string{"-l", "JavaScript", "-e", trashScript}, paths...)...)
+	results := strings.Fields(string(out))
+	if err != nil || len(results) != len(paths) {
+		return trashed
+	}
+	for i, r := range results {
+		trashed[i] = r == "1"
+	}
+	return trashed
+}
+
+func (in *Installer) rmdirs(ctx context.Context, dirs []string) error {
 	in.logf("==> Removing directories if empty:")
+	var err error
 	in.resolvePaths("rmdir", dirs, func(_ string, resolved []string) {
 		for _, r := range resolved {
-			if fi, err := os.Stat(r); err != nil || !fi.IsDir() {
+			if fi, e := os.Stat(r); e != nil || !fi.IsDir() {
 				return
 			}
 		}
-		in.rmdirAll(ctx, resolved)
+		if err == nil {
+			_, err = in.rmdirAll(ctx, resolved)
+		}
 	})
+	return err
 }
 
-func (in *Installer) rmdirAll(ctx context.Context, dirs []string) bool {
+const dsStore = ".DS_Store"
+
+func (in *Installer) rmdirAll(ctx context.Context, dirs []string) (bool, error) {
 	for _, d := range dirs {
 		in.logf("%s", tildeHome(d, in.Where.Home))
-		if fi, err := os.Lstat(d); err != nil || fi.Mode()&fs.ModeSymlink != 0 {
-			return false
+		if fi, err := os.Lstat(d); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+			return false, nil
 		}
-		entries, err := os.ReadDir(d)
-		if err != nil {
-			return false
+		children, ok, err := in.rmdirChildren(ctx, d)
+		if err != nil || !ok {
+			return false, err
 		}
-		var children []string
-		for _, e := range entries {
-			p := filepath.Join(d, e.Name())
-			if e.Name() == ".DS_Store" {
-				continue
+		if ds := filepath.Join(d, dsStore); slices.Contains(children, ds) {
+			if err := in.gainPermissionsRemove(ctx, ds); err != nil {
+				return false, err
 			}
-			if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
-				return false
+			children = slices.DeleteFunc(children, func(c string) bool { return c == ds })
+		}
+		if ok, err := in.rmdirAll(ctx, children); err != nil || !ok {
+			return false, err
+		}
+		if err := in.gainPermissionsRmdir(ctx, d); err != nil {
+			if errors.Is(err, syscall.ENOTEMPTY) || sudo.IsFailure(err) {
+				return false, nil
+			}
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func (in *Installer) rmdirChildren(ctx context.Context, dir string) (children []string, ok bool, err error) {
+	if syscall.Access(dir, accessRead) == nil {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, e := range entries {
+			p := filepath.Join(dir, e.Name())
+			if fi, err := os.Stat(p); e.Name() != dsStore && (err != nil || !fi.IsDir()) {
+				return nil, false, nil
 			}
 			children = append(children, p)
 		}
-		if _, err := os.Lstat(filepath.Join(d, ".DS_Store")); err == nil {
-			_, _ = in.exec(ctx, "/bin/rm", "-f", "--", filepath.Join(d, ".DS_Store"))
-		}
-		if !in.rmdirAll(ctx, children) {
-			return false
-		}
-		if _, err := in.exec(ctx, "/bin/rmdir", "--", d); err != nil {
-			return false
-		}
+		return children, true, nil
 	}
-	return true
+	ls := in.command(sudo.Sudo, "/bin/ls", "-A", "-F", "--", dir)
+	ls.Stderr = nil
+	out, err := in.capture(ctx, ls)
+	if err != nil {
+		return nil, false, err
+	}
+	for line := range strings.SplitSeq(strings.TrimSuffix(out, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		name, isDir := strings.CutSuffix(line, "/")
+		if !isDir && line != dsStore {
+			return nil, false, nil
+		}
+		children = append(children, filepath.Join(dir, name))
+	}
+	return children, true, nil
 }
 
 func tildeHome(path, home string) string {

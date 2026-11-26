@@ -23,7 +23,8 @@ import (
 	"github.com/jigsmiths/brw/internal/uninstall"
 )
 
-func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool, casks []api.Cask) error {
+func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool, trace tracing, casks []api.Cask) error {
+	e.setTracing(trace)
 	tag, err := platform.Tag(e.host)
 	if err != nil {
 		return err
@@ -108,6 +109,10 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 			Root: root, Apps: apps,
 			Where:       cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
 			Host:        e.host,
+			Verbose:     trace.verbose,
+			Debug:       trace.debug,
+			Run:         e.sudoRun,
+			FindService: e.findService,
 			Fetcher:     &cask.Fetcher{Dir: filepath.Join(client.CacheDir, "cask-downloads")},
 			Log:         e.out,
 			Warn:        e.err,
@@ -141,7 +146,7 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 	})
 }
 
-func resolveCasks(e *env, prefix, journal string, dryRun bool, tokens []string, o outdated.CaskOptions) *upgradeStep {
+func resolveCasks(e *env, prefix, journal string, dryRun bool, trace tracing, tokens []string, o outdated.CaskOptions) *upgradeStep {
 	ctx := context.Background()
 	installed, err := caskroom.Installed(prefix)
 	if err != nil || (len(installed) == 0 && len(tokens) == 0) {
@@ -223,7 +228,7 @@ func resolveCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 		}
 		var upgraded []string
 		err := withRoot(prefix, journal, func(root *fsx.Root) (err error) {
-			upgraded, err = runCaskUpgrades(e, root, prefix, journal, idx, o.Tag, upgrade, byToken)
+			upgraded, err = runCaskUpgrades(e, root, prefix, journal, trace, idx, o.Tag, upgrade, byToken)
 			return err
 		})
 		return upgraded, err
@@ -231,7 +236,7 @@ func resolveCasks(e *env, prefix, journal string, dryRun bool, tokens []string, 
 }
 
 // brew's cleanup step is skipped: it cleans brew's own download cache.
-func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, idx *api.CaskIndex, tag string, upgrade []outdated.Result, installed map[string]caskroom.Cask) ([]string, error) {
+func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, trace tracing, idx *api.CaskIndex, tag string, upgrade []outdated.Result, installed map[string]caskroom.Cask) ([]string, error) {
 	ctx := context.Background()
 	client, err := e.apiClient()
 	if err != nil {
@@ -258,7 +263,7 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, idx *api.Ca
 	var ready []outdated.Result
 	var failed []string
 	for _, r := range upgrade {
-		u, closeApps, err := prepareCaskUpgrade(ctx, e, root, prefix, journal, home, version, idx, tag, fetcher, installed[r.Name])
+		u, closeApps, err := prepareCaskUpgrade(ctx, e, root, prefix, journal, home, version, trace, idx, tag, fetcher, installed[r.Name])
 		if err != nil {
 			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 			failed = append(failed, r.Name)
@@ -288,7 +293,8 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, idx *api.Ca
 
 const defaultAppDir = "/Applications"
 
-func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
+func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, trace tracing, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
+	e.setTracing(trace)
 	listed, ok := idx.LookupFrom(old.Tap, old.Token)
 	if !ok {
 		return nil, nil, fmt.Errorf("%s is not in the cask listing", old.Token)
@@ -313,7 +319,11 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 		Version: version,
 		APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json"),
 		Config:  cask.Config{Languages: macLanguages(), ExplicitAppDir: caskroom.ExplicitAppDir(prefix, old.Token)},
+		Verbose: trace.verbose,
+		Debug:   trace.debug,
+		Run:     e.sudoRun,
 
+		FindService: e.findService,
 		RuntimeDeps: e.runtimeDepsFor(ctx, prefix, tag, idx, nil),
 	}
 	in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
@@ -380,7 +390,7 @@ func sentence(words []string) string {
 	return strings.Join(words[:len(words)-1], ", ") + " and " + words[len(words)-1]
 }
 
-func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks, installed []caskroom.Cask, dryRun, force, ignoreDeps bool) error {
+func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks, installed []caskroom.Cask, dryRun, force, ignoreDeps bool, trace tracing) error {
 	if !force && slices.ContainsFunc(casks, func(c caskroom.Cask) bool { return c.Token == "brw" }) {
 		return errors.New("refusing to uninstall the brw cask, which is brw itself; use --force to remove it")
 	}
@@ -420,19 +430,21 @@ func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks
 	}
 	home, _ := os.UserHomeDir()
 	for _, c := range todo {
-		errs = append(errs, uninstallCask(e, root, prefix, home, c, force))
+		errs = append(errs, uninstallCask(e, root, prefix, home, c, force, trace))
 	}
 	return errors.Join(errs...)
 }
 
-func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask, force bool) error {
+func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask, force bool, trace tracing) error {
 	appDir := caskroom.AppDir(prefix, c.Token)
 	in := &cask.Installer{
 		Root:  root,
 		Where: cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
 		Host:  e.host,
 		Log:   e.out, Warn: e.err,
+		Verbose: trace.verbose, Debug: trace.debug, Run: e.sudoRun, FindService: e.findService,
 	}
+	e.setTracing(trace)
 	if _, err := os.Stat(appDir); err == nil {
 		apps, err := fsx.Open(appDir, nil)
 		if err != nil {

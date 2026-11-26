@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,7 @@ import (
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/install/installtest"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 var mac = platform.Host{OS: "darwin", MacVersion: "26.0", Arch: "arm64"}
@@ -36,7 +38,7 @@ func (s *store) appCask(token string) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	for _, f := range []struct{ name, body string }{{"App.app/Contents/Info.plist", "<plist/>"}, {"tool", "#!/bin/sh\n"}} {
+	for _, f := range []struct{ name, body string }{{"App.app/Contents/Info.plist", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict/></plist>\n"}, {"tool", "#!/bin/sh\n"}} {
 		_ = tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0o755, Size: int64(len(f.body)), Typeflag: tar.TypeReg})
 		_, _ = tw.Write([]byte(f.body))
 	}
@@ -50,6 +52,27 @@ func (s *store) appCask(token string) {
 		"token": token, "full_token": token, "tap": "homebrew/cask", "name": []string{"App"}, "version": "1.0",
 		"url": ts.URL + "/App-1.0.tar.gz", "sha256": hex.EncodeToString(sum[:]),
 		"artifacts":  []any{map[string]any{"app": []string{"App.app"}}, map[string]any{"binary": []string{"tool"}}},
+		"depends_on": map[string]any{},
+	})
+}
+
+func (s *store) pkgCask(token string) {
+	s.t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	_ = tw.WriteHeader(&tar.Header{Name: "P.pkg", Mode: 0o644, Size: 3, Typeflag: tar.TypeReg})
+	_, _ = tw.Write([]byte("pkg"))
+	_ = tw.Close()
+	_ = gz.Close()
+	body := buf.Bytes()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	s.t.Cleanup(ts.Close)
+	sum := sha256.Sum256(body)
+	s.casks = append(s.casks, map[string]any{
+		"token": token, "full_token": token, "tap": "homebrew/cask", "name": []string{"Pkg"}, "version": "1.0",
+		"url": ts.URL + "/P-1.0.tar.gz", "sha256": hex.EncodeToString(sum[:]),
+		"artifacts":  []any{map[string]any{"pkg": []string{"P.pkg"}}},
 		"depends_on": map[string]any{},
 	})
 }
@@ -248,6 +271,13 @@ func TestInstallCaskAdopt(t *testing.T) {
 	s := newStore(t)
 	s.appCask("app")
 	e, prefix := s.env()
+	e.sudoRun = func(_ context.Context, c sudo.Command) (sudo.Result, error) {
+		if c.Exe != "/usr/bin/plutil" {
+			return sudo.Result{}, nil
+		}
+		b, err := os.ReadFile(c.Args[len(c.Args)-1])
+		return sudo.Result{Stdout: string(b)}, err
+	}
 	apps := t.TempDir()
 	if _, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, "app"); err != nil {
 		t.Fatal(err)

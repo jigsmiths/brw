@@ -153,7 +153,7 @@ func (u untapper) uninstallPackages(t tap.Tap, in tapPackages) error {
 		if err != nil {
 			return err
 		}
-		if err := uninstallCasks(u.e, u.root, u.prefix, named, in.casks, all, u.dryRun, u.force, false); err != nil {
+		if err := uninstallCasks(u.e, u.root, u.prefix, named, in.casks, all, u.dryRun, u.force, false, tracing{}); err != nil {
 			return err
 		}
 	}

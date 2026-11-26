@@ -71,6 +71,8 @@ type env struct {
 
 	launchctl  services.Launchctl
 	uid        int
+	euidRoot   bool
+	sudoRun    sudo.Runner
 	user       string
 	agentsDir  string
 	daemonsDir string
@@ -117,7 +119,7 @@ func main() {
 
 func newEnv(host platform.Host) *env {
 	e := &env{out: os.Stdout, err: os.Stderr, tty: isTerminal(os.Stdout), host: host,
-		launchctl: services.NewLaunchctl(), uid: os.Getuid(), daemonsDir: "/Library/LaunchDaemons",
+		launchctl: services.NewLaunchctl(), uid: os.Getuid(), euidRoot: os.Geteuid() == 0, daemonsDir: "/Library/LaunchDaemons",
 		plutil: plutilXML, clipboardBroken: pbpasteBroken, termWidth: sudo.TerminalColumns, takeOwnership: rootOwner.apply, userExists: userExists, consoleUID: consoleOwner}
 	e.user = os.Getenv("USER")
 	if u, err := user.Current(); e.user == "" && err == nil {
@@ -140,6 +142,9 @@ func userConfigHome() string {
 
 func run(e *env, cmd string, args []string) error {
 	e.warned = &warnings{}
+	if err := refuseRoot(e, cmd); err != nil {
+		return err
+	}
 	switch cmd {
 	case "help", "--help", "-h":
 		_, err := fmt.Fprintln(e.out, usage)

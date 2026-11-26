@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
@@ -27,21 +28,25 @@ type Config struct {
 }
 
 type Installer struct {
-	Root    *fsx.Root
-	Apps    *fsx.Root
-	Where   Where
-	Host    platform.Host
-	Fetcher *Fetcher
-	Log     io.Writer
-	Warn    io.Writer
-	Now     func() time.Time
-	Sleep   func(time.Duration)
-	Version string
-	APIPath string
-	Config  Config
-	Exec    Exec
-	Run     sudo.Runner
-	Adopt   bool
+	Root        *fsx.Root
+	Apps        *fsx.Root
+	Where       Where
+	Host        platform.Host
+	Fetcher     *Fetcher
+	Log         io.Writer
+	Warn        io.Writer
+	Now         func() time.Time
+	Sleep       func(time.Duration)
+	Version     string
+	APIPath     string
+	Config      Config
+	Exec        Exec
+	Run         sudo.Runner
+	Kill        func(pid int, sig syscall.Signal) error
+	Verbose     bool
+	Debug       bool
+	FindService func(ctx context.Context, label string, privilege sudo.Privilege) (bool, error)
+	Adopt       bool
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
 	// SatisfyDependencies installs what c needs; nil leaves it to the caller, and Install then fails if it is missing.
@@ -50,6 +55,9 @@ type Installer struct {
 	upgrading     bool
 	reopen        []string
 	warnedSandbox bool
+
+	ancestors      []string
+	ancestorsKnown bool
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -126,9 +134,10 @@ func (in *Installer) prepare(ctx context.Context, c api.Cask, owned map[string]b
 	if err != nil {
 		return installPlan{}, nil, "", err
 	}
-	if p.needsSudo() && !sudo.Available(ctx, in.runner()) {
-		return installPlan{}, nil, "", brewError("%s: The installer artifact requires sudo, but HOMEBREW_NO_SUDO is set.", c.Token)
+	if artifact := p.sudoArtifact(); artifact != "" && !sudo.Available(ctx, in.runner()) {
+		return installPlan{}, nil, "", brewError("%s: The %s artifact requires sudo, but HOMEBREW_NO_SUDO is set.", c.Token, artifact)
 	}
+	in.warnAllowUntrusted(p.pkgs)
 	links, err := in.checkTargets(c, p, owned)
 	if err != nil {
 		return installPlan{}, nil, "", err
@@ -160,6 +169,11 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 	}
 	if err := in.runInstallers(ctx, c.Token, staged, p.installers); err != nil {
 		return err
+	}
+	for _, pk := range p.pkgs {
+		if err := in.installPkg(ctx, c.Token, staged, pk); err != nil {
+			return fmt.Errorf("%s: %w", c.Token, err)
+		}
 	}
 	for _, m := range p.apps {
 		if err := in.moveApp(ctx, version, m, c.AutoUpdates, undo); err != nil {
@@ -357,7 +371,11 @@ func (in *Installer) moveApp(ctx context.Context, version string, m move, autoUp
 			if err != nil {
 				return err
 			}
-			if !in.sameApp(ctx, abs, m.target) {
+			same, err := in.sameApp(ctx, abs, m.target)
+			if err != nil {
+				return err
+			}
+			if !same {
 				return brewError("It seems the existing App is different from the one being installed.")
 			}
 		}
@@ -587,6 +605,10 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) err
 	if c.TapGitHead != "" {
 		head = &c.TapGitHead
 	}
+	uninstall := p.uninstall
+	if uninstall == nil {
+		uninstall = []map[string]json.RawMessage{}
+	}
 	fromAPI, path := c.SourceFile == "", in.APIPath
 	if !fromAPI {
 		path = c.SourceFile
@@ -611,7 +633,7 @@ func (in *Installer) writeReceipt(c api.Cask, p installPlan, onRequest bool) err
 		HomebrewVersion: in.Version, LoadedFromAPI: fromAPI, LoadedFromInternalAPI: fromAPI,
 		InstalledOnRequest: onRequest, Time: in.Now().Unix(), RuntimeDependencies: deps,
 		Source: source{Tap: c.Tap, TapGitHead: head, Version: c.Version, Path: path},
-		Arch:   arch, UninstallArtifacts: p.uninstall,
+		Arch:   arch, UninstallArtifacts: uninstall,
 		BuiltOn: map[string]string{"os": "Macintosh", "os_version": "macOS " + in.Host.MacVersion},
 	}, "", "  ")
 	if err != nil {

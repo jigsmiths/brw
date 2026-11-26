@@ -16,6 +16,8 @@ func TestMain(m *testing.M) {
 	for _, k := range []string{"HOMEBREW_NO_INSTALL_CLEANUP", "HOMEBREW_NO_AUTOREMOVE", "HOMEBREW_NO_CLEANUP_FORMULAE", "HOMEBREW_CACHE"} {
 		_ = os.Unsetenv(k)
 	}
+	_ = os.Unsetenv("HOMEBREW_NO_SUDO")
+	_ = os.Setenv("HOMEBREW_SUDO_CHECKED", "1")
 	os.Exit(m.Run())
 }
 

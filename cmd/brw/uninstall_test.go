@@ -245,6 +245,22 @@ func TestUninstallFormulaAndCaskTogether(t *testing.T) {
 	}
 }
 
+func TestInstallAndUninstallAcceptVerboseAndDebug(t *testing.T) {
+	t.Setenv("HOMEBREW_NO_AUTOREMOVE", "1")
+	for _, flag := range []string{"-v", "--verbose", "-d", "--debug"} {
+		s := newStore(t)
+		s.appCask("app")
+		e, prefix := s.env()
+		apps := t.TempDir()
+		if out, err := runCmd(t, e, "install", "-prefix", prefix, "--appdir", apps, flag, "app"); err != nil {
+			t.Fatalf("install %s: %v\n%s", flag, err, out)
+		}
+		if out, err := runCmd(t, e, "uninstall", "-prefix", prefix, flag, "app"); err != nil {
+			t.Fatalf("uninstall %s: %v\n%s", flag, err, out)
+		}
+	}
+}
+
 func TestUninstallCaskDryRunChangesNothing(t *testing.T) {
 	_, e, prefix, apps := installedCasks(t, "app")
 	out, err := runCmd(t, e, "uninstall", "-prefix", prefix, "-n", "--cask", "app")

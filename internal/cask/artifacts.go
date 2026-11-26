@@ -58,13 +58,17 @@ var linkNames = map[string]string{
 
 type installPlan struct {
 	apps, links           []move
+	pkgs                  []pkgInstall
 	generators            []generator
 	preflight, postflight []json.RawMessage
 	uninstall             []map[string]json.RawMessage
 	installers            []installerStep
 }
 
-var uninstallDirectives = []string{"quit", "login_item", "launchctl", "delete", "trash", "rmdir"}
+var (
+	scriptDirectives    = []string{"early_script", "script"}
+	uninstallDirectives = []string{"early_script", "launchctl", "quit", "signal", "login_item", "kext", "script", "pkgutil", "delete", "trash", "rmdir", "on_upgrade"}
+)
 
 func plan(c api.Cask, w Where) (installPlan, error) {
 	var p installPlan
@@ -100,6 +104,13 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				} else {
 					p.links = append(p.links, m)
 				}
+			case "pkg":
+				pk, err := readPkg(args)
+				if err != nil {
+					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
+				}
+				p.pkgs = append(p.pkgs, pk)
+				continue
 			case "uninstall":
 				if bad := unknownDirectives(args); bad != "" {
 					return unsupported("uninstall " + bad)
@@ -136,8 +147,8 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 			p.uninstall = append(p.uninstall, map[string]json.RawMessage{kind: args})
 		}
 	}
-	if len(p.apps) == 0 && len(p.links) == 0 && len(p.installers) == 0 {
-		return unsupported("no app or binary")
+	if len(p.apps) == 0 && len(p.links) == 0 && len(p.installers) == 0 && len(p.pkgs) == 0 {
+		return unsupported("no app, binary or pkg")
 	}
 	return p, nil
 }

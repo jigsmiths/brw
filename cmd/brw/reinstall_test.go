@@ -35,6 +35,16 @@ func TestReinstallPoursTheFormulaAgain(t *testing.T) {
 	}
 }
 
+func TestReinstallAcceptsVerbose(t *testing.T) {
+	for _, flag := range []string{"-v", "--verbose", "-d", "--debug"} {
+		e, prefix := linkStore(t)
+		out, err := runCmd(t, e, "reinstall", "-prefix", prefix, flag, "app")
+		if err != nil || !strings.Contains(out, "==> Reinstalling app\n") {
+			t.Errorf("%s: out = %q, err = %v", flag, out, err)
+		}
+	}
+}
+
 func TestReinstallOfAnOutdatedFormulaInstallsTheCurrentVersion(t *testing.T) {
 	e, prefix := linkStore(t)
 	makeOutdated(t, e, prefix, "app")

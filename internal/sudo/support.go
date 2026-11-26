@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"testing"
 	"unsafe"
 )
 
@@ -47,6 +48,32 @@ func signalName(s syscall.Signal) string {
 		return name
 	}
 	return platformSignalNames[s]
+}
+
+var forbiddenInTests = []string{"/usr/bin/sudo", "/usr/sbin/installer", "/usr/sbin/pkgutil", "/bin/launchctl", "/usr/bin/trash", "osascript", "/usr/bin/osascript"}
+
+func Guard(exe string) {
+	if testing.Testing() && slices.Contains(forbiddenInTests, exe) {
+		panic("a test ran " + exe + " for real; stub the runner")
+	}
+}
+
+func ParseSignal(name string) (syscall.Signal, error) {
+	bare := strings.TrimPrefix(name, "SIG")
+	if bare == "EXIT" {
+		return 0, nil
+	}
+	if sig, ok := signalAliases[bare]; ok {
+		return sig, nil
+	}
+	for _, names := range []map[syscall.Signal]string{signalNames, platformSignalNames} {
+		for sig, n := range names {
+			if n == bare {
+				return sig, nil
+			}
+		}
+	}
+	return 0, message("unsupported signal 'SIG" + bare + "'")
 }
 
 func EnvSet(name string) bool { return strings.TrimSpace(os.Getenv(name)) != "" }

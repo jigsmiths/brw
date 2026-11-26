@@ -159,25 +159,43 @@ func (in *Installer) runInstallers(ctx context.Context, token, staged string, st
 			return fmt.Errorf("%s: %w", token, err)
 		}
 		path := strings.Join([]string{filepath.Join(in.Where.Prefix, "bin"), filepath.Join(in.Where.Prefix, "sbin"), os.Getenv("PATH")}, ":")
-		c := sudo.Command{
-			Exe: exe, Args: s.args, Input: s.input, Env: []string{"PATH=" + path}, MustSucceed: s.mustSucceed,
-			Secrets: sudo.SensitiveValues(), Stdout: in.Log, Color: sudo.ColorEnabled(in.Log),
-		}
-		if s.sudo {
-			c.Privilege = sudo.Sudo
-		}
-		debug := sudo.EnvTrue("HOMEBREW_DEBUG")
-		if s.stderr == outputOn || s.stderr == outputDebug && debug {
-			c.Stderr = in.Warn
-		}
-		if debug && sudo.EnvTrue("HOMEBREW_VERBOSE") {
-			c.Trace = in.Warn
-		}
-		if _, err := in.runner()(ctx, c); err != nil {
+		if err := in.runScript(ctx, s, exe, []string{"PATH=" + path}); err != nil {
 			return fmt.Errorf("%s: %w", token, err)
 		}
 	}
 	return nil
+}
+
+func (in *Installer) runScript(ctx context.Context, s installerStep, exe string, env []string) error {
+	c := in.command(sudo.User, exe, s.args...)
+	c.Input, c.Env, c.MustSucceed, c.Stdout = s.input, env, s.mustSucceed, in.Log
+	if s.sudo {
+		c.Privilege = sudo.Sudo
+	}
+	c.Stderr = nil
+	if s.stderr == outputOn || s.stderr == outputDebug && in.debug() {
+		c.Stderr = in.Warn
+	}
+	_, err := in.runner()(ctx, c)
+	return err
+}
+
+func (in *Installer) command(privilege sudo.Privilege, exe string, args ...string) sudo.Command {
+	c := sudo.Command{
+		Exe: exe, Args: args, Privilege: privilege, MustSucceed: true,
+		Stderr: in.Warn, Secrets: sudo.SensitiveValues(), Color: sudo.ColorEnabled(in.Log),
+	}
+	if in.debug() && (in.Verbose || sudo.EnvTrue("HOMEBREW_VERBOSE")) {
+		c.Trace = in.Warn
+	}
+	return c
+}
+
+func (in *Installer) debug() bool { return in.Debug || sudo.EnvTrue("HOMEBREW_DEBUG") }
+
+func (in *Installer) capture(ctx context.Context, c sudo.Command) (string, error) {
+	res, err := in.runner()(ctx, c)
+	return res.Stdout, err
 }
 
 func (in *Installer) runner() sudo.Runner {
@@ -218,6 +236,12 @@ func (in *Installer) chmodAll(path string, perm os.FileMode) error {
 	return os.Chmod(path, perm) //fsx:allow brew makes an installer script outside the prefix executable
 }
 
-func (p installPlan) needsSudo() bool {
-	return slices.ContainsFunc(p.installers, func(s installerStep) bool { return s.sudo })
+func (p installPlan) sudoArtifact() string {
+	switch {
+	case slices.ContainsFunc(p.installers, func(s installerStep) bool { return s.sudo }):
+		return "installer"
+	case len(p.pkgs) > 0:
+		return "pkg"
+	}
+	return ""
 }

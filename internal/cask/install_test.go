@@ -366,12 +366,12 @@ func TestInstallChecksTheCaskFirst(t *testing.T) {
 	if err := ti.in.Install(context.Background(), c); err == nil || !strings.Contains(err.Error(), "older than Golden Gate") {
 		t.Errorf("err = %v", err)
 	}
-	c = ti.cask(t, `[{"pkg":["a.pkg"]}]`)
+	c = ti.cask(t, `[{"suite":["a"]}]`)
 	if _, err := json.Marshal(c); err != nil {
 		t.Fatal(err)
 	}
 	if err := ti.in.Install(context.Background(), c); err == nil {
-		t.Error("installed a pkg cask")
+		t.Error("installed a suite cask")
 	}
 	if ti.hits.Load() != 0 {
 		t.Error("downloaded a cask that cannot be installed")
@@ -450,7 +450,7 @@ func TestInstallRefusesTargetsOutsideItsFolders(t *testing.T) {
 func TestInstallIntoALockedAppFolder(t *testing.T) {
 	ti := newTestInstall(t, appTarball)
 	f := &fakeExec{running: map[string]int{}, fail: map[string]bool{}}
-	ti.in.Exec = f.exec
+	ti.in.Exec, ti.in.Run = f.exec, f.run
 	lock(t, ti.appDir)
 	if err := ti.in.Install(context.Background(), ti.cask(t, `[{"app":["App.app"]}]`)); err != nil {
 		t.Fatal(err)

@@ -32,6 +32,7 @@ func upgradeCommand(e *env, args []string) error {
 	fs.BoolVar(&o.GreedyLatest, "greedy-latest", false, "include unversioned casks")
 	fs.BoolVar(&o.GreedyAutoUpdates, "greedy-auto-updates", false, "include casks that update themselves")
 	fetchHead := fs.Bool("fetch-HEAD", false, "fetch each HEAD formula's repository and upgrade it if there is a newer commit")
+	trace := traceFlags(fs)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -55,7 +56,7 @@ func upgradeCommand(e *env, args []string) error {
 		steps = append(steps, resolveFormulae(e, prefix, *journal, dryRun, *fetchHead, formulae))
 	}
 	if !formulaOnly && (len(names) == 0 || len(casks) > 0) {
-		steps = append(steps, resolveCasks(e, prefix, *journal, dryRun, casks, o))
+		steps = append(steps, resolveCasks(e, prefix, *journal, dryRun, *trace, casks, o))
 	}
 	if !dryRun {
 		announceUpgrades(e, steps)
