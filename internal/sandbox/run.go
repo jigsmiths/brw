@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 )
 
 // Spec is one command to run under a profile; the executable is left open on InheritanceFD for the child to find.
@@ -20,10 +21,17 @@ type Spec struct {
 	PassStdin bool
 	Stdout    io.Writer
 	Stderr    io.Writer
+	// Disclaim runs the sandbox through DisclaimVia, the executable and subcommand that call DisclaimMain.
+	Disclaim    bool
+	DisclaimVia []string
 }
 
 func (s Spec) Argv() []string {
-	return append([]string{Exec, "-p", s.Profile, s.Exe}, s.Args...)
+	argv := append([]string{Exec, "-p", s.Profile, s.Exe}, s.Args...)
+	if s.Disclaim {
+		return append(slices.Clone(s.DisclaimVia), argv...)
+	}
+	return argv
 }
 
 // Run returns the child's exit code, which is not an error by itself.

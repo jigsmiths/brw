@@ -56,6 +56,17 @@ func TestInheritedIsFalseWithoutTheDescriptor(t *testing.T) {
 	}
 }
 
+func TestArgvRunsTheSandboxThroughTheDisclaimerOnlyWhenAsked(t *testing.T) {
+	s := Spec{Profile: "P", Exe: "/x", Args: []string{"a"}, DisclaimVia: []string{"/brw", DisclaimCommand}}
+	if got := strings.Join(s.Argv(), " "); got != Exec+" -p P /x a" {
+		t.Errorf("argv = %q", got)
+	}
+	s.Disclaim = true
+	if got := strings.Join(s.Argv(), " "); got != "/brw "+DisclaimCommand+" "+Exec+" -p P /x a" {
+		t.Errorf("argv = %q", got)
+	}
+}
+
 func TestNoDecisionIsTheZeroValue(t *testing.T) {
 	var zero Decision
 	if zero != Invalid || zero == Use || zero == Skip {

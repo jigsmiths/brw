@@ -17,6 +17,7 @@ import (
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/platform"
 	"github.com/jigsmiths/brw/internal/poststep"
+	"github.com/jigsmiths/brw/internal/sandbox"
 	"github.com/jigsmiths/brw/internal/services"
 	"github.com/jigsmiths/brw/internal/sudo"
 	"github.com/jigsmiths/brw/internal/tap"
@@ -110,6 +111,9 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(1)
+	}
+	if os.Args[1] == sandbox.DisclaimCommand {
+		os.Exit(sandbox.DisclaimMain(os.Args[2:], os.Stderr))
 	}
 	if os.Args[1] == poststep.ChildCommand {
 		os.Exit(poststep.ChildMain(os.Args[2:], os.Stdout, os.Stderr, install.ChildActions()))

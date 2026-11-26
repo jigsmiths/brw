@@ -52,6 +52,7 @@ func newSandboxFixture(t *testing.T) *sandboxFixture {
 	f.ctx.SandboxPolicy = NewSandboxPolicy(f.prefix, t.TempDir(), t.TempDir(), filepath.Join(f.prefix, "Homebrew"),
 		[]string{exe, "-test.run=^TestChildHelper$", "--"}, nil, false, func(m string) { f.warnings = append(f.warnings, m) })
 	f.ctx.SandboxPolicy.Inherited = func() (bool, error) { return false, nil }
+	f.ctx.SandboxPolicy.Disclaim = false
 	return f
 }
 

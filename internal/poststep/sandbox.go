@@ -51,7 +51,6 @@ const (
 	postInstallStep    = "running post-install"
 	sandboxDirPrefix   = "sandbox"
 	randomNameBytes    = 6
-	disclaimUnavail    = "macOS privacy permission isolation is unavailable.\nContinuing with the existing sandbox restrictions."
 	interruptExitCode  = 130
 	installStepsAction = "install_steps"
 	formulaAction      = "formula_steps"
@@ -86,6 +85,7 @@ type SandboxPolicy struct {
 	Child         []string
 	Stdin         io.Reader
 	PassStdin     bool
+	Disclaim      bool
 	Verbose       bool
 	NetworkAccess bool
 	AvoidNested   bool
@@ -99,7 +99,7 @@ type SandboxPolicy struct {
 func NewSandboxPolicy(prefix, cache, logs, repository string, child []string, stdin io.Reader, verbose bool, warn func(message string)) SandboxPolicy {
 	p := SandboxPolicy{
 		Cache: cache, Logs: logs, Repository: repository, Prefix: prefix, BrewFile: filepath.Join(prefix, "bin/brew"),
-		Child: child, Stdin: stdin, PassStdin: stdin != nil, Verbose: verbose, Warn: warn,
+		Child: child, Stdin: stdin, PassStdin: stdin != nil, Disclaim: true, Verbose: verbose, Warn: warn,
 		NetworkAccess: postinstallNetworkAllowed(),
 		AvoidNested:   sudo.EnvTrue(avoidNestedEnv),
 		DefaultPrefix: slices.Contains(defaultPrefixes, prefix),
@@ -232,7 +232,6 @@ func (r *runner) runInSandbox(raw []json.RawMessage, ph phase) (bool, error) {
 	if err != nil || !use {
 		return false, err
 	}
-	r.c.SandboxPolicy.Warn(disclaimUnavail)
 	return true, r.runChild(r.stepsAction(), nil, raw, ph)
 }
 
@@ -247,7 +246,6 @@ func RunAction(ctx context.Context, c Context, action string, extra json.RawMess
 			return err
 		}
 		if use {
-			c.SandboxPolicy.Warn(disclaimUnavail)
 			return r.runChild(action, extra, nil, phaseInstall)
 		}
 	}
@@ -297,7 +295,7 @@ func (r *runner) runChild(action string, extra json.RawMessage, raw []json.RawMe
 	spec := sandbox.Spec{
 		Profile: sb.Profile(), Exe: policy.Child[0], Args: append(slices.Clone(policy.Child[1:]), payloadPath, hex.EncodeToString(sum[:])),
 		Env: r.childEnv(home, tmp, socketPath), Dir: tmp, Stdin: policy.Stdin, PassStdin: policy.PassStdin && !needsParent,
-		Stdout: c.Log, Stderr: c.Err,
+		Stdout: c.Log, Stderr: c.Err, Disclaim: policy.Disclaim, DisclaimVia: []string{policy.Child[0], sandbox.DisclaimCommand},
 	}
 	start := time.Now()
 	code, runErr := sandbox.Run(r.ctx, spec)

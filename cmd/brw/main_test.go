@@ -11,10 +11,14 @@ import (
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/poststep"
+	"github.com/jigsmiths/brw/internal/sandbox"
 )
 
 // Clears the variables brw reads so CI or a developer's shell cannot change expectations.
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == sandbox.DisclaimCommand {
+		os.Exit(sandbox.DisclaimMain(os.Args[2:], os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == poststep.ChildCommand {
 		os.Exit(poststep.ChildMain(os.Args[2:], os.Stdout, os.Stderr, install.ChildActions()))
 	}
