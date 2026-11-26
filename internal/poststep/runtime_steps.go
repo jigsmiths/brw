@@ -119,7 +119,7 @@ func (r *runner) configureGCCRuntime() error {
 	if err != nil {
 		return err
 	}
-	if err := r.writeFile(specs+".orig", []byte(dumped), 0o644); err != nil {
+	if err := r.writeFile(specs+".orig", []byte(dumped), fileMode); err != nil {
 		return err
 	}
 	libdir := filepath.Join(prefix, "lib/gcc/current")
@@ -148,7 +148,7 @@ func (r *runner) configureGCCRuntime() error {
 	if rpath {
 		content = strings.ReplaceAll(content, " %o ", " %o %(homebrew_rpath) ")
 	}
-	return r.writeFile(specs, []byte(content), 0o644)
+	return r.writeFile(specs, []byte(content), fileMode)
 }
 
 func (r *runner) configurePHP() error {
@@ -156,7 +156,7 @@ func (r *runner) configurePHP() error {
 	channels := []string{filepath.Join(pear, ".channels"), filepath.Join(pear, ".channels/.alias")}
 	for _, c := range channels {
 		if fi, err := os.Stat(c); err == nil && fi.IsDir() {
-			if err := r.chmod(c, 0o755); err != nil {
+			if err := r.chmod(c, executableMode); err != nil {
 				return err
 			}
 		}
@@ -179,7 +179,7 @@ func (r *runner) configurePHP() error {
 		}
 	}
 	for _, f := range files {
-		if err := r.chmod(f, 0o644); err != nil {
+		if err := r.chmod(f, fileMode); err != nil {
 			return err
 		}
 	}
@@ -261,7 +261,7 @@ func (r *runner) configurePHP() error {
 	ini := filepath.Join(confD, "ext-opcache.ini")
 	line := `zend_extension="` + phpExtDir + `/opcache.so"`
 	if _, err := os.Stat(ini); err != nil {
-		return r.writeFile(ini, []byte("[opcache]\n"+line+"\n"), 0o644)
+		return r.writeFile(ini, []byte("[opcache]\n"+line+"\n"), fileMode)
 	}
 	return r.inreplace(step{Path: &pathSpec{Path: ini}, Regexp: true, Before: `^\s*zend_extension\s*=.*$`, After: strings.ReplaceAll(line, `\`, `\\`)})
 }
@@ -546,9 +546,9 @@ func untarGz(archive, dest string) error {
 		name := filepath.Clean(h.Name)
 		switch h.Typeflag {
 		case tar.TypeDir:
-			err = root.MkdirAll(name, 0o755)
+			err = root.MkdirAll(name, dirMode)
 		case tar.TypeReg:
-			if err = root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			if err = root.MkdirAll(filepath.Dir(name), dirMode); err != nil {
 				return err
 			}
 			var w *os.File

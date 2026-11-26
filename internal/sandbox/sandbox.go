@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-const Exec = "/usr/bin/sandbox-exec"
+const (
+	Exec        = "/usr/bin/sandbox-exec"
+	executeBits = 0o111
+)
 
 type kind int
 
@@ -224,5 +227,5 @@ func (s *Sandbox) Profile() string {
 
 func Available() bool {
 	fi, err := os.Stat(Exec)
-	return err == nil && fi.Mode()&0o111 != 0 && !fi.IsDir()
+	return err == nil && fi.Mode()&executeBits != 0 && !fi.IsDir()
 }

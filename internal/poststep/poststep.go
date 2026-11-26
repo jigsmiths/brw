@@ -808,5 +808,5 @@ func (r *runner) write(s step) error {
 			return err
 		}
 	}
-	return r.writeFile(abs, []byte(r.expand(s.Content)), 0o644)
+	return r.writeFile(abs, []byte(r.expand(s.Content)), fileMode)
 }

@@ -47,7 +47,7 @@ func (r *runner) inreplace(s step) error {
 	if !changed && !s.SkipAudit {
 		return inreplaceError{abs: {fmt.Sprintf("expected replacement of %s with %s", shown, rubyInspect(after))}}
 	}
-	mode := os.FileMode(0o644)
+	mode := fileMode
 	if fi, err := os.Stat(abs); err == nil {
 		mode = fi.Mode().Perm()
 	}

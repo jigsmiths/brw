@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+const (
+	dirMode        fs.FileMode = 0o755
+	fileMode       fs.FileMode = 0o644
+	executableMode fs.FileMode = 0o755
+	probeMode      fs.FileMode = 0o666
+	userRead       fs.FileMode = 0o400
+	accessExecute              = 0x1
+)
+
 func (r *runner) within(abs string) (string, bool) {
 	rel, err := filepath.Rel(r.c.Prefix, abs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -21,16 +30,16 @@ func (r *runner) within(abs string) (string, bool) {
 
 func (r *runner) mkdirAll(abs string) error {
 	if rel, ok := r.within(abs); ok {
-		return r.c.Root.MkdirAll(rel, 0o755)
+		return r.c.Root.MkdirAll(rel, dirMode)
 	}
-	return os.MkdirAll(abs, 0o755) //fsx:allow brew's Pathname#mkpath on a path the step named
+	return os.MkdirAll(abs, dirMode) //fsx:allow brew's Pathname#mkpath on a path the step named
 }
 
 func (r *runner) mkdir(abs string) error {
 	if rel, ok := r.within(abs); ok {
-		return r.c.Root.Mkdir(rel, 0o755)
+		return r.c.Root.Mkdir(rel, dirMode)
 	}
-	return os.Mkdir(abs, 0o755) //fsx:allow brew's Pathname#mkdir on a path the step named
+	return os.Mkdir(abs, dirMode) //fsx:allow brew's Pathname#mkdir on a path the step named
 }
 
 func (r *runner) writeFile(abs string, data []byte, perm fs.FileMode) error {
@@ -70,7 +79,7 @@ func (r *runner) touchAt(abs string) error {
 		return err
 	}
 	if _, err := os.Lstat(abs); err != nil {
-		return r.writeFile(abs, nil, 0o644)
+		return r.writeFile(abs, nil, fileMode)
 	}
 	now := time.Now()
 	if rel, ok := r.within(abs); ok {

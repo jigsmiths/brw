@@ -102,7 +102,7 @@ func (r *runner) anyVersionInstalled(formula string) bool {
 
 func (r *runner) formulaTool(formula, exe string, args ...string) error {
 	tool := filepath.Join(r.optPrefix(formula), "bin", exe)
-	if fi, err := os.Stat(tool); err != nil || fi.IsDir() || syscall.Access(tool, 1) != nil {
+	if fi, err := os.Stat(tool); err != nil || fi.IsDir() || syscall.Access(tool, accessExecute) != nil {
 		return fmt.Errorf("%s is missing required executable: %s", formula, tool)
 	}
 	return r.runCommand(tool, args...)
@@ -207,7 +207,7 @@ func (r *runner) installGzippedExecutable(s step) error {
 	if err := r.removeAny(source); err != nil {
 		return err
 	}
-	return r.chmod(target, 0o755)
+	return r.chmod(target, executableMode)
 }
 
 func (r *runner) gunzip(source, dest string) error {
@@ -220,7 +220,7 @@ func (r *runner) gunzip(source, dest string) error {
 	if err != nil {
 		return err
 	}
-	return r.writeFrom(dest, gz, 0o644)
+	return r.writeFrom(dest, gz, fileMode)
 }
 
 func (r *runner) setOwnership(s step) error {
@@ -270,7 +270,7 @@ func (r *runner) appManagementGranted(app string) (bool, error) {
 		return false, err
 	}
 	if looksWritableWithoutSudo(fi) {
-		if err := os.WriteFile(probe, nil, 0o666); err == nil { //fsx:allow brew's App Management probe inside the app
+		if err := os.WriteFile(probe, nil, probeMode); err == nil { //fsx:allow brew's App Management probe inside the app
 			_ = os.Remove(probe) //fsx:allow brew's App Management probe inside the app
 			return true, nil
 		} else if !errors.Is(err, fs.ErrPermission) {
@@ -362,7 +362,7 @@ func (r *runner) ensureWritable(file string, do func() error) (err error) {
 			return err
 		}
 		saved := fi.Mode().Perm()
-		if err := r.chmod(file, saved|userWrite|0o400); err != nil {
+		if err := r.chmod(file, saved|userWrite|userRead); err != nil {
 			return err
 		}
 		defer func() {
@@ -429,7 +429,7 @@ func (r *runner) configureClangSystem() error {
 			if err := r.removeAny(file); err != nil {
 				return err
 			}
-			if err := r.writeFile(file, []byte(config), 0o644); err != nil {
+			if err := r.writeFile(file, []byte(config), fileMode); err != nil {
 				return err
 			}
 		}
@@ -492,5 +492,5 @@ func (r *runner) atomicWrite(file, content string) error {
 	if err := r.removeAny(file); err != nil {
 		return err
 	}
-	return r.writeFile(file, []byte(content), 0o644)
+	return r.writeFile(file, []byte(content), fileMode)
 }

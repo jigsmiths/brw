@@ -47,7 +47,7 @@ func newTestInstall(t *testing.T, body []byte) *testInstall {
 	in := &Installer{
 		Warn: warn, Sandbox: poststep.Unsandboxed,
 		Root: root, Apps: apps,
-		Where:   Where{Prefix: prefix, AppDir: appDir, Home: "/Users/me"},
+		Where:   NewWhere(prefix, appDir, "/Users/me"),
 		Host:    platform.Host{OS: "darwin", MacVersion: "26.1", Arch: "arm64"},
 		Fetcher: &Fetcher{Dir: t.TempDir()},
 		Log:     out,

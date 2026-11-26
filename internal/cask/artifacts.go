@@ -24,13 +24,10 @@ type Where struct {
 	KeyboardLayoutDir string
 }
 
-const defaultKeyboardLayoutDir = "/Library/Keyboard Layouts"
+const DefaultKeyboardLayoutDir = "/Library/Keyboard Layouts"
 
-func (w Where) keyboardLayouts() string {
-	if w.KeyboardLayoutDir != "" {
-		return w.KeyboardLayoutDir
-	}
-	return defaultKeyboardLayoutDir
+func NewWhere(prefix, appDir, home string) Where {
+	return Where{Prefix: prefix, AppDir: appDir, Home: home, KeyboardLayoutDir: DefaultKeyboardLayoutDir}
 }
 
 func Placeholders(w Where) func(string) string {
@@ -267,7 +264,7 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 	dir := w.AppDir
 	switch kind {
 	case "keyboard_layout":
-		dir = w.keyboardLayouts()
+		dir = w.KeyboardLayoutDir
 	case "binary":
 		dir = filepath.Join(w.Prefix, "bin")
 	case "manpage":

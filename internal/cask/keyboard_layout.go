@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	stagedDirMode      = 0o755
 	keyboardLayoutName = "Keyboard Layout"
 	intlDataCache      = "/System/Library/Caches/com.apple.IntlDataCache.le*"
 )
@@ -101,7 +102,7 @@ func (in *Installer) moveBackKeyboardLayout(ctx context.Context, m move, force b
 		return brewError("It seems the %s source '%s' is not there.", keyboardLayoutName, m.target)
 	}
 	in.logf("==> Backing up %s '%s' to '%s'", keyboardLayoutName, filepath.Base(m.target), abs)
-	if err := in.Root.MkdirAll(filepath.Dir(staged), 0o755); err != nil {
+	if err := in.Root.MkdirAll(filepath.Dir(staged), stagedDirMode); err != nil {
 		return err
 	}
 	if err := in.sudoIfNeeded(ctx, "/bin/cp", in.backupArgs(m.target, abs)...); err != nil {

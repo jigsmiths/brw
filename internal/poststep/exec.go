@@ -162,5 +162,5 @@ func (r *runner) captureStdout(s step, stdout string) error {
 	if err := r.removeAny(abs); err != nil {
 		return err
 	}
-	return r.writeFile(abs, []byte(stdout), 0o644)
+	return r.writeFile(abs, []byte(stdout), fileMode)
 }

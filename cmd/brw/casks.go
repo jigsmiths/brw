@@ -108,7 +108,7 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 		}
 		in := &cask.Installer{
 			Root: root, Apps: apps,
-			Where:       cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
+			Where:       cask.NewWhere(prefix, appDir, home),
 			Host:        e.host,
 			Sandbox:     poststep.Sandboxed,
 			Verbose:     trace.verbose,
@@ -312,7 +312,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 	}
 	in := &cask.Installer{
 		Root: root, Apps: apps,
-		Where:   cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
+		Where:   cask.NewWhere(prefix, appDir, home),
 		Host:    e.host,
 		Sandbox: poststep.Sandboxed,
 		Fetcher: fetcher,
@@ -442,7 +442,7 @@ func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask,
 	appDir := caskroom.AppDir(prefix, c.Token)
 	in := &cask.Installer{
 		Root:    root,
-		Where:   cask.Where{Prefix: prefix, AppDir: appDir, Home: home},
+		Where:   cask.NewWhere(prefix, appDir, home),
 		Host:    e.host,
 		Sandbox: poststep.Sandboxed,
 		Log:     e.out, Warn: e.err,
