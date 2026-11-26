@@ -37,9 +37,7 @@ type Context struct {
 	Arch   string // arm or intel
 	AppDir string
 
-	// Sudo runs the privileged commands of steps that ask for sudo; nil runs them for real.
-	Sudo sudo.Runner
-	// Remove deletes a path the way brew's Cask::Utils.gain_permissions_remove does.
+	Sudo   sudo.Runner
 	Remove func(ctx context.Context, path string) error
 }
 

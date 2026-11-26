@@ -41,7 +41,6 @@ func (in *Installer) stepContext(token, version, staged string) poststep.Context
 	}
 }
 
-// stepRunner gives a step's sudo command the installer's output and trace, as brew's SystemCommand has.
 func (in *Installer) stepRunner() sudo.Runner {
 	return func(ctx context.Context, c sudo.Command) (sudo.Result, error) {
 		cmd := in.command(c.Privilege, c.Exe, c.Args...)

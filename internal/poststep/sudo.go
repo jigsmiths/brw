@@ -17,7 +17,6 @@ const (
 	accessWrite  = 0x2
 )
 
-// symlinkWithSudo may link outside the prefix, as brew's symlink step does.
 func (r *runner) symlinkWithSudo(s step) error {
 	if s.Target == nil {
 		return errors.New("the step has no path")
@@ -103,7 +102,6 @@ func (r *runner) mkdirAll(abs string) error {
 	return os.MkdirAll(abs, 0o755) //fsx:allow brew's Pathname#mkpath on a path the step named
 }
 
-// removeAny is brew's FileUtils.rm_f: a missing path and a directory stay as they are.
 func (r *runner) removeAny(abs string) error {
 	fi, err := os.Lstat(abs)
 	if err != nil || fi.IsDir() {
@@ -115,7 +113,6 @@ func (r *runner) removeAny(abs string) error {
 	return os.Remove(abs) //fsx:allow brew's FileUtils.rm_f on a path the step named
 }
 
-// readlink falls back to sudo when the link is unreadable, as brew's read_symlink does.
 func (r *runner) readlink(abs string) (string, error) {
 	got, err := os.Readlink(abs)
 	if !errors.Is(err, fs.ErrPermission) {

@@ -29,7 +29,6 @@ func (s *stubSudo) remove(_ context.Context, path string) error {
 	return nil
 }
 
-// sudoFixture links to a source file in a directory outside the prefix, as docker-desktop's kubectl link does.
 type sudoFixture struct {
 	*fixture
 	stub   *stubSudo
