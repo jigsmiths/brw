@@ -82,6 +82,24 @@ func (r *runner) touchAt(abs string) error {
 	return os.Chtimes(abs, now, now) //fsx:allow brew's FileUtils.touch on a path the step named
 }
 
+func (r *runner) chmod(abs string, perm fs.FileMode) error {
+	if rel, ok := r.within(abs); ok {
+		return r.c.Root.Chmod(rel, perm)
+	}
+	return os.Chmod(abs, perm) //fsx:allow brew's FileUtils.chmod on a path the step named
+}
+
+// overwrite rewrites a file in place outside the prefix, where hard links must see the change.
+func (r *runner) overwrite(abs string, data []byte, perm fs.FileMode) error {
+	if _, ok := r.within(abs); !ok {
+		return os.WriteFile(abs, data, perm) //fsx:allow brew's in place rewrite of a path the step named
+	}
+	if err := r.removeAny(abs); err != nil {
+		return err
+	}
+	return r.writeFile(abs, data, perm)
+}
+
 func (r *runner) removeAny(abs string) error {
 	fi, err := os.Lstat(abs)
 	if err != nil || fi.IsDir() {
@@ -132,17 +150,27 @@ func (r *runner) copyFile(source, dest string) error {
 	return r.writeFrom(dest, f, fi.Mode().Perm())
 }
 
-func (r *runner) copyTree(source, dest string) error {
+func (r *runner) copyTree(source, dest string) error { return r.copyTreeWith(source, dest, false) }
+
+// copyTreeOver is FileUtils.cp_r of "source/." onto an existing directory: files in the way are replaced.
+func (r *runner) copyTreeOver(source, dest string) error { return r.copyTreeWith(source, dest, true) }
+
+func (r *runner) copyTreeWith(source, dest string, replace bool) error {
 	return filepath.WalkDir(source, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		sub, _ := filepath.Rel(source, p)
 		dst := filepath.Join(dest, sub)
-		switch {
-		case d.IsDir():
+		if d.IsDir() {
 			return r.mkdirAll(dst)
-		case d.Type()&fs.ModeSymlink != 0:
+		}
+		if replace {
+			if err := r.removeAny(dst); err != nil {
+				return err
+			}
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
 			target, err := os.Readlink(p)
 			if err != nil {
 				return err

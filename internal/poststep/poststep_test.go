@@ -422,13 +422,13 @@ func TestUnsupported(t *testing.T) {
 	}
 	got := Unsupported(raw(`[
 		{"type":"mkdir_p","path":{"path":"x"}},
-		{"type":"gdk_pixbuf_query_loaders"},
-		{"type":"configure_gcc_runtime"},
+		{"type":"made_up_step"},
+		{"type":"another_made_up_step"},
 		{"type":"touch","sudo":true,"path":{"path":"b"}},
-		{"type":"gdk_pixbuf_query_loaders"},
+		{"type":"made_up_step"},
 		{"type":"run","command":{"path":"x"}}
 	]`))
-	want := []string{"gdk_pixbuf_query_loaders", "configure_gcc_runtime"}
+	want := []string{"made_up_step", "another_made_up_step"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Unsupported = %v, want %v", got, want)
 	}
@@ -441,7 +441,7 @@ func TestUnsupported(t *testing.T) {
 }
 
 func (f *fixture) runUnsupported() error {
-	return Run(context.Background(), Context{}, []json.RawMessage{json.RawMessage(`{"type":"configure_php"}`)})
+	return Run(context.Background(), Context{}, []json.RawMessage{json.RawMessage(`{"type":"made_up_step"}`)})
 }
 
 func TestSetPermissions(t *testing.T) {

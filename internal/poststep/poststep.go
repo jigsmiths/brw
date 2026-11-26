@@ -39,6 +39,11 @@ type Context struct {
 	Home string // the user's home, for the home base
 	Temp string // for the temp base
 
+	// The host, for the steps that configure it; each defaults to the running system.
+	MacVersion string // product version, darwin only
+	Kernel     string // uname -r
+	HostArch   string // GOARCH
+
 	Sudo   sudo.Runner
 	Remove func(ctx context.Context, path string) error
 }
@@ -103,6 +108,18 @@ type step struct {
 	PrintStdout    bool  `json:"print_stdout"`
 	Overwrite      *bool `json:"overwrite"`
 	Uninstall      bool  `json:"uninstall"`
+
+	Before        string `json:"before"`
+	After         string `json:"after"`
+	Regexp        bool   `json:"regexp"`
+	RegexpOptions int    `json:"regexp_options"`
+	SkipAudit     bool   `json:"skip_audit"`
+	FirstOnly     bool   `json:"first_only"`
+	User          string `json:"user"`
+	Group         string `json:"group"`
+	ID            string `json:"id"`
+	ResolveSource bool   `json:"resolve_source"`
+	AbiVersion    string `json:"abi_version"`
 }
 
 type sudoMode int
@@ -142,6 +159,10 @@ func RequiresSudo(steps []json.RawMessage) bool {
 var supported = []string{
 	"mkdir", "mkdir_p", "touch", "symlink", "copy", "move", "remove", "link_dir", "link_children",
 	"write", "warn", "set_permissions", "run", "init_data_dir", "terminate_process", "delete_keychain_certificate",
+	"set_ownership", "inreplace", "change_dylib_id", "move_children", "move_contents", "install_gzipped_executable",
+	"configure_gcc_runtime", "configure_glibc_runtime", "configure_clang_system", "configure_php",
+	"bootstrap_cpython", "bootstrap_pypy", "compile_gsettings_schemas", "gio_querymodules",
+	"gdk_pixbuf_query_loaders", "gtk_update_icon_cache", "update_mime_database", "update_desktop_database",
 }
 
 // Unsupported has no repeats.
@@ -534,6 +555,47 @@ func (r *runner) do(s step) error {
 		return r.terminateProcess(s)
 	case "delete_keychain_certificate":
 		return r.deleteKeychainCertificate(s)
+	case "set_ownership":
+		return r.setOwnership(s)
+	case "inreplace":
+		return r.inreplace(s)
+	case "change_dylib_id":
+		return r.changeDylibID(s)
+	case "move_children", "move_contents":
+		return r.moveContents(s)
+	case "install_gzipped_executable":
+		return r.installGzippedExecutable(s)
+	case "configure_gcc_runtime":
+		return r.configureGCCRuntime()
+	case "configure_glibc_runtime":
+		return r.configureGlibcRuntime()
+	case "configure_clang_system":
+		return r.configureClangSystem()
+	case "configure_php":
+		return r.configurePHP()
+	case "bootstrap_cpython":
+		return r.bootstrapCPython()
+	case "bootstrap_pypy":
+		return r.bootstrapPyPy(s.AbiVersion)
+	case "compile_gsettings_schemas":
+		return r.pathTool(s, "glib", "glib-compile-schemas")
+	case "gio_querymodules":
+		return r.pathTool(s, "glib", "gio-querymodules")
+	case "update_mime_database":
+		return r.pathTool(s, "shared-mime-info", "update-mime-database")
+	case "update_desktop_database":
+		return r.pathTool(s, "desktop-file-utils", "update-desktop-database")
+	case "gdk_pixbuf_query_loaders":
+		return r.formulaTool("gdk-pixbuf", "gdk-pixbuf-query-loaders", "--update-cache")
+	case "gtk_update_icon_cache":
+		dir, err := r.target(s.Path)
+		if err != nil {
+			return err
+		}
+		if r.anyVersionInstalled("gtk4") {
+			return r.formulaTool("gtk4", "gtk4-update-icon-cache", "-q", "-t", "-f", dir)
+		}
+		return r.formulaTool("gtk+3", "gtk3-update-icon-cache", "-q", "-t", "-f", dir)
 	}
 	return fmt.Errorf("unsupported step %q", s.Type)
 }
