@@ -9,10 +9,14 @@ import (
 
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
+	"github.com/jigsmiths/brw/internal/poststep"
 )
 
 // Clears the variables brw reads so CI or a developer's shell cannot change expectations.
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == poststep.ChildCommand {
+		os.Exit(poststep.ChildMain(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	for _, k := range []string{"HOMEBREW_NO_INSTALL_CLEANUP", "HOMEBREW_NO_AUTOREMOVE", "HOMEBREW_NO_CLEANUP_FORMULAE", "HOMEBREW_CACHE"} {
 		_ = os.Unsetenv(k)
 	}

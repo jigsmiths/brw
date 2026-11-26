@@ -60,6 +60,8 @@ type Installer struct {
 	reopen        []string
 	warnedSandbox bool
 
+	sandboxWarnings []string
+
 	ancestors      []string
 	ancestorsKnown bool
 }

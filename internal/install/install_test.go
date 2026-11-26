@@ -23,6 +23,7 @@ import (
 	"github.com/jigsmiths/brw/internal/install/installtest"
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/lock"
+	"github.com/jigsmiths/brw/internal/poststep"
 )
 
 var fixedTime = time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
@@ -52,7 +53,7 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(func() { _ = root.Close() })
 	e := &env{t: t, prefix: prefix, root: root, reg: installtest.NewRegistry(t)}
 	e.in = &Installer{
-		Root: root, Prefix: prefix,
+		Root: root, Prefix: prefix, Sandbox: poststep.Unsandboxed,
 		Fetcher: &bottle.Fetcher{Dir: filepath.Join(t.TempDir(), "downloads")},
 		Linker:  &link.Linker{Root: root, Prefix: prefix},
 		Now:     func() time.Time { return fixedTime },

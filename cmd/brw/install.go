@@ -20,6 +20,7 @@ import (
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/progress"
 	"github.com/jigsmiths/brw/internal/rb"
 	"github.com/jigsmiths/brw/internal/tap"
@@ -403,6 +404,7 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 		APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+hostTag+".jws.json"),
 		Log:     e.out,
 		User:    os.Getenv("USER"),
+		Sandbox: poststep.Sandboxed,
 
 		SBOMCreator: sbomCreator(),
 	}
