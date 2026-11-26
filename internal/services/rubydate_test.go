@@ -11,8 +11,22 @@ func unescapeTSV(s string) string {
 	return strings.NewReplacer(`\\`, "\x00", `\n`, "\n", `\t`, "\t", `\r`, "\r", `\v`, "\v", `\f`, "\f").Replace(s)
 }
 
-// testdata/ruby_plists.tsv is brew's Plist.parse_xml(marshal: false) plus UserName and to_plist, one case per line.
+var fixtureDay = time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+
+func TestPlistDatesUseTheRealClockByDefault(t *testing.T) {
+	before := time.Now()
+	got := now()
+	if got.Before(before) || time.Since(got) > time.Minute {
+		t.Errorf("now() = %v, want the current time", got)
+	}
+}
+
+// testdata/ruby_plists.tsv is brew's Plist.parse_xml(marshal: false) plus UserName and to_plist, one case per line,
+// generated on 2026-11-25.
 func TestApplyUserNameMatchesRubyPlistGem(t *testing.T) {
+	old := now
+	now = func() time.Time { return fixtureDay }
+	t.Cleanup(func() { now = old })
 	body, err := os.ReadFile("testdata/ruby_plists.tsv")
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +50,7 @@ func TestRubyDateTimeMatchesRuby(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	today := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	today := fixtureDay
 	lines := strings.Split(strings.TrimSuffix(string(body), "\n"), "\n")
 	if len(lines) < 100 {
 		t.Fatalf("only %d fixtures", len(lines))

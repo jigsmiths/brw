@@ -16,6 +16,8 @@ import (
 
 const userNameKeyName = "UserName"
 
+var now = time.Now
+
 // ApplyUserName sets UserName and re-serializes the plist as the Ruby plist gem's to_plist does.
 func ApplyUserName(plist []byte, user string) ([]byte, error) {
 	return rewritePlist(plist, func(dict *plistDict) {
@@ -487,7 +489,7 @@ func (n *plistNode) value() (any, error) {
 	case "real":
 		return rubyToF(n.text), nil
 	case "date":
-		day, err := rubyDateTime(n.text, time.Now())
+		day, err := rubyDateTime(n.text, now())
 		if err != nil {
 			return nil, err
 		}
