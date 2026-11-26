@@ -2,6 +2,7 @@ package poststep
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -80,7 +81,7 @@ func (f *fixture) run(steps string) error {
 	if err := json.Unmarshal([]byte(steps), &raw); err != nil {
 		f.t.Fatal(err)
 	}
-	return Run(f.ctx, raw)
+	return Run(context.Background(), f.ctx, raw)
 }
 
 func (f *fixture) mustRun(steps string) {
@@ -431,11 +432,11 @@ func TestUnsupported(t *testing.T) {
 		{"type":"mkdir_p","path":{"path":"x"}},
 		{"type":"gdk_pixbuf_query_loaders"},
 		{"type":"configure_gcc_runtime"},
-		{"type":"symlink","sudo":true,"source":{"path":"a"},"target":{"path":"b"}},
+		{"type":"touch","sudo":true,"path":{"path":"b"}},
 		{"type":"gdk_pixbuf_query_loaders"},
 		{"type":"run","command":{"path":"x"}}
 	]`))
-	want := []string{"gdk_pixbuf_query_loaders", "configure_gcc_runtime", "symlink with sudo"}
+	want := []string{"gdk_pixbuf_query_loaders", "configure_gcc_runtime", "touch with sudo"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Unsupported = %v, want %v", got, want)
 	}
@@ -448,7 +449,7 @@ func TestUnsupported(t *testing.T) {
 }
 
 func (f *fixture) runUnsupported() error {
-	return Run(Context{}, []json.RawMessage{json.RawMessage(`{"type":"configure_php"}`)})
+	return Run(context.Background(), Context{}, []json.RawMessage{json.RawMessage(`{"type":"configure_php"}`)})
 }
 
 func TestSetPermissions(t *testing.T) {
@@ -546,7 +547,7 @@ func TestUninstallRemovesOnlyTheLinksMarkedForIt(t *testing.T) {
 	if err := json.Unmarshal([]byte(steps), &raw); err != nil {
 		t.Fatal(err)
 	}
-	if err := Uninstall(f.ctx, raw); err != nil {
+	if err := Uninstall(context.Background(), f.ctx, raw); err != nil {
 		t.Fatal(err)
 	}
 	if f.exists("bin/marked") || !f.exists("bin/kept") || f.link("bin/moved") != "/elsewhere" || !f.exists("etc/tool.conf") {

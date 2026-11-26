@@ -1,12 +1,14 @@
 package cask
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/poststep"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 func readSteps(args json.RawMessage) ([]json.RawMessage, error) {
@@ -35,14 +37,24 @@ func (in *Installer) stepContext(token, version, staged string) poststep.Context
 	return poststep.Context{
 		Root: in.Root, Prefix: in.Where.Prefix, Name: token, Version: version, OS: in.Host.OS,
 		User: os.Getenv("USER"), Log: in.Log, Token: token, Staged: staged, Arch: arch, AppDir: in.Where.AppDir,
+		Sudo: in.stepRunner(), Remove: in.gainPermissionsRemove,
 	}
 }
 
-func (in *Installer) runSteps(kind, token, version, staged string, steps []json.RawMessage) error {
+// stepRunner gives a step's sudo command the installer's output and trace, as brew's SystemCommand has.
+func (in *Installer) stepRunner() sudo.Runner {
+	return func(ctx context.Context, c sudo.Command) (sudo.Result, error) {
+		cmd := in.command(c.Privilege, c.Exe, c.Args...)
+		cmd.MustSucceed = c.MustSucceed
+		return in.runner()(ctx, cmd)
+	}
+}
+
+func (in *Installer) runSteps(ctx context.Context, kind, token, version, staged string, steps []json.RawMessage) error {
 	if len(steps) == 0 {
 		return nil
 	}
-	if err := poststep.Run(in.stepContext(token, version, staged), steps); err != nil {
+	if err := poststep.Run(ctx, in.stepContext(token, version, staged), steps); err != nil {
 		return fmt.Errorf("%s: %s: %w", token, kind, err)
 	}
 	return nil

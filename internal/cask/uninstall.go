@@ -123,7 +123,7 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 		case "generate_completions_from_executable":
 			in.removeCompletions(token, s.generator)
 		case "preflight_steps", "postflight_steps":
-			if err := poststep.Uninstall(in.stepContext(token, s.version, s.stagedVersion), s.steps); err != nil {
+			if err := poststep.Uninstall(ctx, in.stepContext(token, s.version, s.stagedVersion), s.steps); err != nil {
 				return fmt.Errorf("%s: %s: %w", token, s.kind, err)
 			}
 		}

@@ -310,7 +310,7 @@ func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs)
 		return result
 	}
 	if len(f.PostInstallSteps) > 0 {
-		result.PostInstallErr = poststep.Run(poststep.Context{
+		result.PostInstallErr = poststep.Run(context.Background(), poststep.Context{
 			Root: in.Root, Prefix: in.Prefix, Name: f.Name, Version: f.Versions.Stable, Keg: keg,
 			OS: cmp.Or(in.OS, runtime.GOOS), User: in.User, Log: in.Log,
 		}, f.PostInstallSteps)

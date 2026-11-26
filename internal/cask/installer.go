@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
@@ -242,6 +243,10 @@ func (p installPlan) sudoArtifact() string {
 		return "installer"
 	case len(p.pkgs) > 0:
 		return "pkg"
+	case poststep.RequiresSudo(p.preflight):
+		return "preflight_steps"
+	case poststep.RequiresSudo(p.postflight):
+		return "postflight_steps"
 	}
 	return ""
 }

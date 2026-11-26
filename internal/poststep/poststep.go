@@ -3,6 +3,7 @@
 package poststep
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jigsmiths/brw/internal/fsx"
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 type Context struct {
@@ -34,6 +36,11 @@ type Context struct {
 	Staged string // absolute
 	Arch   string // arm or intel
 	AppDir string
+
+	// Sudo runs the privileged commands of steps that ask for sudo; nil runs them for real.
+	Sudo sudo.Runner
+	// Remove deletes a path the way brew's Cask::Utils.gain_permissions_remove does.
+	Remove func(ctx context.Context, path string) error
 }
 
 func (c Context) cask() bool { return c.Token != "" }
@@ -77,6 +84,8 @@ type step struct {
 	SymlinkTargetContains string `json:"symlink_target_contains"`
 	ContentContains       string `json:"content_contains"`
 
+	Sudo sudoMode `json:"sudo"`
+
 	Force          bool  `json:"force"`
 	Recursive      bool  `json:"recursive"`
 	NonRecursive   bool  `json:"non_recursive"`
@@ -85,6 +94,40 @@ type step struct {
 	SuppressStderr bool  `json:"suppress_stderr"`
 	Overwrite      *bool `json:"overwrite"`
 	Uninstall      bool  `json:"uninstall"`
+}
+
+type sudoMode int
+
+const (
+	sudoNever sudoMode = iota
+	sudoAlways
+	sudoIfNeeded
+)
+
+// UnmarshalJSON reads true and "if_needed"; brew treats any other value as no sudo.
+func (m *sudoMode) UnmarshalJSON(b []byte) error {
+	var v any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	switch v {
+	case true:
+		*m = sudoAlways
+	case "if_needed":
+		*m = sudoIfNeeded
+	}
+	return nil
+}
+
+// RequiresSudo is brew's sudo_required? without the optional steps: only `sudo: true` counts.
+func RequiresSudo(steps []json.RawMessage) bool {
+	for _, raw := range steps {
+		var s step
+		if json.Unmarshal(raw, &s) == nil && s.Sudo == sudoAlways {
+			return true
+		}
+	}
+	return false
 }
 
 var supported = []string{
@@ -107,7 +150,7 @@ func Unsupported(steps []json.RawMessage) []string {
 		switch {
 		case !slices.Contains(supported, s.Type):
 			reason = s.Type
-		case len(s.Sudo) > 0 && string(s.Sudo) != "null" && string(s.Sudo) != "false":
+		case s.Type != "symlink" && len(s.Sudo) > 0 && string(s.Sudo) != "null" && string(s.Sudo) != "false":
 			reason = s.Type + " with sudo"
 		default:
 			continue
@@ -120,11 +163,11 @@ func Unsupported(steps []json.RawMessage) []string {
 }
 
 // Run runs nothing if any step is unsupported.
-func Run(c Context, raw []json.RawMessage) error {
+func Run(ctx context.Context, c Context, raw []json.RawMessage) error {
 	if u := Unsupported(raw); len(u) > 0 {
 		return fmt.Errorf("unsupported post_install steps: %s", strings.Join(u, ", "))
 	}
-	r := &runner{c: c, guards: map[string]bool{}}
+	r := &runner{ctx: ctx, c: c, guards: map[string]bool{}}
 	for i, b := range raw {
 		var s step
 		if err := json.Unmarshal(b, &s); err != nil {
@@ -142,8 +185,8 @@ func Run(c Context, raw []json.RawMessage) error {
 
 // Uninstall removes only the symlinks of steps marked uninstall, and only if they
 // still lead where the step pointed them.
-func Uninstall(c Context, raw []json.RawMessage) error {
-	r := &runner{c: c, guards: map[string]bool{}}
+func Uninstall(ctx context.Context, c Context, raw []json.RawMessage) error {
+	r := &runner{ctx: ctx, c: c, guards: map[string]bool{}}
 	for i, b := range raw {
 		var s step
 		if err := json.Unmarshal(b, &s); err != nil {
@@ -152,27 +195,55 @@ func Uninstall(c Context, raw []json.RawMessage) error {
 		if s.Type != "symlink" || !s.Uninstall || s.Source == nil {
 			continue
 		}
-		_, rel, err := r.target(s.Target)
-		if err != nil {
+		if err := r.uninstallLink(s); err != nil {
 			return fmt.Errorf("step %d: %w", i+1, err)
-		}
-		want := r.expand(s.Source.Path)
-		if s.Source.Base != "relative" {
-			if want, err = r.resolve(*s.Source); err != nil {
-				return fmt.Errorf("step %d: %w", i+1, err)
-			}
-		}
-		if got, err := r.c.Root.Readlink(rel); err != nil || got != want {
-			continue
-		}
-		if err := r.c.Root.Remove(rel); err != nil {
-			return err
 		}
 	}
 	return nil
 }
 
+func (r *runner) uninstallLink(s step) error {
+	if s.Target == nil {
+		return errors.New("the step has no path")
+	}
+	abs, err := r.resolve(*s.Target)
+	if err != nil {
+		return err
+	}
+	rel, err := r.inside(abs)
+	if err != nil && s.Sudo == sudoNever {
+		return err
+	}
+	want := r.expand(s.Source.Path)
+	if s.Source.Base != "relative" {
+		if want, err = r.resolve(*s.Source); err != nil {
+			return err
+		}
+	}
+	if s.Sudo == sudoNever {
+		if got, err := r.c.Root.Readlink(rel); err != nil || got != want {
+			return nil
+		}
+		return r.c.Root.Remove(rel)
+	}
+	if fi, err := os.Lstat(abs); err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+		return nil
+	}
+	got, err := r.readlink(abs)
+	if err != nil || got != want {
+		return nil
+	}
+	if r.needsSudo(s, filepath.Dir(abs)) {
+		if r.c.Remove == nil {
+			return errors.New("no way to remove a path with sudo")
+		}
+		return r.c.Remove(r.ctx, abs)
+	}
+	return r.removeAny(abs)
+}
+
 type runner struct {
+	ctx    context.Context
 	c      Context
 	guards map[string]bool // answers by guard, kept for the whole run
 }
@@ -427,6 +498,9 @@ func (r *runner) removeFile(rel string) error {
 }
 
 func (r *runner) symlink(s step) error {
+	if s.Sudo != sudoNever {
+		return r.symlinkWithSudo(s)
+	}
 	_, rel, err := r.target(s.Target)
 	if err != nil {
 		return err
