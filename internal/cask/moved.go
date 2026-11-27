@@ -39,13 +39,11 @@ type movedKind struct {
 	base    relativeBase
 }
 
-// relativeBase says where a relative target goes.
 type relativeBase interface {
 	resolve(w Where, target string) string
 	requiresTarget() bool
 }
 
-// underDir puts a relative target in one of the cask directories.
 type underDir DirKey
 
 func (d underDir) resolve(w Where, target string) string {
@@ -54,7 +52,6 @@ func (d underDir) resolve(w Where, target string) string {
 
 func (underDir) requiresTarget() bool { return false }
 
-// underPrefix puts a relative target in a folder of the prefix.
 type underPrefix string
 
 func (p underPrefix) resolve(w Where, target string) string {
@@ -63,7 +60,6 @@ func (p underPrefix) resolve(w Where, target string) string {
 
 func (underPrefix) requiresTarget() bool { return false }
 
-// stanzaOnly is the generic artifact: its stanza names the target, so a relative one is the working directory's.
 type stanzaOnly struct{}
 
 func (stanzaOnly) resolve(_ Where, target string) string { return absolute(target) }
@@ -351,7 +347,6 @@ func (in *Installer) setXattr(ctx context.Context, args ...string) error {
 	return in.sudoIfNeeded(ctx, xattrTool, args...)
 }
 
-// copyXattrs gives to the extended attributes of from, except that to keeps its Finder tags.
 func (in *Installer) copyXattrs(ctx context.Context, from, to string) error {
 	if !in.quarantineAvailable() {
 		return nil
