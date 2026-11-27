@@ -1,21 +1,25 @@
 package cask
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/progress"
 )
 
 func sum(b []byte) string {
@@ -143,5 +147,43 @@ func TestFetchFailsOnHTTPError(t *testing.T) {
 	f := &Fetcher{Dir: t.TempDir()}
 	if _, err := f.Fetch(context.Background(), api.Cask{Token: "a", URL: srv.URL + "/a.zip", SHA256: "no_check"}); err == nil || !strings.Contains(err.Error(), "404") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestFetchAsksForTheFileUncompressed(t *testing.T) {
+	body := []byte("dmg bytes")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			_, _ = gz.Write(body)
+			_ = gz.Close()
+			return
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	var totals []progress.Size
+	f := &Fetcher{Dir: t.TempDir(), Progress: func(_ string, _ int64, total progress.Size) {
+		totals = append(totals, total)
+	}}
+	fetch(t, f, api.Cask{Token: "app", Version: "1.0", URL: srv.URL + "/App.dmg", SHA256: sum(body)})
+	if want := progress.Known(int64(len(body))); len(totals) == 0 || totals[0] != want {
+		t.Errorf("reported totals %+v, want the first to be %+v", totals, want)
+	}
+}
+
+func TestProgressOfUnknownSizeEndsComplete(t *testing.T) {
+	var lastDone int64
+	var lastTotal progress.Size
+	p := &progressReader{r: strings.NewReader("bytes"), report: func(_ string, done int64, total progress.Size) {
+		lastDone, lastTotal = done, total
+	}}
+	if _, err := io.ReadAll(p); err != nil {
+		t.Fatal(err)
+	}
+	if lastDone != 5 || lastTotal != progress.Known(5) {
+		t.Errorf("last report = done %d of %+v, want 5 of 5", lastDone, lastTotal)
 	}
 }

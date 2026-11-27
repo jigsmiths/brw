@@ -33,11 +33,30 @@ type sample struct {
 	done int64
 }
 
+type Size struct {
+	bytes int64
+	known bool
+}
+
+var Unknown Size
+
+func Known(n int64) Size { return Size{bytes: n, known: true} }
+
+func SizeOf(contentLength int64) Size {
+	if contentLength < 0 {
+		return Unknown
+	}
+	return Known(contentLength)
+}
+
+func (s Size) Bytes() (int64, bool) { return s.bytes, s.known }
+
 type item struct {
-	label       string
-	done, total int64
-	samples     []sample
-	finished    bool
+	label    string
+	done     int64
+	total    Size
+	samples  []sample
+	finished bool
 }
 
 // Display shows downloads as they happen. On a terminal it redraws one line per
@@ -65,8 +84,7 @@ func New(w io.Writer, tty bool) *Display {
 	return &Display{Now: time.Now, w: w, tty: tty}
 }
 
-// total is -1 if unknown.
-func (d *Display) Update(label string, done, total int64) {
+func (d *Display) Update(label string, done int64, total Size) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	now := d.Now()
@@ -80,7 +98,8 @@ func (d *Display) Update(label string, done, total int64) {
 	}
 	it.done, it.total = done, total
 	d.stale = true
-	justFinished := total >= 0 && done >= total && !it.finished
+	n, known := total.Bytes()
+	justFinished := known && done >= n && !it.finished
 	if justFinished {
 		it.finished = true
 	}
@@ -218,13 +237,13 @@ func (d *Display) line(it *item, labelW, barW int, withSpeed bool, now time.Time
 	}
 	bar := strings.Repeat(" ", barW)
 	size := fmt.Sprintf("%6s", cellar.ReadableSize(it.done))
-	if it.total >= 0 {
+	if total, known := it.total.Bytes(); known {
 		filled := barW
-		if it.total > 0 {
-			filled = int(int64(barW) * min(it.done, it.total) / it.total)
+		if total > 0 {
+			filled = int(int64(barW) * min(it.done, total) / total)
 		}
 		bar = strings.Repeat("#", filled) + strings.Repeat(" ", barW-filled)
-		size += fmt.Sprintf("/%6s", cellar.ReadableSize(it.total))
+		size += fmt.Sprintf("/%6s", cellar.ReadableSize(total))
 	}
 	speed := ""
 	if withSpeed && !it.finished {
