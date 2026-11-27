@@ -31,6 +31,26 @@ func TestProfileDeniesNetworkUnlessAllowed(t *testing.T) {
 	}
 }
 
+func TestAllowingWritesAllowsModeAndSetugidChangesToo(t *testing.T) {
+	dir := t.TempDir()
+	real, _ := filepath.EvalSymlinks(dir)
+	var s Sandbox
+	s.AllowWritePath(dir)
+	s.AllowWriteRegex(`^/x/`)
+	s.DenyWritePath(dir)
+	want := `(allow file-write* (subpath "` + real + `"))
+(allow file-write-setugid (subpath "` + real + `"))
+(allow file-write-mode (subpath "` + real + `"))
+(allow file-write* (regex #"^/x/"))
+(allow file-write-setugid (regex #"^/x/"))
+(allow file-write-mode (regex #"^/x/"))
+(deny file-write* (subpath "` + real + `"))
+`
+	if p := s.Profile(); !strings.Contains(p, want) {
+		t.Errorf("profile lacks\n%s\nin\n%s", want, p)
+	}
+}
+
 func TestProfileRulesAreRenderedInOrderAndQuoted(t *testing.T) {
 	dir := t.TempDir()
 	odd := filepath.Join(dir, `a "b" \c`)
