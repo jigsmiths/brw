@@ -27,7 +27,6 @@ import (
 // auth is the fixed token brew sends to ghcr.io for homebrew/core, which is public.
 const auth = "Bearer QQ=="
 
-// workers is how many downloads FetchAll runs at once.
 const workers = 4
 
 type Request struct {

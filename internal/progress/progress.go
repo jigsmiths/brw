@@ -33,7 +33,6 @@ type sample struct {
 	done int64
 }
 
-// Size is a download's total, which the server may not say.
 type Size struct {
 	bytes int64
 	known bool
@@ -43,7 +42,6 @@ var Unknown Size
 
 func Known(n int64) Size { return Size{bytes: n, known: true} }
 
-// SizeOf reads http.Response.ContentLength, which is -1 when unknown.
 func SizeOf(contentLength int64) Size {
 	if contentLength < 0 {
 		return Unknown
