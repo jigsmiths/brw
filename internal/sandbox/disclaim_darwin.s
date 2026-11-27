@@ -20,7 +20,7 @@ TEXT libc_posix_spawnattr_destroy_trampoline<>(SB),NOSPLIT,$0-0
 GLOBL	·libc_posix_spawnattr_destroy_trampoline_addr(SB), RODATA, $8
 DATA	·libc_posix_spawnattr_destroy_trampoline_addr(SB)/8, $libc_posix_spawnattr_destroy_trampoline<>(SB)
 
-TEXT libc_responsibility_spawnattrs_setdisclaim_trampoline<>(SB),NOSPLIT,$0-0
-	JMP	libc_responsibility_spawnattrs_setdisclaim(SB)
-GLOBL	·libc_responsibility_spawnattrs_setdisclaim_trampoline_addr(SB), RODATA, $8
-DATA	·libc_responsibility_spawnattrs_setdisclaim_trampoline_addr(SB)/8, $libc_responsibility_spawnattrs_setdisclaim_trampoline<>(SB)
+TEXT libc_dlsym_trampoline<>(SB),NOSPLIT,$0-0
+	JMP	libc_dlsym(SB)
+GLOBL	·libc_dlsym_trampoline_addr(SB), RODATA, $8
+DATA	·libc_dlsym_trampoline_addr(SB)/8, $libc_dlsym_trampoline<>(SB)
