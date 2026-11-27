@@ -26,7 +26,11 @@ import (
 type Config struct {
 	Languages      []string
 	ExplicitAppDir string
+	// ExplicitDirs holds the other directory options the user gave, by brew's key such as keyboard_layoutdir.
+	ExplicitDirs map[string]string
 }
+
+const keyboardLayoutKey = "keyboard_layoutdir"
 
 type Installer struct {
 	Root    *fsx.Root
@@ -59,6 +63,8 @@ type Installer struct {
 	upgrading     bool
 	reopen        []string
 	warnedSandbox bool
+
+	sandboxWarnings []string
 
 	ancestors      []string
 	ancestorsKnown bool
@@ -568,7 +574,8 @@ func (in *Installer) writeConfig(c api.Cask) error {
 		ScreenSaverDir     string   `json:"screen_saverdir"`
 	}
 	type appDir struct {
-		AppDir string `json:"appdir,omitempty"`
+		AppDir            string `json:"appdir,omitempty"`
+		KeyboardLayoutDir string `json:"keyboard_layoutdir,omitempty"`
 	}
 	languages := in.Config.Languages
 	if languages == nil {
@@ -588,7 +595,7 @@ func (in *Installer) writeConfig(c api.Cask) error {
 			AudioUnitPluginDir: lib("Audio/Plug-Ins/Components"), VSTPluginDir: lib("Audio/Plug-Ins/VST"),
 			VST3PluginDir: lib("Audio/Plug-Ins/VST3"), ScreenSaverDir: lib("Screen Savers"),
 		},
-		Explicit: appDir{in.Config.ExplicitAppDir},
+		Explicit: appDir{in.Config.ExplicitAppDir, in.Config.ExplicitDirs[keyboardLayoutKey]},
 	})
 	if err != nil {
 		return err

@@ -28,7 +28,6 @@ type rule struct {
 	operation string
 	kind      kind
 	path      string
-	modifier  string
 }
 
 type Sandbox struct{ rules []rule }
@@ -54,6 +53,8 @@ func expandRealpath(path string) string {
 	}
 }
 
+func (s *Sandbox) AllowReadLiteral(path string)   { s.add(true, "file-read*", literal, path) }
+func (s *Sandbox) AllowWriteRegex(pattern string) { s.add(true, "file-write*", regex, pattern) }
 func (s *Sandbox) AllowRead(path string)          { s.add(true, "file-read*", subpath, path) }
 func (s *Sandbox) DenyReadPath(path string)       { s.add(false, "file-read*", subpath, path) }
 func (s *Sandbox) AllowWritePath(path string)     { s.add(true, "file-write*", subpath, path) }
@@ -90,9 +91,6 @@ func (s *Sandbox) DenyReadHome(home string, readable []string, warn func(string)
 	home = realpath(home)
 	var paths []string
 	for _, p := range readable {
-		if p == "" {
-			continue
-		}
 		paths = append(paths, filepath.Clean(p))
 		if r, err := filepath.EvalSymlinks(p); err == nil {
 			paths = append(paths, r)
@@ -162,9 +160,6 @@ func (r rule) String() string {
 		fmt.Fprintf(&b, ` (subpath "%s")`, quote(r.path))
 	case literal:
 		fmt.Fprintf(&b, ` (literal "%s")`, quote(r.path))
-	}
-	if r.modifier != "" {
-		fmt.Fprintf(&b, " (with %s)", r.modifier)
 	}
 	b.WriteString(")")
 	return b.String()

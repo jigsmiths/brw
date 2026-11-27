@@ -115,6 +115,27 @@ func TestSymlinkTargetMustStayInside(t *testing.T) {
 	}
 }
 
+func TestModeNeedsChmod(t *testing.T) {
+	info, err := os.Stat(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	perm := info.Mode().Perm()
+	for name, tt := range map[string]struct {
+		statErr error
+		perm    fs.FileMode
+		want    bool
+	}{
+		"same mode":   {nil, perm, false},
+		"other mode":  {nil, perm ^ 0o001, true},
+		"stat failed": {errors.New("stat failed"), perm, true},
+	} {
+		if got := modeNeedsChmod(info, tt.statErr, tt.perm); got != tt.want {
+			t.Errorf("%s: modeNeedsChmod = %v, want %v", name, got, tt.want)
+		}
+	}
+}
+
 func TestSymlinkAnyMayPointOutside(t *testing.T) {
 	r, dir, _ := newRoot(t)
 	outside := t.TempDir()

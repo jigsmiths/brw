@@ -13,7 +13,7 @@ import (
 const (
 	lnPath       = "/bin/ln"
 	readlinkPath = "/usr/bin/readlink"
-	accessWrite  = 0x2
+	accessWrite  = 1 << 1 // W_OK in sys/unistd.h
 )
 
 func (r *runner) symlink(s step) error {

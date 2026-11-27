@@ -9,16 +9,36 @@ import (
 
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
+	"github.com/jigsmiths/brw/internal/install"
+	"github.com/jigsmiths/brw/internal/poststep"
+	"github.com/jigsmiths/brw/internal/sandbox"
 )
 
 // Clears the variables brw reads so CI or a developer's shell cannot change expectations.
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == sandbox.DisclaimCommand {
+		os.Exit(sandbox.DisclaimMain(os.Args[2:], os.Stderr))
+	}
+	if len(os.Args) > 1 && os.Args[1] == poststep.ChildCommand {
+		os.Exit(poststep.ChildMain(os.Args[2:], os.Stdout, os.Stderr, install.ChildActions()))
+	}
 	for _, k := range []string{"HOMEBREW_NO_INSTALL_CLEANUP", "HOMEBREW_NO_AUTOREMOVE", "HOMEBREW_NO_CLEANUP_FORMULAE", "HOMEBREW_CACHE"} {
 		_ = os.Unsetenv(k)
 	}
 	_ = os.Unsetenv("HOMEBREW_NO_SUDO")
 	_ = os.Setenv("HOMEBREW_SUDO_CHECKED", "1")
 	os.Exit(m.Run())
+}
+
+// shortTempDir is a temporary directory whose path leaves room for a unix socket, which t.TempDir's does not.
+func shortTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "bt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
 }
 
 func TestFormatVersions(t *testing.T) {
