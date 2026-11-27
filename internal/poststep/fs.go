@@ -17,7 +17,7 @@ const (
 	executableMode fs.FileMode = 0o755
 	probeMode      fs.FileMode = 0o666
 	userRead       fs.FileMode = 0o400
-	accessExecute              = 0x1
+	accessExecute              = 1 << 0 // X_OK in sys/unistd.h
 )
 
 func (r *runner) within(abs string) (string, bool) {

@@ -71,6 +71,20 @@ func TestKeyboardLayoutIsMovedLinkedAndTheIntlCacheCleared(t *testing.T) {
 	}
 }
 
+func TestKeyboardLayoutDirOptionIsRecordedAsExplicit(t *testing.T) {
+	l := newLayoutInstall(t)
+	t.Setenv("HOMEBREW_NO_SUDO", "")
+	t.Setenv("HOMEBREW_SUDO_CHECKED", "1")
+	l.ti.in.Config.ExplicitDirs = map[string]string{keyboardLayoutKey: l.layouts}
+	if err := l.installLayout(t); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(l.ti.prefix, "Caskroom/app/.metadata/config.json"))
+	if err != nil || !strings.Contains(string(b), `"keyboard_layoutdir":"`+l.layouts+`"}}`) {
+		t.Errorf("config.json = %s, %v", b, err)
+	}
+}
+
 func TestKeyboardLayoutRequiresSudoUpFront(t *testing.T) {
 	l := newLayoutInstall(t)
 	t.Setenv("HOMEBREW_NO_SUDO", "1")

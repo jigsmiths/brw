@@ -3,8 +3,10 @@ package install
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -19,6 +21,8 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/fsx"
+	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/rb"
 	"github.com/jigsmiths/brw/internal/relocate"
 	"github.com/jigsmiths/brw/internal/sbom"
@@ -86,8 +90,41 @@ func buildpath(dir string) (string, error) {
 	return dir, nil
 }
 
-// tapPostInstall is run_post_install: the user's PATH and a temporary home.
-func (in *Installer) tapPostInstall(f *api.Formula) error {
+const PostInstallAction = "formula_post_install"
+
+type postInstallRequest struct {
+	Name  string `json:"name"`
+	Tap   string `json:"tap"`
+	Cache string `json:"cache"`
+	Code  []byte `json:"code"`
+}
+
+func ChildActions() poststep.Actions {
+	return poststep.Actions{PostInstallAction: runPostInstallInChild}
+}
+
+func runPostInstallInChild(_ context.Context, c poststep.Context, extra json.RawMessage, stdout, _ io.Writer) error {
+	var req postInstallRequest
+	if err := json.Unmarshal(extra, &req); err != nil {
+		return err
+	}
+	tag, err := platform.Tag(platform.Host{OS: c.OS, MacVersion: c.MacVersion, Arch: c.GOARCH})
+	if err != nil {
+		return err
+	}
+	formula, err := rb.LoadFormula(req.Code, req.Name, tag)
+	if err != nil {
+		return err
+	}
+	home, temp := os.Getenv("HOME"), os.Getenv("HOMEBREW_TEMP")
+	env := sandboxEnv(home, req.Cache, temp)
+	env["PATH"] = os.Getenv("PATH")
+	return formula.PostInstall(&rb.InstallEnv{
+		Host: &kegHost{root: c.Root}, Prefix: c.Prefix, Buildpath: home, Env: env, Tap: req.Tap, Out: stdout,
+	})
+}
+
+func (in *Installer) tapPostInstall(f *api.Formula, pctx poststep.Context) error {
 	if in.LoadSource == nil {
 		return ErrNoSource
 	}
@@ -95,17 +132,24 @@ func (in *Installer) tapPostInstall(f *api.Formula) error {
 	if err != nil {
 		return err
 	}
-	temp := cmp.Or(os.Getenv("HOMEBREW_TEMP"), "/private/tmp")
-	home, err := os.MkdirTemp(temp, f.Name+"-postinstall-") //fsx:allow a temporary home outside the prefix
+	inProcess := func() error {
+		temp := cmp.Or(os.Getenv("HOMEBREW_TEMP"), "/private/tmp")
+		home, err := os.MkdirTemp(temp, f.Name+"-postinstall-") //fsx:allow a temporary home outside the prefix
+		if err != nil {
+			return err
+		}
+		defer func() { _ = os.RemoveAll(home) }() //fsx:allow the temporary home
+		env := sandboxEnv(home, filepath.Dir(in.Fetcher.Dir), temp)
+		env["PATH"] = os.Getenv("PATH")
+		return src.Formula.PostInstall(&rb.InstallEnv{
+			Host: &kegHost{root: in.Root, run: in.Run}, Prefix: in.Prefix, Buildpath: home, Env: env, Tap: f.Tap, Out: in.Log,
+		})
+	}
+	extra, err := json.Marshal(postInstallRequest{Name: f.Name, Tap: f.Tap, Cache: filepath.Dir(in.Fetcher.Dir), Code: src.Code})
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.RemoveAll(home) }() //fsx:allow the temporary home
-	env := sandboxEnv(home, filepath.Dir(in.Fetcher.Dir), temp)
-	env["PATH"] = os.Getenv("PATH")
-	return src.Formula.PostInstall(&rb.InstallEnv{
-		Host: &kegHost{root: in.Root, run: in.Run}, Prefix: in.Prefix, Buildpath: home, Env: env, Tap: f.Tap, Out: in.Log,
-	})
+	return poststep.RunAction(context.Background(), pctx, PostInstallAction, extra, inProcess)
 }
 
 // applyPatches is Patch.apply; an external patch must be a single patch file.

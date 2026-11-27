@@ -20,6 +20,7 @@ import (
 	"github.com/jigsmiths/brw/internal/install"
 	"github.com/jigsmiths/brw/internal/link"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/progress"
 	"github.com/jigsmiths/brw/internal/rb"
 	"github.com/jigsmiths/brw/internal/tap"
@@ -32,6 +33,7 @@ func installCommand(e *env, args []string) error {
 	prefixArg, journal := changeFlags(e, fs, &dryRun)
 	kinds := kindFlags(fs)
 	appDir := fs.String("appdir", "", "move apps into this folder instead of /Applications")
+	keyboardLayoutDir := fs.String("keyboard-layoutdir", "", "move keyboard layouts into this folder instead of /Library/Keyboard Layouts")
 	adopt := fs.Bool("adopt", false, "take over apps already in the app folder")
 	head := fs.Bool("HEAD", false, "install a formula's HEAD version, built from its repository")
 	trace := traceFlags(fs)
@@ -40,7 +42,7 @@ func installCommand(e *env, args []string) error {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--appdir DIR] [--adopt] [--verbose] [--debug] [--dry-run] NAME [NAME ...]")
+		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--appdir DIR] [--keyboard-layoutdir DIR] [--adopt] [--verbose] [--debug] [--dry-run] NAME [NAME ...]")
 	}
 	formulaOnly, caskOnly, err := kinds()
 	if err != nil {
@@ -59,7 +61,7 @@ func installCommand(e *env, args []string) error {
 		failures = append(failures, installFormulae(e, prefix, *journal, dryRun, *head, r))
 	}
 	if len(r.casks) > 0 {
-		failures = append(failures, installCasks(e, prefix, *journal, *appDir, dryRun, *adopt, *trace, r.casks))
+		failures = append(failures, installCasks(e, prefix, *journal, *appDir, *keyboardLayoutDir, dryRun, *adopt, *trace, r.casks))
 	}
 	return errors.Join(failures...)
 }
@@ -403,6 +405,7 @@ func runInstall(e *env, root *fsx.Root, prefix, downloads string, plan *install.
 		APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+hostTag+".jws.json"),
 		Log:     e.out,
 		User:    os.Getenv("USER"),
+		Sandbox: poststep.Sandboxed,
 
 		SBOMCreator: sbomCreator(),
 	}

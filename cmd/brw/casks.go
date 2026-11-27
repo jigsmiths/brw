@@ -24,7 +24,7 @@ import (
 	"github.com/jigsmiths/brw/internal/uninstall"
 )
 
-func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool, trace tracing, casks []api.Cask) error {
+func installCasks(e *env, prefix, journal, appDirArg, keyboardLayoutDirArg string, dryRun, adopt bool, trace tracing, casks []api.Cask) error {
 	e.setTracing(trace)
 	tag, err := platform.Tag(e.host)
 	if err != nil {
@@ -88,6 +88,13 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 			return err
 		}
 	}
+	keyboardLayoutDir, explicitDirs := cask.DefaultKeyboardLayoutDir, map[string]string{}
+	if keyboardLayoutDirArg != "" {
+		if keyboardLayoutDir, err = filepath.Abs(keyboardLayoutDirArg); err != nil {
+			return err
+		}
+		explicitDirs["keyboard_layoutdir"] = keyboardLayoutDir
+	}
 	if err := os.MkdirAll(appDir, 0o755); err != nil { //fsx:allow the applications folder, outside the prefix
 		return err
 	}
@@ -108,13 +115,14 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 		}
 		in := e.caskInstaller(root, prefix, appDir, home, caskDownloads(client), trace)
 		in.Apps = apps
+		in.Where = in.Where.WithKeyboardLayoutDir(keyboardLayoutDir)
 		in.Fetcher = &cask.Fetcher{Dir: caskDownloads(client)}
 		in.Now = time.Now
 		in.Version = version
 		in.Adopt = adopt
 		in.RuntimeDeps = e.runtimeDepsFor(context.Background(), prefix, tag, caskIdx, nil)
 		in.APIPath = filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json")
-		in.Config = cask.Config{Languages: macLanguages(), ExplicitAppDir: explicit(appDirArg, appDir)}
+		in.Config = cask.Config{Languages: macLanguages(), ExplicitAppDir: explicit(appDirArg, appDir), ExplicitDirs: explicitDirs}
 		in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
 			return e.satisfyDependencies(ctx, prefix, journal, in, appDir, in.Config.ExplicitAppDir, tag, caskIdx, c)
 		}
@@ -302,6 +310,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 	}
 	in := e.caskInstaller(root, prefix, appDir, home, fetcher.Dir, trace)
 	in.Apps = apps
+	in.Where = in.Where.WithKeyboardLayoutDir(caskroom.KeyboardLayoutDir(prefix, old.Token))
 	in.Fetcher = fetcher
 	in.Now = time.Now
 	in.Version = version
@@ -445,6 +454,7 @@ func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask,
 		return err
 	}
 	in := e.caskInstaller(root, prefix, appDir, home, caskDownloads(client), trace)
+	in.Where = in.Where.WithKeyboardLayoutDir(caskroom.KeyboardLayoutDir(prefix, c.Token))
 	e.setTracing(trace)
 	if _, err := os.Stat(appDir); err == nil {
 		apps, err := fsx.Open(appDir, nil)

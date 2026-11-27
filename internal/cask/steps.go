@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/poststep"
@@ -39,12 +40,17 @@ func (in *Installer) stepContext(token, version, staged string) poststep.Context
 	if in.Where.Prefix == "/opt/homebrew" {
 		repository = in.Where.Prefix
 	}
-	policy := poststep.NewSandboxPolicy(in.CacheDir, filepath.Join(in.Where.Home, "Library/Logs/Homebrew"), repository, func(m string) {
-		if !in.warnedSandbox {
-			in.warnf("%s", m)
-			in.warnedSandbox = true
-		}
-	})
+	self, err := os.Executable()
+	if err != nil {
+		self = os.Args[0]
+	}
+	policy := poststep.NewSandboxPolicy(in.Where.Prefix, in.CacheDir, filepath.Join(in.Where.Home, "Library/Logs/Homebrew"), repository,
+		[]string{self, poststep.ChildCommand}, os.Stdin, in.Verbose, func(m string) {
+			if !slices.Contains(in.sandboxWarnings, m) {
+				in.warnf("%s", m)
+				in.sandboxWarnings = append(in.sandboxWarnings, m)
+			}
+		})
 	return poststep.Context{
 		Sandbox: in.Sandbox, SandboxPolicy: policy,
 		Root: in.Root, Prefix: in.Where.Prefix, Name: token, Version: version, OS: in.Host.OS,

@@ -150,7 +150,7 @@ func (m *sudoMode) UnmarshalJSON(b []byte) error {
 func RequiresSudo(steps []json.RawMessage) bool {
 	for _, raw := range steps {
 		var s step
-		if json.Unmarshal(raw, &s) == nil && (s.Sudo == sudoAlways || s.Type == "delete_keychain_certificate") {
+		if json.Unmarshal(raw, &s) == nil && s.requiresSudo(false) {
 			return true
 		}
 	}
@@ -181,49 +181,6 @@ func Unsupported(steps []json.RawMessage) []string {
 		}
 	}
 	return out
-}
-
-// Run runs nothing if any step is unsupported.
-func Run(ctx context.Context, c Context, raw []json.RawMessage) error {
-	if u := Unsupported(raw); len(u) > 0 {
-		return fmt.Errorf("unsupported post_install steps: %s", strings.Join(u, ", "))
-	}
-	if c.Sandbox != Sandboxed && c.Sandbox != Unsandboxed {
-		return errors.New("the context does not say whether steps are sandboxed")
-	}
-	r := &runner{ctx: ctx, c: c, guards: map[string]bool{}}
-	for i, b := range raw {
-		var s step
-		if err := json.Unmarshal(b, &s); err != nil {
-			return fmt.Errorf("post_install step %d: %w", i+1, err)
-		}
-		if !r.guardsMatch(s) {
-			continue
-		}
-		if err := r.do(s); err != nil {
-			return fmt.Errorf("post_install step %d (%s): %w", i+1, s.Type, err)
-		}
-	}
-	return nil
-}
-
-// Uninstall removes only the symlinks of steps marked uninstall, and only if they
-// still lead where the step pointed them.
-func Uninstall(ctx context.Context, c Context, raw []json.RawMessage) error {
-	r := &runner{ctx: ctx, c: c, guards: map[string]bool{}}
-	for i, b := range raw {
-		var s step
-		if err := json.Unmarshal(b, &s); err != nil {
-			return fmt.Errorf("step %d: %w", i+1, err)
-		}
-		if s.Type != "symlink" || !s.Uninstall || s.Source == nil {
-			continue
-		}
-		if err := r.uninstallLink(s); err != nil {
-			return fmt.Errorf("step %d: %w", i+1, err)
-		}
-	}
-	return nil
 }
 
 func (r *runner) uninstallLink(s step) error {
