@@ -448,7 +448,6 @@ func caskDownloads(client *api.Client) string {
 	return filepath.Join(client.CacheDir, "cask-downloads")
 }
 
-// As brew does, fetch every cask before uninstalling any, so a failed download keeps the old install.
 func reinstallCasks(e *env, prefix, journal string, dryRun bool, trace tracing, casks []api.Cask) error {
 	e.setTracing(trace)
 	tag, err := platform.Tag(e.host)
