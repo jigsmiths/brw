@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -263,9 +264,18 @@ func attachHdiutil(ctx context.Context, file, mnt string) ([]byte, error) {
 var (
 	runTool        = func(name string, args ...string) ([]byte, error) { return exec.Command(name, args...).CombinedOutput() }
 	isMounted      = mounted
-	deviceAttached = func(dev string) bool { _, err := os.Stat("/dev/" + dev); return err == nil }
+	deviceAttached = imageListed
 	pause          = time.Sleep
 )
+
+// imageListed asks hdiutil, which can still list an image after its /dev node is gone.
+func imageListed(dev string) bool {
+	if out, err := runTool("hdiutil", "info", "-plist"); err == nil {
+		return slices.Contains(plistStrings(out, "dev-entry"), "/dev/"+dev)
+	}
+	_, err := os.Stat("/dev/" + dev)
+	return err == nil
+}
 
 func imageDevice(plist []byte) string {
 	devs := plistStrings(plist, "dev-entry")

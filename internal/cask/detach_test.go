@@ -59,6 +59,29 @@ func TestDetachDetachesAfterAFailedDetach(t *testing.T) {
 	}
 }
 
+const listedDev = "disk99999"
+
+func TestReleaseDetachesAnImageThatHdiutilStillListsWithoutADeviceNode(t *testing.T) {
+	oldRun, oldPause := runTool, pause
+	t.Cleanup(func() { runTool, pause = oldRun, oldPause })
+	pause = func(time.Duration) {}
+	listed := true
+	var calls []string
+	runTool = func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		if name == "hdiutil" && args[0] == "info" && listed {
+			return []byte("<plist><dict><key>dev-entry</key><string>/dev/" + listedDev + "</string></dict></plist>"), nil
+		}
+		if name == "hdiutil" && args[0] == "detach" {
+			listed = false
+		}
+		return nil, nil
+	}
+	if err := release(listedDev, nil); err != nil || listed {
+		t.Errorf("err = %v, still listed = %v after %q", err, listed, calls)
+	}
+}
+
 func TestDetachIgnoresAnImageThatIsGone(t *testing.T) {
 	d := &fakeDisk{}
 	stubDisk(t, d)
