@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/progress"
 )
 
 func sum(b []byte) string {
@@ -163,27 +164,26 @@ func TestFetchAsksForTheFileUncompressed(t *testing.T) {
 		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
-	var first [2]int64
-	f := &Fetcher{Dir: t.TempDir(), Progress: func(_ string, done, total int64) {
-		if first == [2]int64{} {
-			first = [2]int64{done, total}
-		}
+	var totals []progress.Size
+	f := &Fetcher{Dir: t.TempDir(), Progress: func(_ string, _ int64, total progress.Size) {
+		totals = append(totals, total)
 	}}
 	fetch(t, f, api.Cask{Token: "app", Version: "1.0", URL: srv.URL + "/App.dmg", SHA256: sum(body)})
-	if want := int64(len(body)); first[1] != want {
-		t.Errorf("first report total = %d, want %d", first[1], want)
+	if want := progress.Known(int64(len(body))); len(totals) == 0 || totals[0] != want {
+		t.Errorf("reported totals %+v, want the first to be %+v", totals, want)
 	}
 }
 
 func TestProgressOfUnknownSizeEndsComplete(t *testing.T) {
-	var last [2]int64
-	p := &progressReader{r: strings.NewReader("bytes"), total: -1, report: func(_ string, done, total int64) {
-		last = [2]int64{done, total}
+	var lastDone int64
+	var lastTotal progress.Size
+	p := &progressReader{r: strings.NewReader("bytes"), report: func(_ string, done int64, total progress.Size) {
+		lastDone, lastTotal = done, total
 	}}
 	if _, err := io.ReadAll(p); err != nil {
 		t.Fatal(err)
 	}
-	if last != [2]int64{5, 5} {
-		t.Errorf("last report = done %d of %d, want 5 of 5", last[0], last[1])
+	if lastDone != 5 || lastTotal != progress.Known(5) {
+		t.Errorf("last report = done %d of %+v, want 5 of 5", lastDone, lastTotal)
 	}
 }

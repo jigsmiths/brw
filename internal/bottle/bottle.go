@@ -21,12 +21,14 @@ import (
 	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/progress"
 )
 
 // auth is the fixed token brew sends to ghcr.io for homebrew/core, which is public.
 const auth = "Bearer QQ=="
 
-const defaultWorkers = 4
+// workers is how many downloads FetchAll runs at once.
+const workers = 4
 
 type Request struct {
 	Name       string
@@ -43,28 +45,26 @@ type Result struct {
 }
 
 type Fetcher struct {
-	HTTP    *http.Client
-	Dir     string
-	Workers int // simultaneous downloads in FetchAll; 4 if zero
-	// Progress gets the label "name (version)" and total -1 when unknown. It is
-	// called concurrently, and not for cached bottles.
-	Progress func(name string, done, total int64)
+	HTTP     *http.Client
+	Dir      string
+	Progress func(label string, done int64, total progress.Size)
 }
 
 type progressReader struct {
-	r           io.Reader
-	name        string
-	done, total int64
-	report      func(name string, done, total int64)
+	r      io.Reader
+	label  string
+	done   int64
+	total  progress.Size
+	report func(label string, done int64, total progress.Size)
 }
 
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.done += int64(n)
 	if err == io.EOF {
-		p.total = p.done
+		p.total = progress.Known(p.done)
 	}
-	p.report(p.name, p.done, p.total)
+	p.report(p.label, p.done, p.total)
 	return n, err
 }
 
@@ -286,7 +286,7 @@ func (f *Fetcher) download(ctx context.Context, name string, file api.BottleFile
 	h := sha256.New()
 	var body io.Reader = resp.Body
 	if f.Progress != nil {
-		body = &progressReader{r: body, name: name, total: resp.ContentLength, report: f.Progress}
+		body = &progressReader{r: body, label: name, total: progress.SizeOf(resp.ContentLength), report: f.Progress}
 	}
 	_, err = io.Copy(io.MultiWriter(tmp, h), body)
 	if cerr := tmp.Close(); err == nil {
@@ -334,10 +334,6 @@ func (f *Fetcher) get(ctx context.Context, url, accept string) (*http.Response, 
 // FetchAll fetches the requests with a few downloads at a time, returning the
 // results in request order. If any fail, it returns an error naming each one.
 func (f *Fetcher) FetchAll(ctx context.Context, reqs []Request) ([]Result, error) {
-	workers := f.Workers
-	if workers <= 0 {
-		workers = defaultWorkers
-	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

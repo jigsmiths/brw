@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/progress"
 )
 
 const tabJSON = `{"homebrew_version":"6.0.2","changed_files":["lib/x.pc"],"built_on":{"os":"Macintosh"}}`
@@ -237,9 +238,8 @@ func TestFetchAll(t *testing.T) {
 	r := newRegistry(t, "x")
 	r.delay = 30 * time.Millisecond
 	f := fetcher(t)
-	f.Workers = 3
 	var reqs []Request
-	for i := range 9 {
+	for i := range 3 * workers {
 		reqs = append(reqs, r.request(fmt.Sprintf("pkg%d", i)))
 	}
 	results, err := f.FetchAll(context.Background(), reqs)
@@ -251,8 +251,8 @@ func TestFetchAll(t *testing.T) {
 			t.Errorf("result %d = %s, want it in request order", i, res.Path)
 		}
 	}
-	if m := r.maxInFlight.Load(); m < 2 || m > 3 {
-		t.Errorf("up to %d downloads at once, want 2 or 3 with 3 workers", m)
+	if m := r.maxInFlight.Load(); m < 2 || m > workers {
+		t.Errorf("up to %d downloads at once, want 2 to %d", m, workers)
 	}
 }
 
@@ -348,14 +348,14 @@ func TestFetchFillsInAMissingTabWithoutDownloadingTheBottleAgain(t *testing.T) {
 func TestFetchReportsDownloadProgress(t *testing.T) {
 	r := newRegistry(t, "bottle bytes")
 	var mu sync.Mutex
-	var calls [][3]int64
+	var calls []report
 	var names []string
 	f := fetcher(t)
-	f.Progress = func(name string, done, total int64) {
+	f.Progress = func(label string, done int64, total progress.Size) {
 		mu.Lock()
 		defer mu.Unlock()
-		names = append(names, name)
-		calls = append(calls, [3]int64{done, total})
+		names = append(names, label)
+		calls = append(calls, report{done, total})
 	}
 	if _, err := f.Fetch(context.Background(), r.request("jq")); err != nil {
 		t.Fatal(err)
@@ -363,9 +363,9 @@ func TestFetchReportsDownloadProgress(t *testing.T) {
 	if len(calls) == 0 {
 		t.Fatal("no progress reported")
 	}
-	last := calls[len(calls)-1]
-	if want := int64(len("bottle bytes")); last[0] != want || last[1] != want {
-		t.Errorf("last report = done %d of %d, want %d of %d", last[0], last[1], want, want)
+	want := int64(len("bottle bytes"))
+	if last := calls[len(calls)-1]; last != (report{want, progress.Known(want)}) {
+		t.Errorf("last report = %+v, want %d of %d", last, want, want)
 	}
 	if names[0] != "jq (1.8.2)" {
 		t.Errorf("label = %q, want jq (1.8.2)", names[0])
@@ -488,15 +488,20 @@ func TestFetchAPlainBottleReadsItsOwnReceipt(t *testing.T) {
 	}
 }
 
+type report struct {
+	done  int64
+	total progress.Size
+}
+
 func TestProgressOfUnknownSizeEndsComplete(t *testing.T) {
-	var last [2]int64
-	p := &progressReader{r: strings.NewReader("bytes"), total: -1, report: func(_ string, done, total int64) {
-		last = [2]int64{done, total}
+	var last report
+	p := &progressReader{r: strings.NewReader("bytes"), report: func(_ string, done int64, total progress.Size) {
+		last = report{done, total}
 	}}
 	if _, err := io.ReadAll(p); err != nil {
 		t.Fatal(err)
 	}
-	if last != [2]int64{5, 5} {
-		t.Errorf("last report = done %d of %d, want 5 of 5", last[0], last[1])
+	if last != (report{5, progress.Known(5)}) {
+		t.Errorf("last report = %+v, want 5 of 5", last)
 	}
 }

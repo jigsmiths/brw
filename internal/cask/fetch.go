@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/api"
+	"github.com/jigsmiths/brw/internal/progress"
 )
 
 var ErrUnsupported = errors.New("not supported by brw yet")
@@ -26,7 +27,7 @@ const noCheck = "no_check"
 type Fetcher struct {
 	HTTP     *http.Client
 	Dir      string
-	Progress func(name string, done, total int64)
+	Progress func(label string, done int64, total progress.Size)
 }
 
 func (f *Fetcher) Fetch(ctx context.Context, c api.Cask) (string, error) {
@@ -98,7 +99,7 @@ func (f *Fetcher) download(ctx context.Context, c api.Cask, key string) (string,
 	h := sha256.New()
 	var body io.Reader = resp.Body
 	if f.Progress != nil {
-		body = &progressReader{r: body, name: c.Token + " (" + c.Version + ")", total: resp.ContentLength, report: f.Progress}
+		body = &progressReader{r: body, label: c.Token + " (" + c.Version + ")", total: progress.SizeOf(resp.ContentLength), report: f.Progress}
 	}
 	_, err = io.Copy(io.MultiWriter(tmp, h), body)
 	if cerr := tmp.Close(); err == nil {
@@ -150,18 +151,19 @@ func hasSum(path, want string) bool {
 }
 
 type progressReader struct {
-	r           io.Reader
-	name        string
-	done, total int64
-	report      func(name string, done, total int64)
+	r      io.Reader
+	label  string
+	done   int64
+	total  progress.Size
+	report func(label string, done int64, total progress.Size)
 }
 
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.done += int64(n)
 	if err == io.EOF {
-		p.total = p.done
+		p.total = progress.Known(p.done)
 	}
-	p.report(p.name, p.done, p.total)
+	p.report(p.label, p.done, p.total)
 	return n, err
 }
