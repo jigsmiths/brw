@@ -16,11 +16,20 @@ const (
 	ptsNameBytes = 128
 	childTTYFD   = 0
 
-	tiocPtyGrant  = 0x20007454
-	tiocPtyUnlock = 0x20007452
-	tiocPtyGName  = 0x40807453
-	tiocGWinSz    = 0x40087468
-	tiocSWinSz    = 0x80087467
+	// sys/ioccom.h: the direction bits and the shifts _IOC packs a request from.
+	iocVoid     = 0x20000000
+	iocOut      = 0x40000000
+	iocIn       = 0x80000000
+	iocLenShift = 16
+	iocGroup    = 't' << 8
+	winsizeLen  = 8 // sizeof(struct winsize)
+
+	// sys/ttycom.h: _IO('t', 84), _IO('t', 82), _IOC(IOC_OUT, 't', 83, 128), _IOR('t', 104, struct winsize), _IOW('t', 103, struct winsize).
+	tiocPtyGrant  = iocVoid | iocGroup | 84
+	tiocPtyUnlock = iocVoid | iocGroup | 82
+	tiocPtyGName  = iocOut | ptsNameBytes<<iocLenShift | iocGroup | 83
+	tiocGWinSz    = iocOut | winsizeLen<<iocLenShift | iocGroup | 104
+	tiocSWinSz    = iocIn | winsizeLen<<iocLenShift | iocGroup | 103
 
 	sttyCommand = "stty"
 	tputCommand = "tput"
@@ -64,19 +73,30 @@ func windowSize(f *os.File) (winsize, error) {
 	return ws, ioctl(f.Fd(), tiocGWinSz, unsafe.Pointer(&ws))
 }
 
-func terminalSize() winsize {
+var tputNumber = func(capability string) (uint16, bool) {
+	out, err := exec.Command(tputCommand, capability).Output()
+	if err != nil {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(strings.TrimSpace(string(out)), 10, 16)
+	return uint16(n), err == nil
+}
+
+func sizeFromTput() (winsize, bool) {
+	rows, rowsKnown := tputNumber("lines")
+	cols, colsKnown := tputNumber("cols")
+	if !rowsKnown || !colsKnown {
+		return winsize{}, false
+	}
+	return winsize{rows: rows, cols: cols}, true
+}
+
+// terminalSize is the parent's terminal when stdout is one, else what tput says; known is false when neither does.
+func terminalSize() (ws winsize, known bool) {
 	if ws, err := windowSize(os.Stdout); err == nil {
-		return ws
+		return ws, true
 	}
-	number := func(capability string) uint16 {
-		out, err := exec.Command(tputCommand, capability).Output()
-		n, _ := strconv.ParseUint(strings.TrimSpace(string(out)), 10, 16)
-		if err != nil {
-			return 0
-		}
-		return uint16(n)
-	}
-	return winsize{rows: number("lines"), cols: number("cols")}
+	return sizeFromTput()
 }
 
 func isTerminal(f *os.File) bool {
@@ -86,8 +106,9 @@ func isTerminal(f *os.File) bool {
 
 func watchWindowSize(controller *os.File) (stop func()) {
 	resize := func() {
-		ws := terminalSize()
-		_ = ioctl(controller.Fd(), tiocSWinSz, unsafe.Pointer(&ws))
+		if ws, known := terminalSize(); known {
+			_ = ioctl(controller.Fd(), tiocSWinSz, unsafe.Pointer(&ws))
+		}
 	}
 	resize()
 	winch := make(chan os.Signal, 1)

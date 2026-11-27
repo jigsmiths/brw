@@ -100,7 +100,7 @@ func NewSandboxPolicy(prefix, cache, logs, repository string, child []string, st
 	p := SandboxPolicy{
 		Cache: cache, Logs: logs, Repository: repository, Prefix: prefix, BrewFile: filepath.Join(prefix, "bin/brew"),
 		Child: child, Stdin: stdin, PassStdin: stdin != nil, Disclaim: true, Verbose: verbose, Warn: warn,
-		NetworkAccess: postinstallNetworkAllowed(),
+		NetworkAccess: postinstallNetworkOverride().allowed(apiFormulaNetworkDefault),
 		AvoidNested:   sudo.EnvTrue(avoidNestedEnv),
 		DefaultPrefix: slices.Contains(defaultPrefixes, prefix),
 		Available:     sandbox.Available, Nested: sandbox.Nested,
@@ -109,13 +109,39 @@ func NewSandboxPolicy(prefix, cache, logs, repository string, child []string, st
 	return p
 }
 
-// Unset means allow: API formulae carry no DSL to say otherwise.
-func postinstallNetworkAllowed() bool {
-	if v := os.Getenv(postinstallNetwork); v != "" {
-		return v == networkAllow
+// networkOverride is HOMEBREW_FORMULA_POSTINSTALL_NETWORK: not set, set to allow, or set to anything else.
+type networkOverride int
+
+const (
+	networkOverrideNone networkOverride = iota + 1
+	networkOverrideAllow
+	networkOverrideOther
+)
+
+func postinstallNetworkOverride() networkOverride {
+	v, set := os.LookupEnv(postinstallNetwork)
+	switch {
+	case !set || v == "":
+		return networkOverrideNone
+	case v == networkAllow:
+		return networkOverrideAllow
 	}
-	return true
+	return networkOverrideOther
 }
+
+// allowed is Formula#network_access_allowed?: an override decides, else the formula's default.
+func (o networkOverride) allowed(formulaDefault bool) bool {
+	switch o {
+	case networkOverrideAllow:
+		return true
+	case networkOverrideOther:
+		return false
+	}
+	return formulaDefault
+}
+
+// apiFormulaNetworkDefault is brew's DEFAULT_NETWORK_ACCESS_ALLOWED; API formulae carry no DSL to change it.
+const apiFormulaNetworkDefault = true
 
 func privilegedGroup() sandbox.PrivilegedGroup {
 	u, err := user.Current()
@@ -452,7 +478,7 @@ func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *c
 	if _, err := fmt.Fprintln(conn, parentGreeting); err != nil {
 		return
 	}
-	var order requestOrder
+	var order requestOrder = noRequestYet{}
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(nil, maxMessageBytes)
 	for sc.Scan() {
@@ -479,16 +505,23 @@ func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *c
 	}
 }
 
-type requestOrder struct {
-	last      int
-	requested bool
+// requestOrder is what the parent knows of the privileged steps already run: none, or the last by its index.
+type requestOrder interface {
+	permits(index int) bool
+	after(index int) requestOrder
 }
 
-func (o requestOrder) permits(index int) bool { return !o.requested || index > o.last }
+type noRequestYet struct{}
 
-func (o requestOrder) after(index int) requestOrder {
-	return requestOrder{last: index, requested: true}
-}
+func (noRequestYet) permits(int) bool { return true }
+
+func (noRequestYet) after(index int) requestOrder { return requestedThrough{index: index} }
+
+type requestedThrough struct{ index int }
+
+func (r requestedThrough) permits(index int) bool { return index > r.index }
+
+func (requestedThrough) after(index int) requestOrder { return requestedThrough{index: index} }
 
 func parseRequest(line string, order requestOrder) (int, error) {
 	var req struct {

@@ -250,7 +250,7 @@ func TestChildErrorsAreCollectedForTheParent(t *testing.T) {
 }
 
 func TestRequestOrderHasNoRequestYet(t *testing.T) {
-	var order requestOrder
+	var order requestOrder = noRequestYet{}
 	if !order.permits(0) {
 		t.Error("the first request, even for step 0, must be allowed")
 	}
@@ -377,11 +377,28 @@ func TestCaskChildEnvironmentHasOnlyWhatCaskArtifactRbSets(t *testing.T) {
 }
 
 func TestPostinstallNetworkFollowsBrewsEnvironmentOverride(t *testing.T) {
-	for value, want := range map[string]bool{"": true, "allow": true, "deny": false, "anything": false} {
+	t.Setenv(postinstallNetwork, "")
+	if err := os.Unsetenv(postinstallNetwork); err != nil {
+		t.Fatal(err)
+	}
+	if got := postinstallNetworkOverride(); got != networkOverrideNone {
+		t.Errorf("unset = %v, want no override", got)
+	}
+	if !networkOverrideNone.allowed(true) || networkOverrideNone.allowed(false) {
+		t.Error("with no override the formula's own default decides")
+	}
+	for value, want := range map[string]networkOverride{"allow": networkOverrideAllow, "deny": networkOverrideOther, "anything": networkOverrideOther} {
 		t.Setenv(postinstallNetwork, value)
-		if got := postinstallNetworkAllowed(); got != want {
-			t.Errorf("%s=%q: allowed = %v, want %v", postinstallNetwork, value, got, want)
+		if got := postinstallNetworkOverride(); got != want {
+			t.Errorf("%s=%q: override = %v, want %v", postinstallNetwork, value, got, want)
 		}
+	}
+	if !networkOverrideAllow.allowed(false) || networkOverrideOther.allowed(true) {
+		t.Error("an override beats the formula's default")
+	}
+	var zero networkOverride
+	if zero == networkOverrideNone || zero == networkOverrideAllow || zero == networkOverrideOther {
+		t.Error("the zero value must not be a valid override")
 	}
 }
 
