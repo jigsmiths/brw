@@ -36,28 +36,58 @@ const (
 
 type movedKind struct {
 	english string
-	dir     DirKey
-	hasDir  bool
+	base    relativeBase
 }
 
+// relativeBase says where a relative target goes.
+type relativeBase interface {
+	resolve(w Where, target string) string
+	requiresTarget() bool
+}
+
+// underDir puts a relative target in one of the cask directories.
+type underDir DirKey
+
+func (d underDir) resolve(w Where, target string) string {
+	return filepath.Join(w.Dir(DirKey(d)), target)
+}
+
+func (underDir) requiresTarget() bool { return false }
+
+// underPrefix puts a relative target in a folder of the prefix.
+type underPrefix string
+
+func (p underPrefix) resolve(w Where, target string) string {
+	return filepath.Join(w.Prefix, string(p), target)
+}
+
+func (underPrefix) requiresTarget() bool { return false }
+
+// stanzaOnly is the generic artifact: its stanza names the target, so a relative one is the working directory's.
+type stanzaOnly struct{}
+
+func (stanzaOnly) resolve(_ Where, target string) string { return absolute(target) }
+
+func (stanzaOnly) requiresTarget() bool { return true }
+
 var movedKinds = map[string]movedKind{
-	"app":               {"App", DirApp, true},
-	"suite":             {"App Suite", DirApp, true},
-	"artifact":          {"Generic Artifact", "", false},
-	"colorpicker":       {"Colorpicker", DirColorPicker, true},
-	"prefpane":          {"Preference Pane", DirPrefPane, true},
-	"qlplugin":          {"Quick Look Plugin", DirQLPlugin, true},
-	"mdimporter":        {"Spotlight metadata importer", DirMDImporter, true},
-	"dictionary":        {"Dictionary", DirDictionary, true},
-	"font":              {"Font", DirFont, true},
-	"service":           {"Service", DirService, true},
-	"input_method":      {"Input Method", DirInputMethod, true},
-	"internet_plugin":   {"Internet Plugin", DirInternetPlug, true},
-	"keyboard_layout":   {"Keyboard Layout", DirKeyboard, true},
-	"audio_unit_plugin": {"Audio Unit Plugin", DirAudioUnitPlug, true},
-	"vst_plugin":        {"VST Plugin", DirVSTPlug, true},
-	"vst3_plugin":       {"VST3 Plugin", DirVST3Plug, true},
-	"screen_saver":      {"Screen Saver", DirScreenSaver, true},
+	"app":               {"App", underDir(DirApp)},
+	"suite":             {"App Suite", underDir(DirApp)},
+	"artifact":          {"Generic Artifact", stanzaOnly{}},
+	"colorpicker":       {"Colorpicker", underDir(DirColorPicker)},
+	"prefpane":          {"Preference Pane", underDir(DirPrefPane)},
+	"qlplugin":          {"Quick Look Plugin", underDir(DirQLPlugin)},
+	"mdimporter":        {"Spotlight metadata importer", underDir(DirMDImporter)},
+	"dictionary":        {"Dictionary", underDir(DirDictionary)},
+	"font":              {"Font", underDir(DirFont)},
+	"service":           {"Service", underDir(DirService)},
+	"input_method":      {"Input Method", underDir(DirInputMethod)},
+	"internet_plugin":   {"Internet Plugin", underDir(DirInternetPlug)},
+	"keyboard_layout":   {"Keyboard Layout", underDir(DirKeyboard)},
+	"audio_unit_plugin": {"Audio Unit Plugin", underDir(DirAudioUnitPlug)},
+	"vst_plugin":        {"VST Plugin", underDir(DirVSTPlug)},
+	"vst3_plugin":       {"VST3 Plugin", underDir(DirVST3Plug)},
+	"screen_saver":      {"Screen Saver", underDir(DirScreenSaver)},
 }
 
 func isMoved(kind string) bool { _, ok := movedKinds[kind]; return ok }
@@ -462,8 +492,8 @@ func (in *Installer) fixAppPermissions(ctx context.Context, target string) error
 	if err := in.sudoIfNeeded(ctx, "chmod", "-R", permissions, target); err != nil {
 		return err
 	}
-	group := caskroomGroup()
-	if group == "" {
+	group, ok := caskroomGroup()
+	if !ok {
 		return nil
 	}
 	if system {

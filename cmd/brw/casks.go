@@ -95,7 +95,7 @@ func installCasks(e *env, prefix, journal string, dryRun bool, trace tracing, ca
 			return err
 		}
 		in := e.caskInstaller(root, prefix, where.AppDir, home, caskDownloads(client), trace)
-		in.Where, in.PreviousWhere, in.Config = where, where, config
+		in.Where, in.Config = where, config
 		in.Fetcher = &cask.Fetcher{Dir: caskDownloads(client)}
 		in.Now = time.Now
 		in.Version = version
@@ -287,7 +287,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 	maps.Copy(explicit, e.caskOpts.explicit)
 	where, config := caskWhere(prefix, home, explicit)
 	in := e.caskInstaller(root, prefix, where.AppDir, home, fetcher.Dir, trace)
-	in.Where, in.PreviousWhere, in.Config = where, recordedWhere(prefix, home, recorded), config
+	in.Where, in.Config = where, config
 	in.Force = e.caskOpts.force
 	in.Fetcher = fetcher
 	in.Now = time.Now
@@ -297,7 +297,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 	in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
 		return e.satisfyDependencies(ctx, prefix, journal, in, cask.NewWhere(prefix, defaultAppDir, home), cask.Config{Languages: macLanguages()}, tag, idx, c)
 	}
-	return in.PrepareUpgrade(ctx, old, c)
+	return in.PrepareUpgrade(ctx, old, recordedWhere(prefix, home, recorded), c)
 }
 
 const defaultAppDir = "/Applications"

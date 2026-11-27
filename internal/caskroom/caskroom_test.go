@@ -161,6 +161,19 @@ func TestAppDir(t *testing.T) {
 	}
 }
 
+func TestReadConfigTreatsEmptyValuesAsUnset(t *testing.T) {
+	prefix := t.TempDir()
+	write(t, filepath.Join(prefix, "Caskroom/f/.metadata/config.json"),
+		`{"default":{"fontdir":"/D"},"env":{"fontdir":""},"explicit":{"fontdir":""}}`)
+	c := ReadConfig(prefix, "f")
+	if d, ok := c.Dir("fontdir"); !ok || d != "/D" {
+		t.Errorf("Dir(fontdir) = %q, %v; want the default /D", d, ok)
+	}
+	if _, set := c.Explicit["fontdir"]; set {
+		t.Error("an empty explicit value should not be kept")
+	}
+}
+
 func TestReadConfigKeepsEachLayer(t *testing.T) {
 	prefix := t.TempDir()
 	write(t, filepath.Join(prefix, "Caskroom/f/.metadata/config.json"),

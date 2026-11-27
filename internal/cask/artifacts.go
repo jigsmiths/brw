@@ -259,30 +259,30 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 		return move{}, fmt.Errorf("unexpected source")
 	}
 	target := filepath.Base(m.source)
-	hasTarget := false
+	targetGiven := false
 	for _, opt := range list[1:] {
-		var o struct {
-			Target *string `json:"target"` //guard:allow decoding brew's optional target
+		var o map[string]json.RawMessage
+		if json.Unmarshal(opt, &o) != nil {
+			continue
 		}
-		if json.Unmarshal(opt, &o) == nil && o.Target != nil {
-			hasTarget = true
-			if *o.Target != "" {
-				target = *o.Target
-			}
+		raw, ok := o["target"]
+		if !ok {
+			continue
+		}
+		targetGiven = true
+		var s string
+		if json.Unmarshal(raw, &s) == nil && s != "" {
+			target = s
 		}
 	}
-	dir := ""
+	var base relativeBase = underPrefix("bin")
 	if k, ok := movedKinds[kind]; ok {
-		if kind == "artifact" && !hasTarget {
-			return m, errNoTarget
-		}
-		if k.hasDir {
-			dir = w.Dir(k.dir)
-		}
+		base = k.base
+	}
+	if base.requiresTarget() && !targetGiven {
+		return m, errNoTarget
 	}
 	switch kind {
-	case "binary":
-		dir = filepath.Join(w.Prefix, "bin")
 	case "manpage":
 		section := manSection.FindStringSubmatch(m.source)
 		if section == nil {
@@ -306,10 +306,8 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 		m.target = filepath.Join(w.Home, target[1:])
 	case filepath.IsAbs(target):
 		m.target = filepath.Clean(target)
-	case dir == "":
-		m.target = absolute(target)
 	default:
-		m.target = filepath.Join(dir, target)
+		m.target = base.resolve(w, target)
 	}
 	return m, nil
 }

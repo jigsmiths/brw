@@ -2,6 +2,7 @@ package cask
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -184,6 +185,35 @@ func TestArtifactPrefixAndTargetResolution(t *testing.T) {
 		if err != nil || m.target != tt.want {
 			t.Errorf("%s: target = %q, %v; want %s", tt.args, m.target, err, tt.want)
 		}
+	}
+}
+
+func TestReadMoveResolvesRelativeTargetsPerKind(t *testing.T) {
+	w := NewWhere("/p", "/Apps", "/Users/me")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct{ kind, args, want string }{
+		{"app", `["sub/B.app"]`, "/Apps/B.app"},
+		{"suite", `["B",{"target":"Dir/B"}]`, "/Apps/Dir/B"},
+		{"binary", `["tool"]`, "/p/bin/tool"},
+		{"binary", `["tool",{"target":"x"}]`, "/p/bin/x"},
+		{"artifact", `["B",{"target":"/abs/B"}]`, "/abs/B"},
+		{"artifact", `["B",{"target":"rel/B"}]`, filepath.Join(cwd, "rel/B")},
+		{"artifact", `["B",{"target":"~/B"}]`, "/Users/me/B"},
+		{"vst3_plugin", `["B.vst3",{"target":""}]`, "/Users/me/Library/Audio/Plug-Ins/VST3/B.vst3"},
+	} {
+		m, err := readMove([]byte(tt.args), tt.kind, w)
+		if err != nil || m.target != tt.want {
+			t.Errorf("%s %s: target = %q, %v; want %s", tt.kind, tt.args, m.target, err, tt.want)
+		}
+	}
+	if _, err := readMove([]byte(`["B"]`), "artifact", w); !errors.Is(err, errNoTarget) {
+		t.Errorf("artifact without a target: err = %v", err)
+	}
+	if _, err := readMove([]byte(`["B",{"target":""}]`), "artifact", w); err != nil {
+		t.Errorf("artifact with an empty target string counts as given: %v", err)
 	}
 }
 

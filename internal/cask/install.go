@@ -29,11 +29,10 @@ type Config struct {
 }
 
 type Installer struct {
-	Root          *fsx.Root
-	Where         Where
-	PreviousWhere Where
-	Host          platform.Host
-	Fetcher       *Fetcher
+	Root    *fsx.Root
+	Where   Where
+	Host    platform.Host
+	Fetcher *Fetcher
 	// CacheDir is the download cache that step sandboxes may write to; unlike Fetcher it is set on every installer.
 	CacheDir    string
 	Log         io.Writer
@@ -366,20 +365,20 @@ func (in *Installer) withAppDir(f func(*fsx.Root) error) error {
 	return f(apps)
 }
 
-func caskroomGroup() string {
+func caskroomGroup() (name string, ok bool) {
 	u, err := user.Current()
 	if err != nil {
-		return ""
+		return "", false
 	}
 	if admin, err := user.LookupGroup("admin"); err == nil {
 		if ids, err := u.GroupIds(); err == nil && slices.Contains(ids, admin.Gid) {
-			return "admin"
+			return "admin", true
 		}
 	}
 	if g, err := user.LookupGroupId(u.Gid); err == nil {
-		return g.Name
+		return g.Name, true
 	}
-	return ""
+	return "", false
 }
 
 func (in *Installer) linkBinary(ctx context.Context, staged string, m move, action linkAction, undo *[]func() error) error {

@@ -70,10 +70,7 @@ func (w Where) Dir(key DirKey) string {
 	if key == DirApp {
 		return w.AppDir
 	}
-	if d, ok := w.Dirs[key]; ok {
-		return d
-	}
-	return DefaultDir(key, w.Home)
+	return w.Dirs[key]
 }
 
 func (w Where) WithConfig(c Config) Where {

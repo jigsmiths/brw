@@ -184,7 +184,7 @@ func ReadConfig(prefix, token string) Config {
 		out := map[string]string{}
 		for k, v := range m {
 			var s string
-			if json.Unmarshal(v, &s) == nil {
+			if json.Unmarshal(v, &s) == nil && s != "" {
 				out[k] = s
 			}
 		}
@@ -195,7 +195,7 @@ func ReadConfig(prefix, token string) Config {
 
 func (c Config) Dir(key string) (string, bool) {
 	for _, m := range []map[string]string{c.Explicit, c.Env, c.Default} {
-		if d, ok := m[key]; ok && d != "" {
+		if d, ok := m[key]; ok {
 			return d, true
 		}
 	}

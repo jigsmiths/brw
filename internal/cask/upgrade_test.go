@@ -16,7 +16,7 @@ import (
 )
 
 func (in *Installer) Upgrade(ctx context.Context, old caskroom.Cask, c api.Cask) error {
-	u, err := in.PrepareUpgrade(ctx, old, c)
+	u, err := in.PrepareUpgrade(ctx, old, in.Where, c)
 	if err != nil {
 		return err
 	}

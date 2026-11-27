@@ -38,6 +38,19 @@ func TestDirsFromOptionsReadsHyphenatedFlagsLikeBrewsEnvConfig(t *testing.T) {
 	}
 }
 
+func TestNewWhereKnowsEveryDirectory(t *testing.T) {
+	w := NewWhere("/p", "/Apps", "/Users/me")
+	for _, key := range DirKeys {
+		want := DefaultDir(key, "/Users/me")
+		if key == DirApp {
+			want = "/Apps"
+		}
+		if got := w.Dir(key); got != want || got == "" {
+			t.Errorf("Dir(%s) = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func TestWhereWithConfigPrefersExplicitThenEnvThenDefault(t *testing.T) {
 	w := NewWhere("/p", "/Applications", "/Users/me").WithConfig(Config{
 		Explicit: map[DirKey]string{DirFont: "/X"},

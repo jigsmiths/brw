@@ -26,10 +26,11 @@ type PreparedUpgrade struct {
 	file    string
 }
 
-func (in *Installer) PrepareUpgrade(ctx context.Context, old caskroom.Cask, c api.Cask) (*PreparedUpgrade, error) {
+// PrepareUpgrade reads the old version's artifacts from where it was installed, which in.Where may no longer be.
+func (in *Installer) PrepareUpgrade(ctx context.Context, old caskroom.Cask, installedWhere Where, c api.Cask) (*PreparedUpgrade, error) {
 	u := &PreparedUpgrade{in: in, old: old, c: c}
 	var err error
-	if u.steps, err = in.readUninstall(old.Token, old.Version, in.PreviousWhere); err != nil {
+	if u.steps, err = in.readUninstall(old.Token, old.Version, installedWhere); err != nil {
 		return nil, err
 	}
 	owned := map[string]bool{}
