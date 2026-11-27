@@ -365,7 +365,7 @@ func (e *env) satisfyDependencies(ctx context.Context, prefix, journal string, p
 
 func installDependencyCask(ctx context.Context, parent *cask.Installer, where cask.Where, config cask.Config, dep api.Cask) error {
 	in := *parent
-	in.SatisfyDependencies, in.Where, in.Config = nil, where, config
+	in.SatisfyDependencies, in.Where, in.Config, in.Force = nil, where, config, false
 	return in.InstallAsDependency(ctx, dep)
 }
 

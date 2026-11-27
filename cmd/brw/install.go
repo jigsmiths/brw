@@ -34,6 +34,9 @@ func installCommand(e *env, args []string) error {
 	kinds := kindFlags(fs)
 	dirs := caskDirFlags(fs)
 	adopt := fs.Bool("adopt", false, "take over apps already in the app folder")
+	var force bool
+	fs.BoolVar(&force, "force", false, "when installing casks, overwrite existing files")
+	fs.BoolVar(&force, "f", false, "when installing casks, overwrite existing files")
 	head := fs.Bool("HEAD", false, "install a formula's HEAD version, built from its repository")
 	trace := traceFlags(fs)
 	names, err := parse(fs, args)
@@ -41,7 +44,7 @@ func installCommand(e *env, args []string) error {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--adopt] [--appdir=DIR] [--keyboard-layoutdir=DIR] [--verbose] [--debug] [--dry-run] NAME [NAME ...]")
+		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--force] [--adopt] [--appdir=DIR] [--keyboard-layoutdir=DIR] [--verbose] [--debug] [--dry-run] NAME [NAME ...]")
 	}
 	formulaOnly, caskOnly, err := kinds()
 	if err != nil {
@@ -50,13 +53,16 @@ func installCommand(e *env, args []string) error {
 	if err := dirs.rejectWithFormula(fs, formulaOnly); err != nil {
 		return err
 	}
+	if force && *adopt {
+		return errors.New("Options --adopt and --force are mutually exclusive.") //nolint:staticcheck // matches brew's error text
+	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
 		return err
 	}
 	home, _ := os.UserHomeDir()
 	e.caskOpts = dirs.options(fs, home)
-	e.caskOpts.adopt = *adopt
+	e.caskOpts.force, e.caskOpts.adopt = force, *adopt
 	r, err := e.resolve(context.Background(), prefix, names, formulaOnly, caskOnly)
 	if err != nil {
 		return err

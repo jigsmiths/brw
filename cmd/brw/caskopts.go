@@ -9,10 +9,10 @@ import (
 	"github.com/jigsmiths/brw/internal/cask"
 )
 
-// caskOptions are brew's cask_options flags: the target directories, and whether to adopt what is already there.
+// caskOptions are brew's cask_options flags, the target directories, and the ones that change how artifacts move.
 type caskOptions struct {
-	explicit map[cask.DirKey]string
-	adopt    bool
+	explicit     map[cask.DirKey]string
+	force, adopt bool
 }
 
 type caskFlags struct {

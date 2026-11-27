@@ -112,6 +112,33 @@ func TestKeyboardLayoutRefusesAnOccupiedTarget(t *testing.T) {
 	}
 }
 
+func TestKeyboardLayoutForceOverwritesAndUninstallSkipsAMissingTarget(t *testing.T) {
+	l := newLayoutInstall(t)
+	t.Setenv("HOMEBREW_NO_SUDO", "")
+	t.Setenv("HOMEBREW_SUDO_CHECKED", "1")
+	target := filepath.Join(l.layouts, "App.app")
+	if err := os.MkdirAll(filepath.Join(target, "old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	l.ti.in.Force = true
+	if err := l.installLayout(t); err != nil {
+		t.Fatal(err)
+	}
+	if want := "Warning: It seems there is already a Keyboard Layout at '" + target + "'; overwriting.\n"; l.ti.warn.String() != want {
+		t.Errorf("warnings = %q, want %q", l.ti.warn.String(), want)
+	}
+	if exists(filepath.Join(target, "old")) {
+		t.Error("forcing should replace the existing layout")
+	}
+	l.ti.in.Force = false
+	if err := os.RemoveAll(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Errorf("uninstall skips what is already gone: %v", err)
+	}
+}
+
 func TestSudoArtifactNamesKeyboardLayoutAfterPkgAndBeforePostflight(t *testing.T) {
 	p := installPlan{moved: []move{{kind: "keyboard_layout"}}, postflight: raws(t, `[{"type":"run","sudo":true}]`)}
 	if got := p.sudoArtifact(); got != "keyboard_layout" {

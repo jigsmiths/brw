@@ -87,6 +87,8 @@ func (in *Installer) Uninstall(ctx context.Context, token, version string, force
 	if err != nil {
 		return err
 	}
+	defer func(force bool) { in.Force = force }(in.Force)
+	in.Force = force
 	in.logf("==> Uninstalling Cask %s", token)
 	if err := in.removeArtifacts(ctx, token, steps, force); err != nil {
 		return err
@@ -116,7 +118,7 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 	}
 	for _, s := range steps {
 		if isMoved(s.kind) {
-			if err := in.uninstallMoved(ctx, s.move, force); err != nil {
+			if err := in.uninstallMoved(ctx, s.move, !in.upgrading); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
 			continue

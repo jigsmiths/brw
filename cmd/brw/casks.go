@@ -99,7 +99,7 @@ func installCasks(e *env, prefix, journal string, dryRun bool, trace tracing, ca
 		in.Fetcher = &cask.Fetcher{Dir: caskDownloads(client)}
 		in.Now = time.Now
 		in.Version = version
-		in.Adopt = e.caskOpts.adopt
+		in.Adopt, in.Force = e.caskOpts.adopt, e.caskOpts.force
 		in.RuntimeDeps = e.runtimeDepsFor(context.Background(), prefix, tag, caskIdx, nil)
 		in.APIPath = filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json")
 		in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
@@ -288,6 +288,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 	where, config := caskWhere(prefix, home, explicit)
 	in := e.caskInstaller(root, prefix, where.AppDir, home, fetcher.Dir, trace)
 	in.Where, in.PreviousWhere, in.Config = where, recordedWhere(prefix, home, recorded), config
+	in.Force = e.caskOpts.force
 	in.Fetcher = fetcher
 	in.Now = time.Now
 	in.Version = version

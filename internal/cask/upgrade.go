@@ -60,10 +60,12 @@ func (u *PreparedUpgrade) Run(ctx context.Context) error {
 	}
 	before := in.approvals(ctx, u.oldApps)
 	in.upgrading, in.reopen = true, nil
-	defer func() { in.upgrading, in.reopen = false, nil }()
-	if err := in.removeArtifacts(ctx, old.Token, u.steps, false); err != nil {
+	defer func() { in.upgrading, in.reopen, in.predecessor, in.successor = false, nil, nil, nil }()
+	in.successor = u.p.moved
+	if err := in.removeArtifacts(ctx, old.Token, u.steps, in.Force); err != nil {
 		return err
 	}
+	in.predecessor, in.successor = movedSteps(u.steps), nil
 	if err := in.backup(old); err != nil {
 		return err
 	}
@@ -79,8 +81,10 @@ func (in *Installer) replace(ctx context.Context, old caskroom.Cask, c api.Cask,
 		if err == nil {
 			return
 		}
+		in.successor = movedSteps(steps)
 		err = errors.Join(err, in.discard(ctx, c, undo))
 		in.warnf("Reverting upgrade for Cask %s", c.Token)
+		in.predecessor, in.successor = p.moved, nil
 		if rerr := errors.Join(in.restoreBackup(old), in.reinstall(context.WithoutCancel(ctx), old, steps)); rerr != nil {
 			err = errors.Join(err, fmt.Errorf("could not restore %s %s: %w", c.Token, old.Version, rerr))
 		}
@@ -96,6 +100,16 @@ func (in *Installer) replace(ctx context.Context, old caskroom.Cask, c api.Cask,
 	in.logf("%s was successfully upgraded!", badge()+c.Token)
 	in.reopenApps(ctx, p.apps())
 	return nil
+}
+
+func movedSteps(steps []uninstallStep) []move {
+	var moved []move
+	for _, s := range steps {
+		if isMoved(s.kind) {
+			moved = append(moved, s.move)
+		}
+	}
+	return moved
 }
 
 func backupPaths(old caskroom.Cask) (staged, meta string) {

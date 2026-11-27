@@ -52,15 +52,18 @@ type Installer struct {
 	Debug       bool
 	FindService func(ctx context.Context, label string, privilege sudo.Privilege) (bool, error)
 	Adopt       bool
+	Force       bool
 	Sandbox     poststep.SandboxMode
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
 	// SatisfyDependencies installs what c needs; nil leaves it to the caller, and Install then fails if it is missing.
 	SatisfyDependencies func(ctx context.Context, c api.Cask) error
 
-	upgrading     bool
-	reopen        []string
-	warnedSandbox bool
+	// predecessor and successor are the Moved artifacts of the version an upgrade replaces and of the one it installs.
+	predecessor, successor []move
+	upgrading              bool
+	reopen                 []string
+	warnedSandbox          bool
 
 	sandboxWarnings []string
 
@@ -343,13 +346,18 @@ func (in *Installer) prefixRel(target string) (string, error) {
 	return filepath.Rel(in.Where.Prefix, target)
 }
 
-// moveArtifact installs one Moved artifact; unless it adopted an existing target, undo removes it again.
+// moveArtifact installs one Moved artifact; unless it adopted an existing target, undo reverts it as brew's rollback does.
 func (in *Installer) moveArtifact(ctx context.Context, version string, m move, autoUpdates bool, undo *[]func() error) error {
 	adopted, err := in.installMoved(ctx, version, m, autoUpdates)
 	if err != nil || adopted {
 		return err
 	}
-	*undo = append(*undo, func() error { return in.gainPermissionsRemove(context.WithoutCancel(ctx), m.target) })
+	staged := filepath.Join(version, m.source)
+	*undo = append(*undo, func() error {
+		m := m
+		m.source = staged
+		return in.uninstallMoved(context.WithoutCancel(ctx), m, false)
+	})
 	return nil
 }
 
