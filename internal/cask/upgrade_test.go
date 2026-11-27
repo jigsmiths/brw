@@ -121,7 +121,7 @@ func TestUpgradeKeepsWhetherTheCaskWasRequested(t *testing.T) {
 
 func TestUpgradeRefusesBeforeChangingAnything(t *testing.T) {
 	ti, _, c := upgradable(t, appArtifacts)
-	c.Artifacts = raws(t, `[{"suite":["App"]}]`)
+	c.Artifacts = raws(t, `[{"app_image":["App"]}]`)
 	if err := ti.in.Upgrade(context.Background(), installedCask(t, ti.prefix), c); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}

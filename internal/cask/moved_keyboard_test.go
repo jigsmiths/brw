@@ -113,7 +113,7 @@ func TestKeyboardLayoutRefusesAnOccupiedTarget(t *testing.T) {
 }
 
 func TestSudoArtifactNamesKeyboardLayoutAfterPkgAndBeforePostflight(t *testing.T) {
-	p := installPlan{layouts: []move{{kind: "keyboard_layout"}}, postflight: raws(t, `[{"type":"run","sudo":true}]`)}
+	p := installPlan{moved: []move{{kind: "keyboard_layout"}}, postflight: raws(t, `[{"type":"run","sudo":true}]`)}
 	if got := p.sudoArtifact(); got != "keyboard_layout" {
 		t.Errorf("sudoArtifact = %q, want keyboard_layout", got)
 	}

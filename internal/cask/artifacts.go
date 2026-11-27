@@ -46,6 +46,10 @@ type move struct {
 	source, target, kind string
 }
 
+func (p installPlan) apps() []move {
+	return slices.DeleteFunc(slices.Clone(p.moved), func(m move) bool { return m.kind != "app" })
+}
+
 type invalidManpageName string
 
 func (e invalidManpageName) Error() string { return "'" + string(e) + "' is not a valid man page name" }
@@ -68,7 +72,7 @@ var linkNames = map[string]string{
 }
 
 type installPlan struct {
-	apps, links, layouts  []move
+	moved, links          []move
 	pkgs                  []pkgInstall
 	generators            []generator
 	preflight, postflight []json.RawMessage
@@ -101,41 +105,41 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 		}
 		for kind, args := range obj {
 			args = fill(args)
-			switch kind {
-			case "app", "keyboard_layout", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
+			switch {
+			case isMoved(kind) || slices.Contains(linkKinds, kind):
 				m, err := readMove(args, kind, w)
 				if badName, ok := errors.AsType[invalidManpageName](err); ok {
 					return installPlan{}, brewError("Cask '%s' definition is invalid: %s", c.Token, badName)
 				}
+				if errors.Is(err, errNoTarget) {
+					return installPlan{}, brewError("Cask '%s' definition is invalid: %s '%s' requires a target.", c.Token, movedKinds[kind].name(), m.source)
+				}
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
-				switch kind {
-				case "app":
-					p.apps = append(p.apps, m)
-				case "keyboard_layout":
-					p.layouts = append(p.layouts, m)
-				default:
+				if isMoved(kind) {
+					p.moved = append(p.moved, m)
+				} else {
 					p.links = append(p.links, m)
 				}
-			case "pkg":
+			case kind == "pkg":
 				pk, err := readPkg(args)
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
 				p.pkgs = append(p.pkgs, pk)
 				continue
-			case "uninstall":
+			case kind == "uninstall":
 				if bad := unknownDirectives(args); bad != "" {
 					return unsupported("uninstall " + bad)
 				}
-			case "generate_completions_from_executable":
+			case kind == "generate_completions_from_executable":
 				g, err := readGenerator(args)
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
 				p.generators = append(p.generators, g)
-			case "preflight_steps", "postflight_steps":
+			case kind == "preflight_steps" || kind == "postflight_steps":
 				steps, err := readSteps(args)
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
@@ -148,7 +152,7 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				} else {
 					p.postflight = append(p.postflight, steps...)
 				}
-			case "uninstall_preflight_steps", "uninstall_postflight_steps":
+			case kind == "uninstall_preflight_steps" || kind == "uninstall_postflight_steps":
 				steps, err := readSteps(args)
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
@@ -156,20 +160,20 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				if bad := unsupportedSteps(steps); bad != "" {
 					return unsupported(kind + " " + bad)
 				}
-			case "installer":
+			case kind == "installer":
 				steps, err := readInstallers(c.Token, args)
 				if err != nil {
 					return installPlan{}, err
 				}
 				p.installers = append(p.installers, steps...)
-			case "zap":
+			case kind == "zap":
 			default:
 				return unsupported(kind + " artifacts")
 			}
 			p.uninstall = append(p.uninstall, map[string]json.RawMessage{kind: args})
 		}
 	}
-	if len(p.apps) == 0 && len(p.links) == 0 && len(p.layouts) == 0 && len(p.installers) == 0 && len(p.pkgs) == 0 {
+	if len(p.moved) == 0 && len(p.links) == 0 && len(p.installers) == 0 && len(p.pkgs) == 0 {
 		return unsupported("no app, binary or pkg")
 	}
 	return p, nil
@@ -256,18 +260,28 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 		return move{}, fmt.Errorf("unexpected source")
 	}
 	target := filepath.Base(m.source)
+	hasTarget := false
 	for _, opt := range list[1:] {
 		var o struct {
-			Target string `json:"target"`
+			Target *string `json:"target"` //guard:allow decoding brew's optional target
 		}
-		if json.Unmarshal(opt, &o) == nil && o.Target != "" {
-			target = o.Target
+		if json.Unmarshal(opt, &o) == nil && o.Target != nil {
+			hasTarget = true
+			if *o.Target != "" {
+				target = *o.Target
+			}
 		}
 	}
-	dir := w.AppDir
+	dir := ""
+	if k, ok := movedKinds[kind]; ok {
+		if kind == "artifact" && !hasTarget {
+			return m, errNoTarget
+		}
+		if k.hasDir {
+			dir = w.Dir(k.dir)
+		}
+	}
 	switch kind {
-	case "keyboard_layout":
-		dir = w.Dir(DirKeyboard)
 	case "binary":
 		dir = filepath.Join(w.Prefix, "bin")
 	case "manpage":
@@ -293,11 +307,17 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 		m.target = filepath.Join(w.Home, target[1:])
 	case filepath.IsAbs(target):
 		m.target = filepath.Clean(target)
+	case dir == "":
+		m.target = absolute(target)
 	default:
 		m.target = filepath.Join(dir, target)
 	}
 	return m, nil
 }
+
+var errNoTarget = errors.New("requires a target")
+
+var linkKinds = []string{"binary", "manpage", "bash_completion", "zsh_completion", "fish_completion"}
 
 func unknownDirectives(args json.RawMessage) string {
 	var list []map[string]json.RawMessage

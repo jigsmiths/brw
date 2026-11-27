@@ -31,7 +31,6 @@ type Config struct {
 
 type Installer struct {
 	Root  *fsx.Root
-	Apps  *fsx.Root
 	Where Where
 	// PreviousWhere is where the version being upgraded was installed, which a flag can change for the new one.
 	PreviousWhere Where
@@ -184,13 +183,8 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
-	for _, m := range p.apps {
-		if err := in.moveApp(ctx, version, m, c.AutoUpdates, undo); err != nil {
-			return fmt.Errorf("%s: %w", c.Token, err)
-		}
-	}
-	for _, m := range p.layouts {
-		if err := in.moveKeyboardLayout(ctx, version, m, undo); err != nil {
+	for _, m := range p.moved {
+		if err := in.moveArtifact(ctx, version, m, c.AutoUpdates, undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
@@ -253,17 +247,6 @@ const (
 )
 
 func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bool) ([]linkAction, error) {
-	for _, m := range p.apps {
-		if _, err := in.appRel(m.target); err != nil {
-			return nil, fmt.Errorf("%s: %w", c.Token, err)
-		}
-		if owned[m.target] {
-			continue
-		}
-		if _, err := os.Lstat(m.target); err == nil && !in.Adopt {
-			return nil, brewError("%s: It seems there is already an App at '%s'.", c.Token, m.target)
-		}
-	}
 	links := make([]linkAction, len(p.links))
 	for i, m := range p.links {
 		if _, err := in.prefixRel(m.target); err != nil {
@@ -353,13 +336,6 @@ func (in *Installer) inside(dir, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func (in *Installer) appRel(target string) (string, error) {
-	if !in.inside(in.Where.AppDir, target) {
-		return "", fmt.Errorf("app target %s: outside %s: %w", target, in.Where.AppDir, ErrUnsupported)
-	}
-	return filepath.Rel(in.Where.AppDir, target)
-}
-
 func (in *Installer) prefixRel(target string) (string, error) {
 	if !in.inside(in.Where.Prefix, target) {
 		return "", fmt.Errorf("binary target %s: outside %s: %w", target, in.Where.Prefix, ErrUnsupported)
@@ -367,74 +343,23 @@ func (in *Installer) prefixRel(target string) (string, error) {
 	return filepath.Rel(in.Where.Prefix, target)
 }
 
-// moveApp keeps an adopted app at the target on rollback too, unlike brew.
-func (in *Installer) moveApp(ctx context.Context, version string, m move, autoUpdates bool, undo *[]func() error) error {
-	staged := filepath.Join(version, m.source)
-	if _, err := in.Root.Lstat(staged); err != nil {
-		abs, _ := in.Root.Abs(staged)
-		return brewError("It seems the App source '%s' is not there.", abs)
+// moveArtifact installs one Moved artifact; unless it adopted an existing target, undo removes it again.
+func (in *Installer) moveArtifact(ctx context.Context, version string, m move, autoUpdates bool, undo *[]func() error) error {
+	adopted, err := in.installMoved(ctx, version, m, autoUpdates)
+	if err != nil || adopted {
+		return err
 	}
-	rel, err := in.appRel(m.target)
+	*undo = append(*undo, func() error { return in.gainPermissionsRemove(context.WithoutCancel(ctx), m.target) })
+	return nil
+}
+
+func (in *Installer) withAppDir(f func(*fsx.Root) error) error {
+	apps, err := fsx.Open(in.Where.AppDir, nil)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Lstat(m.target); err == nil && in.Adopt {
-		in.logf("==> Adopting existing App at '%s'", m.target)
-		if !autoUpdates {
-			abs, err := in.Root.Abs(staged)
-			if err != nil {
-				return err
-			}
-			same, err := in.sameApp(ctx, abs, m.target)
-			if err != nil {
-				return err
-			}
-			if !same {
-				return brewError("It seems the existing App is different from the one being installed.")
-			}
-		}
-		if err := in.Root.RemoveAll(staged); err != nil {
-			return err
-		}
-		return in.linkApp(ctx, staged, m, undo)
-	}
-	in.logf("==> Moving App '%s' to '%s'", filepath.Base(m.source), m.target)
-	if err := in.mkdirPath(ctx, in.Apps, filepath.Dir(rel)); err != nil {
-		return err
-	}
-	if writable(filepath.Dir(m.target)) {
-		if err := in.Root.MoveTo(in.Apps, staged, rel); err != nil {
-			return err
-		}
-		*undo = append(*undo, func() error { return in.Apps.MoveTo(in.Root, rel, staged) })
-	} else {
-		abs, err := in.Root.Abs(staged)
-		if err != nil {
-			return err
-		}
-		if err := in.sudoIfNeeded(ctx, "/bin/cp", "-pR", abs, m.target); err != nil {
-			return err
-		}
-		*undo = append(*undo, func() error { return in.removePath(context.WithoutCancel(ctx), in.Apps, rel) })
-		if err := in.removePath(ctx, in.Root, staged); err != nil {
-			return err
-		}
-	}
-	return in.linkApp(ctx, staged, m, undo)
-}
-
-func (in *Installer) linkApp(ctx context.Context, staged string, m move, undo *[]func() error) error {
-	if err := in.Root.SymlinkTo(in.Apps, m.target, staged); err != nil {
-		return err
-	}
-	*undo = append(*undo, func() error { return in.Root.Remove(staged) })
-	if err := run(ctx, "chmod", "-R", "a+rX,go-w", m.target); err != nil {
-		return err
-	}
-	if group := caskroomGroup(); group != "" {
-		_ = run(ctx, "chgrp", "-hR", group, m.target)
-	}
-	return nil
+	defer func() { _ = apps.Close() }()
+	return f(apps)
 }
 
 func caskroomGroup() string {
@@ -480,7 +405,7 @@ func (in *Installer) linkBinary(ctx context.Context, staged string, m move, acti
 		return err
 	}
 	if in.inside(in.Where.AppDir, source) {
-		err = in.Root.SymlinkTo(in.Apps, source, rel)
+		err = in.Root.SymlinkAny(source, rel)
 	} else {
 		err = in.Root.Symlink(source, rel)
 	}
@@ -500,18 +425,19 @@ func (in *Installer) makeExecutable(path string) error {
 		return err
 	}
 	perm := fi.Mode().Perm() | 0o111
-	for _, r := range []struct {
-		dir  string
-		root *fsx.Root
-	}{{in.Where.AppDir, in.Apps}, {in.Where.Prefix, in.Root}} {
-		dir, err := filepath.EvalSymlinks(r.dir)
-		if err == nil && in.inside(dir, path) {
-			rel, err := filepath.Rel(dir, path)
-			if err != nil {
-				return err
-			}
-			return r.root.Chmod(rel, perm)
+	if dir, err := filepath.EvalSymlinks(in.Where.AppDir); err == nil && in.inside(dir, path) {
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
 		}
+		return in.withAppDir(func(apps *fsx.Root) error { return apps.Chmod(rel, perm) })
+	}
+	if dir, err := filepath.EvalSymlinks(in.Where.Prefix); err == nil && in.inside(dir, path) {
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		return in.Root.Chmod(rel, perm)
 	}
 	return fmt.Errorf("binary %s: outside %s and %s", path, in.Where.AppDir, in.Where.Prefix)
 }

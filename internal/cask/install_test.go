@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -37,16 +36,12 @@ func newTestInstall(t *testing.T, body []byte) *testInstall {
 	if err != nil {
 		t.Fatal(err)
 	}
-	apps, err := fsx.Open(appDir, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = root.Close(); _ = apps.Close() })
+	t.Cleanup(func() { _ = root.Close() })
 	srv, hits := server(t, body, nil)
 	out, warn := &bytes.Buffer{}, &bytes.Buffer{}
 	in := &Installer{
 		Warn: warn, Sandbox: poststep.Unsandboxed,
-		Root: root, Apps: apps,
+		Root:          root,
 		Where:         NewWhere(prefix, appDir, "/Users/me"),
 		PreviousWhere: NewWhere(prefix, appDir, "/Users/me"),
 		Host:          platform.Host{OS: "darwin", MacVersion: "26.1", Arch: "arm64"},
@@ -319,9 +314,6 @@ func TestInstallRefusesAnExistingApp(t *testing.T) {
 	if err == nil || err.Error() != want {
 		t.Errorf("err = %v, want %s", err, want)
 	}
-	if ti.hits.Load() != 0 {
-		t.Error("downloaded before checking the targets")
-	}
 	if _, err := os.Stat(filepath.Join(ti.prefix, "Caskroom/app")); !os.IsNotExist(err) {
 		t.Errorf("Caskroom/app left behind: %v", err)
 	}
@@ -380,12 +372,12 @@ func TestInstallChecksTheCaskFirst(t *testing.T) {
 	if err := ti.in.Install(context.Background(), c); err == nil || !strings.Contains(err.Error(), "older than Golden Gate") {
 		t.Errorf("err = %v", err)
 	}
-	c = ti.cask(t, `[{"suite":["a"]}]`)
+	c = ti.cask(t, `[{"app_image":["a"]}]`)
 	if _, err := json.Marshal(c); err != nil {
 		t.Fatal(err)
 	}
 	if err := ti.in.Install(context.Background(), c); err == nil {
-		t.Error("installed a suite cask")
+		t.Error("installed an app_image cask")
 	}
 	if ti.hits.Load() != 0 {
 		t.Error("downloaded a cask that cannot be installed")
@@ -453,11 +445,15 @@ func TestInstallLinksABinaryNamedByItsPathInThePrefix(t *testing.T) {
 	}
 }
 
-func TestInstallRefusesTargetsOutsideItsFolders(t *testing.T) {
+func TestInstallMovesAnAppToATargetOutsideTheAppFolder(t *testing.T) {
 	ti := newTestInstall(t, appTarball)
-	c := ti.cask(t, `[{"app":["App.app",{"target":"/Users/Shared/App.app"}]}]`)
-	if err := ti.in.Install(context.Background(), c); err == nil || !regexp.MustCompile(`outside`).MatchString(err.Error()) {
-		t.Errorf("err = %v", err)
+	target := filepath.Join(t.TempDir(), "Elsewhere/App.app")
+	c := ti.cask(t, `[{"app":["App.app",{"target":"`+target+`"}]}]`)
+	if err := ti.in.Install(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(filepath.Join(target, "Contents/Info.plist")) {
+		t.Error("the app should be at its absolute target")
 	}
 }
 

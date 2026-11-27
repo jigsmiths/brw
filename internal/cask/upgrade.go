@@ -37,7 +37,6 @@ func (in *Installer) PrepareUpgrade(ctx context.Context, old caskroom.Cask, c ap
 		switch s.kind {
 		case "app":
 			u.oldApps = append(u.oldApps, s.move.target)
-			owned[s.move.target] = true
 		case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 			owned[s.move.target] = true
 		}
@@ -89,13 +88,13 @@ func (in *Installer) replace(ctx context.Context, old caskroom.Cask, c api.Cask,
 	if err := in.installArtifacts(ctx, c, p, links, file, &undo); err != nil {
 		return err
 	}
-	in.releaseQuarantine(ctx, c.Token, before, p.apps)
+	in.releaseQuarantine(ctx, c.Token, before, p.apps())
 	in.logf("==> Purging files for version %s of Cask %s", old.Version, c.Token)
 	if err := in.purgeBackup(ctx, old); err != nil {
 		return err
 	}
 	in.logf("%s was successfully upgraded!", badge()+c.Token)
-	in.reopenApps(ctx, p.apps)
+	in.reopenApps(ctx, p.apps())
 	return nil
 }
 
@@ -167,14 +166,16 @@ func (in *Installer) reinstall(ctx context.Context, old caskroom.Cask, steps []u
 	var errs error
 	var undo []func() error
 	for _, s := range steps {
-		switch s.kind {
-		case "app":
+		if isMoved(s.kind) {
 			rel, err := filepath.Rel(version, s.move.source)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				continue
 			}
-			errs = errors.Join(errs, in.moveApp(ctx, version, move{source: rel, target: s.move.target}, false, &undo))
+			errs = errors.Join(errs, in.moveArtifact(ctx, version, move{source: rel, target: s.move.target, kind: s.kind}, false, &undo))
+			continue
+		}
+		switch s.kind {
 		case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 			action, _, err := in.binaryAction(oc, s.move)
 			if err != nil {

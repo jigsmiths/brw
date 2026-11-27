@@ -15,7 +15,6 @@ import (
 	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/deps"
-	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
@@ -365,13 +364,8 @@ func (e *env) satisfyDependencies(ctx context.Context, prefix, journal string, p
 }
 
 func installDependencyCask(ctx context.Context, parent *cask.Installer, where cask.Where, config cask.Config, dep api.Cask) error {
-	apps, err := fsx.Open(where.AppDir, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = apps.Close() }()
 	in := *parent
-	in.Apps, in.SatisfyDependencies, in.Where, in.Config = apps, nil, where, config
+	in.SatisfyDependencies, in.Where, in.Config = nil, where, config
 	return in.InstallAsDependency(ctx, dep)
 }
 

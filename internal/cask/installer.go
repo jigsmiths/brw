@@ -245,7 +245,7 @@ func (p installPlan) sudoArtifact() string {
 		return "installer"
 	case len(p.pkgs) > 0:
 		return "pkg"
-	case len(p.layouts) > 0:
+	case slices.ContainsFunc(p.moved, func(m move) bool { return m.kind == "keyboard_layout" }):
 		return "keyboard_layout"
 	case poststep.RequiresSudo(p.postflight):
 		return "postflight_steps"

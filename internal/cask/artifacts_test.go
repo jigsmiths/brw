@@ -32,8 +32,8 @@ func TestPlanVSCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []move{{"Visual Studio Code.app", "/Applications/Visual Studio Code.app", "app"}}; !slices.Equal(p.apps, want) {
-		t.Errorf("apps = %+v", p.apps)
+	if want := []move{{"Visual Studio Code.app", "/Applications/Visual Studio Code.app", "app"}}; !slices.Equal(p.apps(), want) {
+		t.Errorf("apps = %+v", p.apps())
 	}
 	if want := []move{{"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "/opt/homebrew/bin/code", "binary"}}; !slices.Equal(p.links, want) {
 		t.Errorf("links = %+v", p.links)
@@ -63,8 +63,8 @@ func TestPlanTargets(t *testing.T) {
 		{"Bar.app", "/Users/me/Applications/Bar.app", "app"},
 		{"Baz.app", "/Users/Shared/Baz.app", "app"},
 	}
-	if !slices.Equal(p.apps, wantApps) {
-		t.Errorf("apps = %+v", p.apps)
+	if !slices.Equal(p.apps(), wantApps) {
+		t.Errorf("apps = %+v", p.apps())
 	}
 	wantBins := []move{{"foo-cli", "/opt/homebrew/bin/foo-cli", "binary"}, {"bin/tool.sh", "/opt/homebrew/bin/tool", "binary"}}
 	if !slices.Equal(p.links, wantBins) {
@@ -77,7 +77,7 @@ func TestPlanTargets(t *testing.T) {
 
 func TestPlanRefusesWhatBrwCannotInstall(t *testing.T) {
 	for name, c := range map[string]api.Cask{
-		"suite":   {Token: "b", Artifacts: raws(t, `[{"app":["B.app"]},{"suite":["b"]}]`)},
+		"linux":   {Token: "b", Artifacts: raws(t, `[{"app":["B.app"]},{"app_image":["b"]}]`)},
 		"unknown": {Token: "c", Artifacts: raws(t, `[{"uninstall":[{"bogus":"x"}]},{"app":["C.app"]}]`)},
 		"rename":  {Token: "d", Artifacts: raws(t, `[{"app":["D.app"]}]`), Rename: raws(t, `[{"from":"a","to":"b"}]`)},
 		"nothing": {Token: "h", Artifacts: raws(t, `[{"zap":[{"trash":"~/x"}]}]`)},

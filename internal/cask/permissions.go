@@ -126,31 +126,6 @@ func (in *Installer) gainPermissionsRmdir(ctx context.Context, path string) erro
 	})
 }
 
-func (in *Installer) mkdirPath(ctx context.Context, r *fsx.Root, rel string) error {
-	abs, err := r.Abs(rel)
-	if err != nil {
-		return err
-	}
-	existing := abs
-	for {
-		if fi, err := os.Stat(existing); err == nil && fi.IsDir() {
-			break
-		}
-		parent := filepath.Dir(existing)
-		if parent == existing {
-			break
-		}
-		existing = parent
-	}
-	if existing == abs {
-		return nil
-	}
-	if writable(existing) {
-		return r.MkdirAll(rel, 0o755)
-	}
-	return in.sudoIfNeeded(ctx, "/bin/mkdir", "-p", "--", abs)
-}
-
 var ownedByOther = ownedByAnother
 
 func ownedByAnother(path string, recursive bool) bool {

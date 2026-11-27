@@ -554,7 +554,7 @@ func TestInstallIntoALockedAppFolderNeedsSudoAvailable(t *testing.T) {
 func TestUninstallRefusesWhatBrwCannotUndo(t *testing.T) {
 	for _, artifacts := range []string{
 		`[{"uninstall":[{"bogus":"x"}]},{"app":["App.app"]}]`,
-		`[{"app":["App.app"]},{"suite":["App.app/man"]}]`,
+		`[{"app":["App.app"]},{"app_image":["App.app/man"]}]`,
 	} {
 		ti, f := installed(t, `[{"app":["App.app"]}]`)
 		receipt := filepath.Join(ti.prefix, "Caskroom/app/.metadata/INSTALL_RECEIPT.json")

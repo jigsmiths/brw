@@ -90,20 +90,11 @@ func installCasks(e *env, prefix, journal string, dryRun bool, trace tracing, ca
 	home, _ := os.UserHomeDir()
 	version, _ := buildInfo()
 	where, config := caskWhere(prefix, home, e.caskOpts.explicit)
-	if err := os.MkdirAll(where.AppDir, 0o755); err != nil { //fsx:allow the applications folder, outside the prefix
-		return err
-	}
 	return withRoot(prefix, journal, func(root *fsx.Root) error {
-		apps, err := fsx.Open(where.AppDir, nil)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = apps.Close() }()
 		if err := install.MakeStandardDirs(root, e.host.OS); err != nil {
 			return err
 		}
 		in := e.caskInstaller(root, prefix, where.AppDir, home, caskDownloads(client), trace)
-		in.Apps = apps
 		in.Where, in.PreviousWhere, in.Config = where, where, config
 		in.Fetcher = &cask.Fetcher{Dir: caskDownloads(client)}
 		in.Now = time.Now
@@ -251,13 +242,12 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, trace traci
 	var ready []outdated.Result
 	var failed []string
 	for _, r := range upgrade {
-		u, closeApps, err := prepareCaskUpgrade(ctx, e, root, prefix, journal, home, version, trace, idx, tag, fetcher, installed[r.Name])
+		u, err := prepareCaskUpgrade(ctx, e, root, prefix, journal, home, version, trace, idx, tag, fetcher, installed[r.Name])
 		if err != nil {
 			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 			failed = append(failed, r.Name)
 			continue
 		}
-		defer closeApps()
 		prepared = append(prepared, u)
 		ready = append(ready, r)
 	}
@@ -279,15 +269,15 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, trace traci
 	return upgraded, nil
 }
 
-func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, trace tracing, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
+func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, trace tracing, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, error) {
 	e.setTracing(trace)
 	listed, ok := idx.LookupFrom(old.Tap, old.Token)
 	if !ok {
-		return nil, nil, fmt.Errorf("%s is not in the cask listing", old.Token)
+		return nil, fmt.Errorf("%s is not in the cask listing", old.Token)
 	}
 	c, err := listed.ForTag(tag)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	recorded := caskroom.ReadConfig(prefix, old.Token)
 	explicit := map[cask.DirKey]string{}
@@ -296,14 +286,8 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 	}
 	maps.Copy(explicit, e.caskOpts.explicit)
 	where, config := caskWhere(prefix, home, explicit)
-	previous := recordedWhere(prefix, home, recorded)
-	apps, err := fsx.Open(previous.AppDir, nil)
-	if err != nil {
-		return nil, nil, err
-	}
 	in := e.caskInstaller(root, prefix, where.AppDir, home, fetcher.Dir, trace)
-	in.Apps = apps
-	in.Where, in.PreviousWhere, in.Config = where, previous, config
+	in.Where, in.PreviousWhere, in.Config = where, recordedWhere(prefix, home, recorded), config
 	in.Fetcher = fetcher
 	in.Now = time.Now
 	in.Version = version
@@ -312,12 +296,7 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 	in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
 		return e.satisfyDependencies(ctx, prefix, journal, in, cask.NewWhere(prefix, defaultAppDir, home), cask.Config{Languages: macLanguages()}, tag, idx, c)
 	}
-	u, err := in.PrepareUpgrade(ctx, old, c)
-	if err != nil {
-		_ = apps.Close()
-		return nil, nil, err
-	}
-	return u, func() { _ = apps.Close() }, nil
+	return in.PrepareUpgrade(ctx, old, c)
 }
 
 const defaultAppDir = "/Applications"
@@ -462,14 +441,6 @@ func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask,
 	in := e.caskInstaller(root, prefix, where.AppDir, home, caskDownloads(client), trace)
 	in.Where = where
 	e.setTracing(trace)
-	if _, err := os.Stat(where.AppDir); err == nil {
-		apps, err := fsx.Open(where.AppDir, nil)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = apps.Close() }()
-		in.Apps = apps
-	}
 	return in.Uninstall(context.Background(), c.Token, c.Version, force)
 }
 
