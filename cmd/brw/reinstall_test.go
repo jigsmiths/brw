@@ -210,10 +210,12 @@ func TestReinstallNeedsNamesAndKnowsThem(t *testing.T) {
 	if _, err := runCmd(t, e, "reinstall", "-prefix", prefix); err == nil || !strings.Contains(err.Error(), "usage") {
 		t.Errorf("no names: %v", err)
 	}
-	before := tree(t, prefix)
-	_, err := runCmd(t, e, "reinstall", "-prefix", prefix, "app", "nosuchthing")
-	if err == nil || !equal(before, tree(t, prefix)) {
-		t.Errorf("a bad name must stop everything: %v", err)
+	out, err := runCmd(t, e, "reinstall", "-prefix", prefix, "app", "nosuchthing")
+	if err == nil || !strings.Contains(err.Error(), "1 of 2 names are neither a formula nor a cask") {
+		t.Errorf("a bad name must still fail the command: %v", err)
+	}
+	if !strings.Contains(out, "==> Reinstalling app\n") {
+		t.Errorf("the known name should be reinstalled anyway:\n%s", out)
 	}
 	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, `no available formula or cask with the name "nosuchthing"`) {
 		t.Errorf("stderr = %q", w)

@@ -40,11 +40,7 @@ func reinstallCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Unlike brew, which reinstalls the names it knows, an unknown name stops everything.
-	if len(r.failures) > 0 {
-		return errors.Join(r.failures...)
-	}
-	var failures []error
+	failures := r.failures
 	if len(r.formulae) > 0 {
 		failures = append(failures, reinstallFormulae(e, prefix, *journal, dryRun, r.idx, r.client, r.formulae))
 	}
