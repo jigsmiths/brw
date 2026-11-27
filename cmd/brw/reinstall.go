@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/outdated"
 )
@@ -16,39 +16,50 @@ func reinstallCommand(e *env, args []string) error {
 	fs := newFlagSet("reinstall")
 	var dryRun bool
 	prefixArg, journal := changeFlags(e, fs, &dryRun)
-	traceFlags(fs)
+	kinds := kindFlags(fs)
+	trace := traceFlags(fs)
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw reinstall [--verbose] [--debug] [--dry-run] FORMULA [FORMULA ...]")
+		return errors.New("usage: brw reinstall [--formula|--cask] [--verbose] [--debug] [--dry-run] NAME [NAME ...]")
+	}
+	formulaOnly, caskOnly, err := kinds()
+	if err != nil {
+		return err
 	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
 		return err
 	}
-	idx, client, err := e.indexAndClient(context.Background(), prefix)
+	for i, n := range names {
+		names[i] = strings.ToLower(n)
+	}
+	r, err := e.resolve(context.Background(), prefix, names, formulaOnly, caskOnly)
 	if err != nil {
 		return err
 	}
+	failures := r.failures
+	if len(r.formulae) > 0 {
+		failures = append(failures, reinstallFormulae(e, prefix, *journal, dryRun, r.idx, r.client, r.formulae))
+	}
+	if len(r.casks) > 0 {
+		failures = append(failures, reinstallCasks(e, prefix, *journal, dryRun, *trace, r.casks))
+	}
+	return errors.Join(failures...)
+}
+
+func reinstallFormulae(e *env, prefix, journal string, dryRun bool, idx *api.Index, client *api.Client, names []string) error {
 	kegs, err := e.kegs(prefix)
 	if err != nil {
 		return err
 	}
 	var formulae []string
-	var problems []error
 	for _, n := range names {
-		f, ok := idx.Lookup(strings.TrimPrefix(strings.ToLower(n), "homebrew/core/"))
-		switch {
-		case !ok:
-			problems = append(problems, fmt.Errorf("no available formula with the name %q", n))
-		case !slices.Contains(formulae, f.Name):
+		if f, ok := idx.Lookup(n); ok && !slices.Contains(formulae, f.Name) {
 			formulae = append(formulae, f.Name)
 		}
-	}
-	if len(problems) > 0 {
-		return errors.Join(problems...)
 	}
 	planner := e.newPlanner(prefix, idx, client, kegs)
 	for _, name := range formulae {
@@ -63,5 +74,5 @@ func reinstallCommand(e *env, args []string) error {
 		}
 	}
 	plan, planErrs := planner.PlanReinstall(formulae)
-	return applyPlan(e, prefix, *journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "reinstalled", plan, planErrs, nil, withBuilds(e, prefix, idx, client), nil)
+	return applyPlan(e, prefix, journal, filepath.Join(client.CacheDir, "downloads"), dryRun, "reinstalled", plan, planErrs, nil, withBuilds(e, prefix, idx, client), nil)
 }
