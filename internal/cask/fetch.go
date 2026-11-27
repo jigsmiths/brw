@@ -73,6 +73,8 @@ func (f *Fetcher) download(ctx context.Context, c api.Cask, key string) (string,
 	if err != nil {
 		return "", err
 	}
+	// As brew's curl does: a gzipped response has no Content-Length to show progress against.
+	req.Header.Set("Accept-Encoding", "identity")
 	client := f.HTTP
 	if client == nil {
 		client = http.DefaultClient
@@ -157,6 +159,9 @@ type progressReader struct {
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.done += int64(n)
+	if err == io.EOF {
+		p.total = p.done
+	}
 	p.report(p.name, p.done, p.total)
 	return n, err
 }

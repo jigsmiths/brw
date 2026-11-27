@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -484,5 +485,18 @@ func TestFetchAPlainBottleReadsItsOwnReceipt(t *testing.T) {
 	}
 	if _, err := f.Fetch(context.Background(), req); err != nil || hits.Load() != 1 {
 		t.Errorf("a cached plain bottle was fetched again: %v, %d requests", err, hits.Load())
+	}
+}
+
+func TestProgressOfUnknownSizeEndsComplete(t *testing.T) {
+	var last [2]int64
+	p := &progressReader{r: strings.NewReader("bytes"), total: -1, report: func(_ string, done, total int64) {
+		last = [2]int64{done, total}
+	}}
+	if _, err := io.ReadAll(p); err != nil {
+		t.Fatal(err)
+	}
+	if last != [2]int64{5, 5} {
+		t.Errorf("last report = done %d of %d, want 5 of 5", last[0], last[1])
 	}
 }

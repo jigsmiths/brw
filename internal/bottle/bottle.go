@@ -61,6 +61,9 @@ type progressReader struct {
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	p.done += int64(n)
+	if err == io.EOF {
+		p.total = p.done
+	}
 	p.report(p.name, p.done, p.total)
 	return n, err
 }

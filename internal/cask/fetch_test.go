@@ -1,16 +1,19 @@
 package cask
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -143,5 +146,44 @@ func TestFetchFailsOnHTTPError(t *testing.T) {
 	f := &Fetcher{Dir: t.TempDir()}
 	if _, err := f.Fetch(context.Background(), api.Cask{Token: "a", URL: srv.URL + "/a.zip", SHA256: "no_check"}); err == nil || !strings.Contains(err.Error(), "404") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestFetchAsksForTheFileUncompressed(t *testing.T) {
+	body := []byte("dmg bytes")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			_, _ = gz.Write(body)
+			_ = gz.Close()
+			return
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	var first [2]int64
+	f := &Fetcher{Dir: t.TempDir(), Progress: func(_ string, done, total int64) {
+		if first == [2]int64{} {
+			first = [2]int64{done, total}
+		}
+	}}
+	fetch(t, f, api.Cask{Token: "app", Version: "1.0", URL: srv.URL + "/App.dmg", SHA256: sum(body)})
+	if want := int64(len(body)); first[1] != want {
+		t.Errorf("first report total = %d, want %d", first[1], want)
+	}
+}
+
+func TestProgressOfUnknownSizeEndsComplete(t *testing.T) {
+	var last [2]int64
+	p := &progressReader{r: strings.NewReader("bytes"), total: -1, report: func(_ string, done, total int64) {
+		last = [2]int64{done, total}
+	}}
+	if _, err := io.ReadAll(p); err != nil {
+		t.Fatal(err)
+	}
+	if last != [2]int64{5, 5} {
+		t.Errorf("last report = done %d of %d, want 5 of 5", last[0], last[1])
 	}
 }
