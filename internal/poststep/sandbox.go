@@ -479,7 +479,6 @@ func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *c
 	}
 }
 
-// requestOrder remembers the last privileged step run; before the first request there is none.
 type requestOrder struct {
 	last      int
 	requested bool

@@ -33,7 +33,6 @@ const (
 	Skip
 )
 
-// PrivilegedGroup says whether the user is in one of admin, staff, root and wheel, and which.
 type PrivilegedGroup struct {
 	Name   string
 	Member bool
@@ -49,7 +48,6 @@ type Options struct {
 	PrivilegedGroup PrivilegedGroup
 }
 
-// LogDestination is where RecordLog keeps what the kernel denied.
 type LogDestination struct {
 	path string
 	kept bool

@@ -20,7 +20,6 @@ func (s step) requiresSudo(includeOptional bool) bool {
 		(includeOptional && (s.Sudo == sudoIfNeeded || s.Type == "set_ownership"))
 }
 
-// Run runs nothing if any step is unsupported.
 func Run(ctx context.Context, c Context, raw []json.RawMessage) error {
 	if u := Unsupported(raw); len(u) > 0 {
 		return fmt.Errorf("unsupported post_install steps: %s", strings.Join(u, ", "))
@@ -48,7 +47,6 @@ func execute(ctx context.Context, c Context, raw []json.RawMessage, ph phase) er
 	return r.plan(raw, ph, privilegedDelegate{})
 }
 
-// privilegedDelegate hands steps that need sudo to the parent; when disabled they run here.
 type privilegedDelegate struct {
 	enabled bool
 	run     func(index int) error

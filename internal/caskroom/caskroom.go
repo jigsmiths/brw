@@ -188,7 +188,6 @@ func AppDir(prefix, token string) string {
 	return fallback
 }
 
-// KeyboardLayoutDir is the --keyboard-layoutdir stored at install, else the default.
 func KeyboardLayoutDir(prefix, token string) string {
 	const fallback = "/Library/Keyboard Layouts"
 	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))

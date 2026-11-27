@@ -12,16 +12,15 @@ import (
 // Spec is one command to run under a profile; the executable is left open on InheritanceFD for the child to find.
 // On macOS the child runs on a pseudo-terminal, so its stdout and stderr arrive merged on Stdout.
 type Spec struct {
-	Profile   string
-	Exe       string
-	Args      []string
-	Env       []string
-	Dir       string
-	Stdin     io.Reader
-	PassStdin bool
-	Stdout    io.Writer
-	Stderr    io.Writer
-	// Disclaim runs the sandbox through DisclaimVia, the executable and subcommand that call DisclaimMain.
+	Profile     string
+	Exe         string
+	Args        []string
+	Env         []string
+	Dir         string
+	Stdin       io.Reader
+	PassStdin   bool
+	Stdout      io.Writer
+	Stderr      io.Writer
 	Disclaim    bool
 	DisclaimVia []string
 }
@@ -34,7 +33,6 @@ func (s Spec) Argv() []string {
 	return argv
 }
 
-// Run returns the child's exit code, which is not an error by itself.
 func Run(ctx context.Context, s Spec) (int, error) {
 	exe, err := os.Open(s.Exe)
 	if err != nil {

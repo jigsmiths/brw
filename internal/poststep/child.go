@@ -24,7 +24,6 @@ const (
 	handshakeTimeout = 10 * time.Second
 )
 
-// parentChannel is how the child asks its parent to run a privileged step.
 type parentChannel interface {
 	request(index int) error
 }

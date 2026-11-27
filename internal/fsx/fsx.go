@@ -138,7 +138,6 @@ func (r *Root) write(name string, src io.Reader, perm fs.FileMode) error {
 	return r.log("write %s", rel)
 }
 
-// modeNeedsChmod is true when the file's mode is unknown or not perm.
 func modeNeedsChmod(fi fs.FileInfo, statErr error, perm fs.FileMode) bool {
 	return statErr != nil || fi.Mode().Perm() != perm
 }
