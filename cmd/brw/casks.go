@@ -448,8 +448,7 @@ func caskDownloads(client *api.Client) string {
 	return filepath.Join(client.CacheDir, "cask-downloads")
 }
 
-// As brew does, every cask downloads before any is uninstalled, so a failed
-// download leaves the installed one in place.
+// As brew does, fetch every cask before uninstalling any, so a failed download keeps the old install.
 func reinstallCasks(e *env, prefix, journal string, dryRun bool, trace tracing, casks []api.Cask) error {
 	e.setTracing(trace)
 	tag, err := platform.Tag(e.host)
@@ -526,16 +525,13 @@ func reinstallCasks(e *env, prefix, journal string, dryRun bool, trace tracing, 
 			return err
 		}
 		for _, c := range ready {
-			// The folders come from the old install's config, which the uninstall removes.
-			appDir, layoutDir, explicitAppDir := caskroom.AppDir(prefix, c.Token), caskroom.KeyboardLayoutDir(prefix, c.Token), caskroom.ExplicitAppDir(prefix, c.Token)
-			if i := slices.IndexFunc(installed, func(old caskroom.Cask) bool { return old.Token == c.Token }); i >= 0 {
-				if err := uninstallCask(e, root, prefix, home, installed[i], true, trace); err != nil {
-					_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
-					failed = append(failed, c.Token)
-					continue
-				}
+			folders, err := uninstallKeepingFolders(e, root, prefix, home, installed, c.Token, trace)
+			if err != nil {
+				_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
+				failed = append(failed, c.Token)
+				continue
 			}
-			if err := installReinstalledCask(ctx, e, root, prefix, journal, home, version, tag, appDir, layoutDir, explicitAppDir, caskIdx, fetcher, trace, c); err != nil {
+			if err := installReinstalledCask(ctx, e, root, prefix, journal, home, version, tag, folders, caskIdx, fetcher, trace, c); err != nil {
 				_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 				failed = append(failed, c.Token)
 			}
@@ -551,7 +547,25 @@ func reinstallCasks(e *env, prefix, journal string, dryRun bool, trace tracing, 
 	return nil
 }
 
-func installReinstalledCask(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version, tag, appDir, layoutDir, explicitAppDir string, caskIdx *api.CaskIndex, fetcher *cask.Fetcher, trace tracing, c api.Cask) error {
+type caskFolders struct {
+	app, keyboardLayout, explicitApp string
+}
+
+func uninstallKeepingFolders(e *env, root *fsx.Root, prefix, home string, installed []caskroom.Cask, token string, trace tracing) (caskFolders, error) {
+	folders := caskFolders{
+		app:            caskroom.AppDir(prefix, token),
+		keyboardLayout: caskroom.KeyboardLayoutDir(prefix, token),
+		explicitApp:    caskroom.ExplicitAppDir(prefix, token),
+	}
+	i := slices.IndexFunc(installed, func(old caskroom.Cask) bool { return old.Token == token })
+	if i < 0 {
+		return folders, nil
+	}
+	return folders, uninstallCask(e, root, prefix, home, installed[i], true, trace)
+}
+
+func installReinstalledCask(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version, tag string, folders caskFolders, caskIdx *api.CaskIndex, fetcher *cask.Fetcher, trace tracing, c api.Cask) error {
+	appDir, explicitAppDir := folders.app, folders.explicitApp
 	if err := os.MkdirAll(appDir, 0o755); err != nil { //fsx:allow the applications folder, outside the prefix
 		return err
 	}
@@ -562,7 +576,7 @@ func installReinstalledCask(ctx context.Context, e *env, root *fsx.Root, prefix,
 	defer func() { _ = apps.Close() }()
 	in := e.caskInstaller(root, prefix, appDir, home, fetcher.Dir, trace)
 	in.Apps = apps
-	in.Where = in.Where.WithKeyboardLayoutDir(layoutDir)
+	in.Where = in.Where.WithKeyboardLayoutDir(folders.keyboardLayout)
 	in.Fetcher = &cask.Fetcher{Dir: fetcher.Dir}
 	in.Now = time.Now
 	in.Version = version
