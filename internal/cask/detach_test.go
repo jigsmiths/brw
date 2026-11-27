@@ -82,6 +82,66 @@ func TestReleaseDetachesAnImageThatHdiutilStillListsWithoutADeviceNode(t *testin
 	}
 }
 
+type lingeringImage struct {
+	detaches, lingers int
+	detached          bool
+	pauses            []time.Duration
+}
+
+// stubLingering makes hdiutil detach succeed while info keeps listing the device for lingers more calls.
+func stubLingering(t *testing.T, l *lingeringImage) {
+	t.Helper()
+	oldRun, oldPause := runTool, pause
+	t.Cleanup(func() { runTool, pause = oldRun, oldPause })
+	pause = func(d time.Duration) { l.pauses = append(l.pauses, d) }
+	runTool = func(name string, args ...string) ([]byte, error) {
+		switch {
+		case name == "hdiutil" && args[0] == "detach":
+			l.detaches++
+			l.detached = true
+		case name == "hdiutil" && args[0] == "info":
+			if l.detached {
+				if l.lingers == 0 {
+					return []byte("<plist/>"), nil
+				}
+				l.lingers--
+			}
+			return []byte("<plist><dict><key>dev-entry</key><string>/dev/" + listedDev + "</string></dict></plist>"), nil
+		}
+		return nil, nil
+	}
+}
+
+func TestReleaseWaitsForTheListingToClearAfterADetach(t *testing.T) {
+	l := &lingeringImage{lingers: 3}
+	stubLingering(t, l)
+	if err := release(listedDev, nil); err != nil {
+		t.Errorf("err = %v", err)
+	}
+	if l.detaches != 1 || len(l.pauses) != 3 {
+		t.Errorf("detaches = %d, pauses = %v, want 1 detach and 3 pauses", l.detaches, l.pauses)
+	}
+}
+
+func TestReleaseFailsWhenTheListingNeverClears(t *testing.T) {
+	l := &lingeringImage{lingers: 1 << 20}
+	stubLingering(t, l)
+	if err := release(listedDev, nil); err == nil {
+		t.Error("err = nil, want the image still attached")
+	}
+	if len(l.pauses) == 0 || time.Duration(len(l.pauses))*settleInterval > detachTries*settleTimeout {
+		t.Errorf("pauses = %d of %v, want a bounded wait", len(l.pauses), settleInterval)
+	}
+}
+
+func TestReleaseDoesNotWaitWhenTheListingClearsAtOnce(t *testing.T) {
+	l := &lingeringImage{}
+	stubLingering(t, l)
+	if err := release(listedDev, nil); err != nil || len(l.pauses) != 0 {
+		t.Errorf("err = %v, pauses = %v, want none", err, l.pauses)
+	}
+}
+
 func TestDetachIgnoresAnImageThatIsGone(t *testing.T) {
 	d := &fakeDisk{}
 	stubDisk(t, d)
