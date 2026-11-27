@@ -31,7 +31,6 @@ var movedCases = []movedCase{
 	{"screen_saver", "Screen Saver", "a", DirScreenSaver},
 }
 
-// movedInstall is a test install whose dir for the kind is a fresh temp dir and whose commands are faked.
 func movedInstall(t *testing.T, c movedCase) (*testInstall, *fakeExec, string) {
 	t.Helper()
 	ti := newTestInstall(t, appTarball)

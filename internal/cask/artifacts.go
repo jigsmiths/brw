@@ -21,7 +21,6 @@ type Where struct {
 	AppDir string
 	Home   string
 
-	// Dirs holds every target directory but AppDir; Dir falls back to brew's default for one that is missing.
 	Dirs map[DirKey]string
 }
 

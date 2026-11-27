@@ -8,7 +8,6 @@ import (
 	"strings"
 )
 
-// DirKey is the config key brew gives a cask target directory, such as "fontdir".
 type DirKey string
 
 const (
@@ -30,7 +29,7 @@ const (
 	DirScreenSaver   DirKey = "screen_saverdir"
 )
 
-// DirKeys lists the directories in the order brew's config writes them.
+// DirKeys is in the order brew's config.json writes them.
 var DirKeys = []DirKey{
 	DirApp, DirAppImage, DirKeyboard, DirColorPicker, DirPrefPane, DirQLPlugin, DirMDImporter, DirDictionary,
 	DirFont, DirService, DirInputMethod, DirInternetPlug, DirAudioUnitPlug, DirVSTPlug, DirVST3Plug, DirScreenSaver,
@@ -55,10 +54,8 @@ func expandHome(path, home string) string {
 	return path
 }
 
-// DefaultDir is brew's default for key with the home folder filled in.
 func DefaultDir(key DirKey, home string) string { return expandHome(defaultDirs[key], home) }
 
-// Dir is where artifacts of key go: the explicit setting, else the environment's, else the default.
 func (c Config) Dir(key DirKey, home string) string {
 	if d, ok := c.Explicit[key]; ok {
 		return d
@@ -69,7 +66,6 @@ func (c Config) Dir(key DirKey, home string) string {
 	return DefaultDir(key, home)
 }
 
-// Dir is where artifacts of key go.
 func (w Where) Dir(key DirKey) string {
 	if key == DirApp {
 		return w.AppDir
@@ -80,7 +76,6 @@ func (w Where) Dir(key DirKey) string {
 	return DefaultDir(key, w.Home)
 }
 
-// WithConfig sets every directory to what c says.
 func (w Where) WithConfig(c Config) Where {
 	w.Dirs = map[DirKey]string{}
 	for _, key := range DirKeys {
@@ -113,7 +108,6 @@ func orderedDirs(dirs map[DirKey]string) []byte {
 	return b.Bytes()
 }
 
-// DirsFromOptions reads the --NAMEdir=PATH words of HOMEBREW_CASK_OPTS, as brew does.
 func DirsFromOptions(words []string, home string) map[DirKey]string {
 	dirs := map[DirKey]string{}
 	for _, word := range words {
@@ -129,7 +123,6 @@ func DirsFromOptions(words []string, home string) map[DirKey]string {
 	return dirs
 }
 
-// ExpandDir is Pathname#expand_path: a leading ~ is the home folder and a relative path is the working directory's.
 func ExpandDir(path, home string) string { return absolute(expandHome(path, home)) }
 
 func absolute(path string) string {

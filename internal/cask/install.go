@@ -22,7 +22,6 @@ import (
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
-// Config is what brew records in config.json: the directories from flags (Explicit) and from HOMEBREW_CASK_OPTS (Env).
 type Config struct {
 	Languages []string
 	Explicit  map[DirKey]string
@@ -30,9 +29,8 @@ type Config struct {
 }
 
 type Installer struct {
-	Root  *fsx.Root
-	Where Where
-	// PreviousWhere is where the version being upgraded was installed, which a flag can change for the new one.
+	Root          *fsx.Root
+	Where         Where
 	PreviousWhere Where
 	Host          platform.Host
 	Fetcher       *Fetcher
@@ -59,7 +57,6 @@ type Installer struct {
 	// SatisfyDependencies installs what c needs; nil leaves it to the caller, and Install then fails if it is missing.
 	SatisfyDependencies func(ctx context.Context, c api.Cask) error
 
-	// predecessor and successor are the Moved artifacts of the version an upgrade replaces and of the one it installs.
 	predecessor, successor []move
 	upgrading              bool
 	reopen                 []string
@@ -346,7 +343,6 @@ func (in *Installer) prefixRel(target string) (string, error) {
 	return filepath.Rel(in.Where.Prefix, target)
 }
 
-// moveArtifact installs one Moved artifact; unless it adopted an existing target, undo reverts it as brew's rollback does.
 func (in *Installer) moveArtifact(ctx context.Context, version string, m move, autoUpdates bool, undo *[]func() error) error {
 	adopted, err := in.installMoved(ctx, version, m, autoUpdates)
 	if err != nil || adopted {

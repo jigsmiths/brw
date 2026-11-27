@@ -302,7 +302,6 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 
 const defaultAppDir = "/Applications"
 
-// recordedWhere is where the cask was installed, as its config.json says.
 func recordedWhere(prefix, home string, recorded caskroom.Config) cask.Where {
 	w := cask.NewWhere(prefix, defaultAppDir, home)
 	for _, key := range cask.DirKeys {

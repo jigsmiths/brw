@@ -165,12 +165,10 @@ func Pinned(prefix, token string) (string, bool) {
 	return filepath.Base(resolved), true
 }
 
-// Config is the directory settings recorded in a cask's config.json.
 type Config struct {
 	Default, Env, Explicit map[string]string
 }
 
-// ReadConfig returns what token's config.json recorded, nothing if it is missing or unreadable.
 func ReadConfig(prefix, token string) Config {
 	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
 	if err != nil {
@@ -195,7 +193,6 @@ func ReadConfig(prefix, token string) Config {
 	return Config{Default: strings(raw.Default), Env: strings(raw.Env), Explicit: strings(raw.Explicit)}
 }
 
-// Dir is where the cask's artifacts of key went: the explicit setting, else the environment's, else the default.
 func (c Config) Dir(key string) (string, bool) {
 	for _, m := range []map[string]string{c.Explicit, c.Env, c.Default} {
 		if d, ok := m[key]; ok && d != "" {
@@ -205,7 +202,6 @@ func (c Config) Dir(key string) (string, bool) {
 	return "", false
 }
 
-// AppDir is the appdir stored at install, else the default.
 func AppDir(prefix, token string) string {
 	if d, ok := ReadConfig(prefix, token).Dir("appdir"); ok {
 		return d

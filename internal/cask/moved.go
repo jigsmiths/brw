@@ -34,12 +34,10 @@ const (
 	systemReadables = "a+rX,"
 )
 
-// movedKind is one Cask::Artifact::Moved subclass.
 type movedKind struct {
 	english string
-	// dir is where a relative target goes; hasDir is false for the generic artifact, whose relative targets stay as written.
-	dir    DirKey
-	hasDir bool
+	dir     DirKey
+	hasDir  bool
 }
 
 var movedKinds = map[string]movedKind{
@@ -93,7 +91,6 @@ func matching(others []move, m move) bool {
 	return slices.ContainsFunc(others, func(o move) bool { return o.kind == m.kind && o.target == m.target })
 }
 
-// openDir opens dir for writing through fsx; the caller closes it.
 func openDir(dir string) (*fsx.Root, error) { return fsx.Open(dir, nil) }
 
 func (in *Installer) emptyDir(path string) bool {
@@ -188,7 +185,6 @@ func (in *Installer) gainPermissionsMkpath(ctx context.Context, dir string) erro
 	return root.MkdirAll(rel, stagedDirMode)
 }
 
-// installMoved installs one artifact of any Moved kind; adopted tells the caller not to undo it on failure.
 func (in *Installer) installMoved(ctx context.Context, version string, m move, autoUpdates bool) (adopted bool, err error) {
 	if adopted, err = in.moveIn(ctx, version, m, autoUpdates); err != nil {
 		return adopted, err
@@ -442,7 +438,6 @@ func (in *Installer) deleteKeyboardLayoutCache(ctx context.Context) error {
 	return err
 }
 
-// systemDir is whether any folder from target up to the home folder or root is one macOS owns.
 func (in *Installer) systemDir(target string) bool {
 	parent := filepath.Dir(target)
 	for p := target; ; p = filepath.Dir(p) {
