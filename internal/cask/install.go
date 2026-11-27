@@ -22,19 +22,14 @@ import (
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
-// Config is what brew records in config.json; env stays empty because brw does not read HOMEBREW_CASK_OPTS.
 type Config struct {
-	Languages      []string
-	ExplicitAppDir string
-	// ExplicitDirs holds the other directory options the user gave, by brew's key such as keyboard_layoutdir.
-	ExplicitDirs map[string]string
+	Languages []string
+	Explicit  map[DirKey]string
+	Env       map[DirKey]string
 }
-
-const keyboardLayoutKey = "keyboard_layoutdir"
 
 type Installer struct {
 	Root    *fsx.Root
-	Apps    *fsx.Root
 	Where   Where
 	Host    platform.Host
 	Fetcher *Fetcher
@@ -54,15 +49,17 @@ type Installer struct {
 	Debug       bool
 	FindService func(ctx context.Context, label string, privilege sudo.Privilege) (bool, error)
 	Adopt       bool
+	Force       bool
 	Sandbox     poststep.SandboxMode
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
 	// SatisfyDependencies installs what c needs; nil leaves it to the caller, and Install then fails if it is missing.
 	SatisfyDependencies func(ctx context.Context, c api.Cask) error
 
-	upgrading     bool
-	reopen        []string
-	warnedSandbox bool
+	predecessor, successor []move
+	upgrading              bool
+	reopen                 []string
+	warnedSandbox          bool
 
 	sandboxWarnings []string
 
@@ -185,13 +182,8 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
-	for _, m := range p.apps {
-		if err := in.moveApp(ctx, version, m, c.AutoUpdates, undo); err != nil {
-			return fmt.Errorf("%s: %w", c.Token, err)
-		}
-	}
-	for _, m := range p.layouts {
-		if err := in.moveKeyboardLayout(ctx, version, m, undo); err != nil {
+	for _, m := range p.moved {
+		if err := in.moveArtifact(ctx, version, m, c.AutoUpdates, undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
@@ -254,17 +246,6 @@ const (
 )
 
 func (in *Installer) checkTargets(c api.Cask, p installPlan, owned map[string]bool) ([]linkAction, error) {
-	for _, m := range p.apps {
-		if _, err := in.appRel(m.target); err != nil {
-			return nil, fmt.Errorf("%s: %w", c.Token, err)
-		}
-		if owned[m.target] {
-			continue
-		}
-		if _, err := os.Lstat(m.target); err == nil && !in.Adopt {
-			return nil, brewError("%s: It seems there is already an App at '%s'.", c.Token, m.target)
-		}
-	}
 	links := make([]linkAction, len(p.links))
 	for i, m := range p.links {
 		if _, err := in.prefixRel(m.target); err != nil {
@@ -354,13 +335,6 @@ func (in *Installer) inside(dir, path string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func (in *Installer) appRel(target string) (string, error) {
-	if !in.inside(in.Where.AppDir, target) {
-		return "", fmt.Errorf("app target %s: outside %s: %w", target, in.Where.AppDir, ErrUnsupported)
-	}
-	return filepath.Rel(in.Where.AppDir, target)
-}
-
 func (in *Installer) prefixRel(target string) (string, error) {
 	if !in.inside(in.Where.Prefix, target) {
 		return "", fmt.Errorf("binary target %s: outside %s: %w", target, in.Where.Prefix, ErrUnsupported)
@@ -368,90 +342,43 @@ func (in *Installer) prefixRel(target string) (string, error) {
 	return filepath.Rel(in.Where.Prefix, target)
 }
 
-// moveApp keeps an adopted app at the target on rollback too, unlike brew.
-func (in *Installer) moveApp(ctx context.Context, version string, m move, autoUpdates bool, undo *[]func() error) error {
+func (in *Installer) moveArtifact(ctx context.Context, version string, m move, autoUpdates bool, undo *[]func() error) error {
+	adopted, err := in.installMoved(ctx, version, m, autoUpdates)
+	if err != nil || adopted {
+		return err
+	}
 	staged := filepath.Join(version, m.source)
-	if _, err := in.Root.Lstat(staged); err != nil {
-		abs, _ := in.Root.Abs(staged)
-		return brewError("It seems the App source '%s' is not there.", abs)
-	}
-	rel, err := in.appRel(m.target)
-	if err != nil {
-		return err
-	}
-	if _, err := os.Lstat(m.target); err == nil && in.Adopt {
-		in.logf("==> Adopting existing App at '%s'", m.target)
-		if !autoUpdates {
-			abs, err := in.Root.Abs(staged)
-			if err != nil {
-				return err
-			}
-			same, err := in.sameApp(ctx, abs, m.target)
-			if err != nil {
-				return err
-			}
-			if !same {
-				return brewError("It seems the existing App is different from the one being installed.")
-			}
-		}
-		if err := in.Root.RemoveAll(staged); err != nil {
-			return err
-		}
-		return in.linkApp(ctx, staged, m, undo)
-	}
-	in.logf("==> Moving App '%s' to '%s'", filepath.Base(m.source), m.target)
-	if err := in.mkdirPath(ctx, in.Apps, filepath.Dir(rel)); err != nil {
-		return err
-	}
-	if writable(filepath.Dir(m.target)) {
-		if err := in.Root.MoveTo(in.Apps, staged, rel); err != nil {
-			return err
-		}
-		*undo = append(*undo, func() error { return in.Apps.MoveTo(in.Root, rel, staged) })
-	} else {
-		abs, err := in.Root.Abs(staged)
-		if err != nil {
-			return err
-		}
-		if err := in.sudoIfNeeded(ctx, "/bin/cp", "-pR", abs, m.target); err != nil {
-			return err
-		}
-		*undo = append(*undo, func() error { return in.removePath(context.WithoutCancel(ctx), in.Apps, rel) })
-		if err := in.removePath(ctx, in.Root, staged); err != nil {
-			return err
-		}
-	}
-	return in.linkApp(ctx, staged, m, undo)
-}
-
-func (in *Installer) linkApp(ctx context.Context, staged string, m move, undo *[]func() error) error {
-	if err := in.Root.SymlinkTo(in.Apps, m.target, staged); err != nil {
-		return err
-	}
-	*undo = append(*undo, func() error { return in.Root.Remove(staged) })
-	if err := run(ctx, "chmod", "-R", "a+rX,go-w", m.target); err != nil {
-		return err
-	}
-	if group := caskroomGroup(); group != "" {
-		_ = run(ctx, "chgrp", "-hR", group, m.target)
-	}
+	*undo = append(*undo, func() error {
+		m := m
+		m.source = staged
+		return in.uninstallMoved(context.WithoutCancel(ctx), m, false)
+	})
 	return nil
 }
 
-func caskroomGroup() string {
+func (in *Installer) withAppDir(f func(*fsx.Root) error) error {
+	apps, err := fsx.Open(in.Where.AppDir, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = apps.Close() }()
+	return f(apps)
+}
+
+func caskroomGroup() (name string, ok bool) {
 	u, err := user.Current()
 	if err != nil {
-		return ""
+		return "", false
 	}
 	if admin, err := user.LookupGroup("admin"); err == nil {
 		if ids, err := u.GroupIds(); err == nil && slices.Contains(ids, admin.Gid) {
-			return "admin"
+			return "admin", true
 		}
 	}
 	if g, err := user.LookupGroupId(u.Gid); err == nil {
-		return g.Name
+		return g.Name, true
 	}
-	return ""
+	return "", false
 }
 
 func (in *Installer) linkBinary(ctx context.Context, staged string, m move, action linkAction, undo *[]func() error) error {
@@ -481,7 +408,7 @@ func (in *Installer) linkBinary(ctx context.Context, staged string, m move, acti
 		return err
 	}
 	if in.inside(in.Where.AppDir, source) {
-		err = in.Root.SymlinkTo(in.Apps, source, rel)
+		err = in.Root.SymlinkAny(source, rel)
 	} else {
 		err = in.Root.Symlink(source, rel)
 	}
@@ -501,18 +428,19 @@ func (in *Installer) makeExecutable(path string) error {
 		return err
 	}
 	perm := fi.Mode().Perm() | 0o111
-	for _, r := range []struct {
-		dir  string
-		root *fsx.Root
-	}{{in.Where.AppDir, in.Apps}, {in.Where.Prefix, in.Root}} {
-		dir, err := filepath.EvalSymlinks(r.dir)
-		if err == nil && in.inside(dir, path) {
-			rel, err := filepath.Rel(dir, path)
-			if err != nil {
-				return err
-			}
-			return r.root.Chmod(rel, perm)
+	if dir, err := filepath.EvalSymlinks(in.Where.AppDir); err == nil && in.inside(dir, path) {
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
 		}
+		return in.withAppDir(func(apps *fsx.Root) error { return apps.Chmod(rel, perm) })
+	}
+	if dir, err := filepath.EvalSymlinks(in.Where.Prefix); err == nil && in.inside(dir, path) {
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		return in.Root.Chmod(rel, perm)
 	}
 	return fmt.Errorf("binary %s: outside %s and %s", path, in.Where.AppDir, in.Where.Prefix)
 }
@@ -553,53 +481,21 @@ func (in *Installer) writeMetadata(c api.Cask, name string, data []byte) error {
 
 func (in *Installer) writeConfig(c api.Cask) error {
 	home := in.Where.Home
-	lib := func(p string) string { return filepath.Join(home, "Library", p) }
-	type dirs struct {
-		Languages          []string `json:"languages"`
-		AppDir             string   `json:"appdir"`
-		AppImageDir        string   `json:"appimagedir"`
-		KeyboardLayoutDir  string   `json:"keyboard_layoutdir"`
-		ColorPickerDir     string   `json:"colorpickerdir"`
-		PrefPaneDir        string   `json:"prefpanedir"`
-		QLPluginDir        string   `json:"qlplugindir"`
-		MDImporterDir      string   `json:"mdimporterdir"`
-		DictionaryDir      string   `json:"dictionarydir"`
-		FontDir            string   `json:"fontdir"`
-		ServiceDir         string   `json:"servicedir"`
-		InputMethodDir     string   `json:"input_methoddir"`
-		InternetPluginDir  string   `json:"internet_plugindir"`
-		AudioUnitPluginDir string   `json:"audio_unit_plugindir"`
-		VSTPluginDir       string   `json:"vst_plugindir"`
-		VST3PluginDir      string   `json:"vst3_plugindir"`
-		ScreenSaverDir     string   `json:"screen_saverdir"`
-	}
-	type appDir struct {
-		AppDir            string `json:"appdir,omitempty"`
-		KeyboardLayoutDir string `json:"keyboard_layoutdir,omitempty"`
+	defaults := map[DirKey]string{}
+	for _, key := range DirKeys {
+		defaults[key] = DefaultDir(key, home)
 	}
 	languages := in.Config.Languages
 	if languages == nil {
 		languages = []string{}
 	}
-	b, err := json.Marshal(struct {
-		Default  dirs   `json:"default"`
-		Env      appDir `json:"env"`
-		Explicit appDir `json:"explicit"`
-	}{
-		Default: dirs{
-			Languages: languages, AppDir: "/Applications", AppImageDir: filepath.Join(home, "Applications"),
-			KeyboardLayoutDir: "/Library/Keyboard Layouts", ColorPickerDir: lib("ColorPickers"),
-			PrefPaneDir: lib("PreferencePanes"), QLPluginDir: lib("QuickLook"), MDImporterDir: lib("Spotlight"),
-			DictionaryDir: lib("Dictionaries"), FontDir: lib("Fonts"), ServiceDir: lib("Services"),
-			InputMethodDir: lib("Input Methods"), InternetPluginDir: lib("Internet Plug-Ins"),
-			AudioUnitPluginDir: lib("Audio/Plug-Ins/Components"), VSTPluginDir: lib("Audio/Plug-Ins/VST"),
-			VST3PluginDir: lib("Audio/Plug-Ins/VST3"), ScreenSaverDir: lib("Screen Savers"),
-		},
-		Explicit: appDir{in.Config.ExplicitAppDir, in.Config.ExplicitDirs[keyboardLayoutKey]},
-	})
+	langs, err := json.Marshal(languages)
 	if err != nil {
 		return err
 	}
+	dirs := orderedDirs(defaults)
+	b := slices.Concat([]byte(`{"default":{"languages":`), langs, []byte(`,`), dirs[1:],
+		[]byte(`,"env":`), orderedDirs(in.Config.Env), []byte(`,"explicit":`), orderedDirs(in.Config.Explicit), []byte(`}`))
 	return in.writeMetadata(c, "config.json", b)
 }
 

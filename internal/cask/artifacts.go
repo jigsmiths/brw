@@ -21,18 +21,15 @@ type Where struct {
 	AppDir string
 	Home   string
 
-	KeyboardLayoutDir string
-}
-
-const DefaultKeyboardLayoutDir = "/Library/Keyboard Layouts"
-
-func (w Where) WithKeyboardLayoutDir(dir string) Where {
-	w.KeyboardLayoutDir = dir
-	return w
+	Dirs map[DirKey]string
 }
 
 func NewWhere(prefix, appDir, home string) Where {
-	return Where{Prefix: prefix, AppDir: appDir, Home: home, KeyboardLayoutDir: DefaultKeyboardLayoutDir}
+	w := Where{Prefix: prefix, AppDir: appDir, Home: home, Dirs: map[DirKey]string{}}
+	for _, key := range DirKeys {
+		w.Dirs[key] = DefaultDir(key, home)
+	}
+	return w
 }
 
 func Placeholders(w Where) func(string) string {
@@ -46,6 +43,10 @@ func Placeholders(w Where) func(string) string {
 
 type move struct {
 	source, target, kind string
+}
+
+func (p installPlan) apps() []move {
+	return slices.DeleteFunc(slices.Clone(p.moved), func(m move) bool { return m.kind != "app" })
 }
 
 type invalidManpageName string
@@ -70,7 +71,7 @@ var linkNames = map[string]string{
 }
 
 type installPlan struct {
-	apps, links, layouts  []move
+	moved, links          []move
 	pkgs                  []pkgInstall
 	generators            []generator
 	preflight, postflight []json.RawMessage
@@ -103,41 +104,41 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 		}
 		for kind, args := range obj {
 			args = fill(args)
-			switch kind {
-			case "app", "keyboard_layout", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
+			switch {
+			case isMoved(kind) || slices.Contains(linkKinds, kind):
 				m, err := readMove(args, kind, w)
 				if badName, ok := errors.AsType[invalidManpageName](err); ok {
 					return installPlan{}, brewError("Cask '%s' definition is invalid: %s", c.Token, badName)
 				}
+				if errors.Is(err, errNoTarget) {
+					return installPlan{}, brewError("Cask '%s' definition is invalid: %s '%s' requires a target.", c.Token, movedKinds[kind].name(), m.source)
+				}
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
-				switch kind {
-				case "app":
-					p.apps = append(p.apps, m)
-				case "keyboard_layout":
-					p.layouts = append(p.layouts, m)
-				default:
+				if isMoved(kind) {
+					p.moved = append(p.moved, m)
+				} else {
 					p.links = append(p.links, m)
 				}
-			case "pkg":
+			case kind == "pkg":
 				pk, err := readPkg(args)
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
 				p.pkgs = append(p.pkgs, pk)
 				continue
-			case "uninstall":
+			case kind == "uninstall":
 				if bad := unknownDirectives(args); bad != "" {
 					return unsupported("uninstall " + bad)
 				}
-			case "generate_completions_from_executable":
+			case kind == "generate_completions_from_executable":
 				g, err := readGenerator(args)
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
 				}
 				p.generators = append(p.generators, g)
-			case "preflight_steps", "postflight_steps":
+			case kind == "preflight_steps" || kind == "postflight_steps":
 				steps, err := readSteps(args)
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
@@ -150,7 +151,7 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				} else {
 					p.postflight = append(p.postflight, steps...)
 				}
-			case "uninstall_preflight_steps", "uninstall_postflight_steps":
+			case kind == "uninstall_preflight_steps" || kind == "uninstall_postflight_steps":
 				steps, err := readSteps(args)
 				if err != nil {
 					return installPlan{}, fmt.Errorf("%s: %s %s: %w", c.Token, kind, args, err)
@@ -158,20 +159,20 @@ func plan(c api.Cask, w Where) (installPlan, error) {
 				if bad := unsupportedSteps(steps); bad != "" {
 					return unsupported(kind + " " + bad)
 				}
-			case "installer":
+			case kind == "installer":
 				steps, err := readInstallers(c.Token, args)
 				if err != nil {
 					return installPlan{}, err
 				}
 				p.installers = append(p.installers, steps...)
-			case "zap":
+			case kind == "zap":
 			default:
 				return unsupported(kind + " artifacts")
 			}
 			p.uninstall = append(p.uninstall, map[string]json.RawMessage{kind: args})
 		}
 	}
-	if len(p.apps) == 0 && len(p.links) == 0 && len(p.layouts) == 0 && len(p.installers) == 0 && len(p.pkgs) == 0 {
+	if len(p.moved) == 0 && len(p.links) == 0 && len(p.installers) == 0 && len(p.pkgs) == 0 {
 		return unsupported("no app, binary or pkg")
 	}
 	return p, nil
@@ -258,20 +259,30 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 		return move{}, fmt.Errorf("unexpected source")
 	}
 	target := filepath.Base(m.source)
+	targetGiven := false
 	for _, opt := range list[1:] {
-		var o struct {
-			Target string `json:"target"`
+		var o map[string]json.RawMessage
+		if json.Unmarshal(opt, &o) != nil {
+			continue
 		}
-		if json.Unmarshal(opt, &o) == nil && o.Target != "" {
-			target = o.Target
+		raw, ok := o["target"]
+		if !ok {
+			continue
+		}
+		targetGiven = true
+		var s string
+		if json.Unmarshal(raw, &s) == nil && s != "" {
+			target = s
 		}
 	}
-	dir := w.AppDir
+	var base relativeBase = underPrefix("bin")
+	if k, ok := movedKinds[kind]; ok {
+		base = k.base
+	}
+	if base.requiresTarget() && !targetGiven {
+		return m, errNoTarget
+	}
 	switch kind {
-	case "keyboard_layout":
-		dir = w.KeyboardLayoutDir
-	case "binary":
-		dir = filepath.Join(w.Prefix, "bin")
 	case "manpage":
 		section := manSection.FindStringSubmatch(m.source)
 		if section == nil {
@@ -296,10 +307,14 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 	case filepath.IsAbs(target):
 		m.target = filepath.Clean(target)
 	default:
-		m.target = filepath.Join(dir, target)
+		m.target = base.resolve(w, target)
 	}
 	return m, nil
 }
+
+var errNoTarget = errors.New("requires a target")
+
+var linkKinds = []string{"binary", "manpage", "bash_completion", "zsh_completion", "fish_completion"}
 
 func unknownDirectives(args json.RawMessage) string {
 	var list []map[string]json.RawMessage

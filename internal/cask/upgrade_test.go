@@ -16,7 +16,7 @@ import (
 )
 
 func (in *Installer) Upgrade(ctx context.Context, old caskroom.Cask, c api.Cask) error {
-	u, err := in.PrepareUpgrade(ctx, old, c)
+	u, err := in.PrepareUpgrade(ctx, old, in.Where, c)
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func TestUpgradeKeepsWhetherTheCaskWasRequested(t *testing.T) {
 
 func TestUpgradeRefusesBeforeChangingAnything(t *testing.T) {
 	ti, _, c := upgradable(t, appArtifacts)
-	c.Artifacts = raws(t, `[{"suite":["App"]}]`)
+	c.Artifacts = raws(t, `[{"app_image":["App"]}]`)
 	if err := ti.in.Upgrade(context.Background(), installedCask(t, ti.prefix), c); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}

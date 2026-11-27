@@ -144,11 +144,13 @@ func TestAppDir(t *testing.T) {
 	config := func(token, content string) {
 		write(t, filepath.Join(prefix, "Caskroom", token, ".metadata/config.json"), content)
 	}
-	config("default", `{"default": {"appdir": "/Users/me/Apps"}, "env": {"appdir": "/ignored"}, "explicit": {}}`)
-	config("explicit", `{"default": {"appdir": "/Users/me/Apps"}, "explicit": {"appdir": "/Opt/Apps"}}`)
+	config("default", `{"default": {"appdir": "/Users/me/Apps"}, "env": {}, "explicit": {}}`)
+	config("env", `{"default": {"appdir": "/Users/me/Apps"}, "env": {"appdir": "/Env/Apps"}, "explicit": {}}`)
+	config("explicit", `{"default": {"appdir": "/Users/me/Apps"}, "env": {"appdir": "/Env/Apps"}, "explicit": {"appdir": "/Opt/Apps"}}`)
 	config("garbled", `{`)
 	for token, want := range map[string]string{
 		"default":  "/Users/me/Apps",
+		"env":      "/Env/Apps",
 		"explicit": "/Opt/Apps",
 		"garbled":  "/Applications",
 		"missing":  "/Applications",
@@ -157,10 +159,34 @@ func TestAppDir(t *testing.T) {
 			t.Errorf("AppDir(%s) = %q, want %q", token, got, want)
 		}
 	}
-	for token, want := range map[string]string{"default": "", "explicit": "/Opt/Apps", "garbled": "", "missing": ""} {
-		if got := ExplicitAppDir(prefix, token); got != want {
-			t.Errorf("ExplicitAppDir(%s) = %q, want %q", token, got, want)
-		}
+}
+
+func TestReadConfigTreatsEmptyValuesAsUnset(t *testing.T) {
+	prefix := t.TempDir()
+	write(t, filepath.Join(prefix, "Caskroom/f/.metadata/config.json"),
+		`{"default":{"fontdir":"/D"},"env":{"fontdir":""},"explicit":{"fontdir":""}}`)
+	c := ReadConfig(prefix, "f")
+	if d, ok := c.Dir("fontdir"); !ok || d != "/D" {
+		t.Errorf("Dir(fontdir) = %q, %v; want the default /D", d, ok)
+	}
+	if _, set := c.Explicit["fontdir"]; set {
+		t.Error("an empty explicit value should not be kept")
+	}
+}
+
+func TestReadConfigKeepsEachLayer(t *testing.T) {
+	prefix := t.TempDir()
+	write(t, filepath.Join(prefix, "Caskroom/f/.metadata/config.json"),
+		`{"default":{"fontdir":"/D"},"env":{"fontdir":"/E"},"explicit":{"fontdir":"/X"}}`)
+	c := ReadConfig(prefix, "f")
+	if c.Default["fontdir"] != "/D" || c.Env["fontdir"] != "/E" || c.Explicit["fontdir"] != "/X" {
+		t.Errorf("ReadConfig = %+v", c)
+	}
+	if d, ok := c.Dir("fontdir"); !ok || d != "/X" {
+		t.Errorf("Dir(fontdir) = %q, %v", d, ok)
+	}
+	if _, ok := c.Dir("prefpanedir"); ok {
+		t.Error("an unrecorded directory should not be found")
 	}
 }
 

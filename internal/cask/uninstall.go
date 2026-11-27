@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -69,16 +68,27 @@ type uninstallStep struct {
 	stagedVersion string
 }
 
-var stepOrder = map[string]int{"preflight_steps": 0, "uninstall_preflight_steps": 1, "uninstall": 2, "app": 3, "keyboard_layout": 3,
+const movedRank = 3
+
+var stepOrder = map[string]int{"preflight_steps": 0, "uninstall_preflight_steps": 1, "uninstall": 2,
 	"binary": 4, "manpage": 5, "bash_completion": 6, "zsh_completion": 6, "fish_completion": 6,
 	"generate_completions_from_executable": 7, "postflight_steps": 8, "uninstall_postflight_steps": 9}
 
+func stepRank(kind string) int {
+	if isMoved(kind) {
+		return movedRank
+	}
+	return stepOrder[kind]
+}
+
 // Uninstall refuses, before changing anything, a cask that needs something brw cannot undo yet. force also removes every other version.
 func (in *Installer) Uninstall(ctx context.Context, token, version string, force bool) error {
-	steps, err := in.readUninstall(token, version)
+	steps, err := in.readUninstall(token, version, in.Where)
 	if err != nil {
 		return err
 	}
+	defer func(force bool) { in.Force = force }(in.Force)
+	in.Force = force
 	in.logf("==> Uninstalling Cask %s", token)
 	if err := in.removeArtifacts(ctx, token, steps, force); err != nil {
 		return err
@@ -107,17 +117,15 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 		}
 	}
 	for _, s := range steps {
+		if isMoved(s.kind) {
+			if err := in.uninstallMoved(ctx, s.move, !in.upgrading); err != nil {
+				return fmt.Errorf("%s: %w", token, err)
+			}
+			continue
+		}
 		switch s.kind {
 		case "uninstall":
 			if err := in.runDirectives(ctx, token, s, apps, force); err != nil {
-				return fmt.Errorf("%s: %w", token, err)
-			}
-		case "app":
-			if err := in.moveBack(ctx, s.move, force); err != nil {
-				return fmt.Errorf("%s: %w", token, err)
-			}
-		case "keyboard_layout":
-			if err := in.moveBackKeyboardLayout(ctx, s.move, force); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
@@ -139,7 +147,7 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 	return nil
 }
 
-func (in *Installer) readUninstall(token, version string) ([]uninstallStep, error) {
+func (in *Installer) readUninstall(token, version string, where Where) ([]uninstallStep, error) {
 	artifacts, err := in.readReceipt(token)
 	if err != nil {
 		return nil, err
@@ -150,14 +158,14 @@ func (in *Installer) readUninstall(token, version string) ([]uninstallStep, erro
 			if kind == "zap" || kind == "installer" {
 				continue
 			}
-			s, err := in.readStep(token, version, kind, args)
+			s, err := in.readStep(token, version, kind, args, where)
 			if err != nil {
 				return nil, err
 			}
 			steps = append(steps, s)
 		}
 	}
-	slices.SortStableFunc(steps, func(a, b uninstallStep) int { return stepOrder[a.kind] - stepOrder[b.kind] })
+	slices.SortStableFunc(steps, func(a, b uninstallStep) int { return stepRank(a.kind) - stepRank(b.kind) })
 	return steps, nil
 }
 
@@ -190,7 +198,7 @@ func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, er
 	return artifacts, nil
 }
 
-func (in *Installer) readStep(token, version, kind string, args json.RawMessage) (uninstallStep, error) {
+func (in *Installer) readStep(token, version, kind string, args json.RawMessage, where Where) (uninstallStep, error) {
 	s := uninstallStep{kind: kind}
 	var err error
 	switch kind {
@@ -204,28 +212,22 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if s.stagedVersion, err = in.Root.Abs(filepath.Join("Caskroom", token, version)); err != nil {
 			return s, err
 		}
-	case "keyboard_layout":
-		if s.move, err = readMove(args, kind, in.Where); err != nil {
+	case "app", "suite", "artifact", "colorpicker", "prefpane", "qlplugin", "mdimporter", "dictionary", "font", "service",
+		"input_method", "internet_plugin", "keyboard_layout", "audio_unit_plugin", "vst_plugin", "vst3_plugin", "screen_saver":
+		if s.move, err = readMove(args, kind, where); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
-		}
-		s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
-	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
-		if s.move, err = readMove(args, kind, in.Where); err != nil {
-			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
-		}
-		if kind != "app" {
-			if _, err := in.prefixRel(s.move.target); err != nil {
-				return s, fmt.Errorf("%s: %w", token, err)
-			}
-			return s, nil
-		}
-		if _, err := in.appRel(s.move.target); err != nil {
-			return s, fmt.Errorf("%s: %w", token, err)
 		}
 		if filepath.IsAbs(s.move.source) {
-			return s, unsupported(token, "app with an absolute source")
+			return s, unsupported(token, kind+" with an absolute source")
 		}
 		s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
+	case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
+		if s.move, err = readMove(args, kind, where); err != nil {
+			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
+		}
+		if _, err := in.prefixRel(s.move.target); err != nil {
+			return s, fmt.Errorf("%s: %w", token, err)
+		}
 	case "generate_completions_from_executable":
 		if s.generator, err = readGenerator(args); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
@@ -700,73 +702,6 @@ func tildeHome(path, home string) string {
 		return path
 	}
 	return strings.Replace(path, home, "~", 1)
-}
-
-// moveBack moves the app back to the Caskroom where brew copies and deletes, to the same end.
-func (in *Installer) moveBack(ctx context.Context, m move, force bool) error {
-	rel, err := in.appRel(m.target)
-	if err != nil {
-		return err
-	}
-	staged := m.source
-	if fi, err := in.Root.Lstat(staged); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-		if dest, err := in.Root.Readlink(staged); err == nil && dest == m.target {
-			if err := in.Root.Remove(staged); err != nil {
-				return err
-			}
-		}
-	}
-	abs, err := in.Root.Abs(staged)
-	if err != nil {
-		return err
-	}
-	if _, err := in.Root.Lstat(staged); err == nil {
-		if !force {
-			return brewError("It seems there is already an App at '%s'.", abs)
-		}
-		in.warnf("It seems there is already an App at '%s'; overwriting.", abs)
-		in.logf("==> Removing App '%s'", abs)
-		if err := in.Root.RemoveAll(staged); err != nil {
-			return err
-		}
-	}
-	if _, err := os.Lstat(m.target); err != nil {
-		return nil
-	}
-	in.logf("==> Backing up App '%s' to '%s'", filepath.Base(m.target), abs)
-	if err := in.Root.MkdirAll(filepath.Dir(staged), 0o755); err != nil {
-		return err
-	}
-	if writable(filepath.Dir(m.target)) {
-		in.logf("==> Removing App '%s'", m.target)
-		return in.Apps.MoveTo(in.Root, rel, staged)
-	}
-	if err := in.sudoIfNeeded(ctx, "/bin/cp", in.backupArgs(m.target, abs)...); err != nil {
-		return err
-	}
-	in.logf("==> Removing App '%s'", m.target)
-	return in.removePath(ctx, in.Apps, rel)
-}
-
-func (in *Installer) backupArgs(target, dest string) []string {
-	args := []string{"-pR", target, dest}
-	if runtime.GOOS != "darwin" {
-		return args
-	}
-	if major, err := versionMajor(in.Host.MacVersion); err != nil || major < 14 {
-		return args
-	}
-	a, errA := os.Stat(target)
-	b, errB := os.Stat(filepath.Dir(dest))
-	if errA != nil || errB != nil {
-		return args
-	}
-	sa, okA := a.Sys().(*syscall.Stat_t)
-	sb, okB := b.Sys().(*syscall.Stat_t)
-	if !okA || !okB || sa.Dev != sb.Dev {
-		return args
-	}
-	return append([]string{"-c"}, args...)
 }
 
 func (in *Installer) unlinkBinary(m move) error {

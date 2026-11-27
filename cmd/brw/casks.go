@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,7 +26,7 @@ import (
 	"github.com/jigsmiths/brw/internal/uninstall"
 )
 
-func installCasks(e *env, prefix, journal, appDirArg, keyboardLayoutDirArg string, dryRun, adopt bool, trace tracing, casks []api.Cask) error {
+func installCasks(e *env, prefix, journal string, dryRun bool, trace tracing, casks []api.Cask) error {
 	e.setTracing(trace)
 	tag, err := platform.Tag(e.host)
 	if err != nil {
@@ -83,49 +84,27 @@ func installCasks(e *env, prefix, journal, appDirArg, keyboardLayoutDirArg strin
 		return errors.Join(append(errs, err)...)
 	}
 
-	appDir := "/Applications"
-	if appDirArg != "" {
-		if appDir, err = filepath.Abs(appDirArg); err != nil {
-			return err
-		}
-	}
-	keyboardLayoutDir, explicitDirs := cask.DefaultKeyboardLayoutDir, map[string]string{}
-	if keyboardLayoutDirArg != "" {
-		if keyboardLayoutDir, err = filepath.Abs(keyboardLayoutDirArg); err != nil {
-			return err
-		}
-		explicitDirs["keyboard_layoutdir"] = keyboardLayoutDir
-	}
-	if err := os.MkdirAll(appDir, 0o755); err != nil { //fsx:allow the applications folder, outside the prefix
-		return err
-	}
 	client, err := e.apiClient()
 	if err != nil {
 		return err
 	}
 	home, _ := os.UserHomeDir()
 	version, _ := buildInfo()
+	where, config := caskWhere(prefix, home, e.caskOpts.explicit)
 	return withRoot(prefix, journal, func(root *fsx.Root) error {
-		apps, err := fsx.Open(appDir, nil)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = apps.Close() }()
 		if err := install.MakeStandardDirs(root, e.host.OS); err != nil {
 			return err
 		}
-		in := e.caskInstaller(root, prefix, appDir, home, caskDownloads(client), trace)
-		in.Apps = apps
-		in.Where = in.Where.WithKeyboardLayoutDir(keyboardLayoutDir)
+		in := e.caskInstaller(root, prefix, where.AppDir, home, caskDownloads(client), trace)
+		in.Where, in.Config = where, config
 		in.Fetcher = &cask.Fetcher{Dir: caskDownloads(client)}
 		in.Now = time.Now
 		in.Version = version
-		in.Adopt = adopt
+		in.Adopt, in.Force = e.caskOpts.adopt, e.caskOpts.force
 		in.RuntimeDeps = e.runtimeDepsFor(context.Background(), prefix, tag, caskIdx, nil)
 		in.APIPath = filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json")
-		in.Config = cask.Config{Languages: macLanguages(), ExplicitAppDir: explicit(appDirArg, appDir), ExplicitDirs: explicitDirs}
 		in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
-			return e.satisfyDependencies(ctx, prefix, journal, in, appDir, in.Config.ExplicitAppDir, tag, caskIdx, c)
+			return e.satisfyDependencies(ctx, prefix, journal, in, where, config, tag, caskIdx, c)
 		}
 		if e.tty {
 			display := progress.New(e.out, true)
@@ -264,13 +243,12 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, trace traci
 	var ready []outdated.Result
 	var failed []string
 	for _, r := range upgrade {
-		u, closeApps, err := prepareCaskUpgrade(ctx, e, root, prefix, journal, home, version, trace, idx, tag, fetcher, installed[r.Name])
+		u, err := prepareCaskUpgrade(ctx, e, root, prefix, journal, home, version, trace, idx, tag, fetcher, installed[r.Name])
 		if err != nil {
 			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
 			failed = append(failed, r.Name)
 			continue
 		}
-		defer closeApps()
 		prepared = append(prepared, u)
 		ready = append(ready, r)
 	}
@@ -292,41 +270,48 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, trace traci
 	return upgraded, nil
 }
 
-const defaultAppDir = "/Applications"
-
-func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, trace tracing, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, func(), error) {
+func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version string, trace tracing, idx *api.CaskIndex, tag string, fetcher *cask.Fetcher, old caskroom.Cask) (*cask.PreparedUpgrade, error) {
 	e.setTracing(trace)
 	listed, ok := idx.LookupFrom(old.Tap, old.Token)
 	if !ok {
-		return nil, nil, fmt.Errorf("%s is not in the cask listing", old.Token)
+		return nil, fmt.Errorf("%s is not in the cask listing", old.Token)
 	}
 	c, err := listed.ForTag(tag)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	appDir := caskroom.AppDir(prefix, old.Token)
-	apps, err := fsx.Open(appDir, nil)
-	if err != nil {
-		return nil, nil, err
+	recorded := caskroom.ReadConfig(prefix, old.Token)
+	explicit := map[cask.DirKey]string{}
+	for key, dir := range recorded.Explicit {
+		explicit[cask.DirKey(key)] = dir
 	}
-	in := e.caskInstaller(root, prefix, appDir, home, fetcher.Dir, trace)
-	in.Apps = apps
-	in.Where = in.Where.WithKeyboardLayoutDir(caskroom.KeyboardLayoutDir(prefix, old.Token))
+	maps.Copy(explicit, e.caskOpts.explicit)
+	where, config := caskWhere(prefix, home, explicit)
+	in := e.caskInstaller(root, prefix, where.AppDir, home, fetcher.Dir, trace)
+	in.Where, in.Config = where, config
+	in.Force = e.caskOpts.force
 	in.Fetcher = fetcher
 	in.Now = time.Now
 	in.Version = version
 	in.APIPath = filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json")
-	in.Config = cask.Config{Languages: macLanguages(), ExplicitAppDir: caskroom.ExplicitAppDir(prefix, old.Token)}
 	in.RuntimeDeps = e.runtimeDepsFor(ctx, prefix, tag, idx, nil)
 	in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
-		return e.satisfyDependencies(ctx, prefix, journal, in, defaultAppDir, "", tag, idx, c)
+		return e.satisfyDependencies(ctx, prefix, journal, in, cask.NewWhere(prefix, defaultAppDir, home), cask.Config{Languages: macLanguages()}, tag, idx, c)
 	}
-	u, err := in.PrepareUpgrade(ctx, old, c)
-	if err != nil {
-		_ = apps.Close()
-		return nil, nil, err
+	return in.PrepareUpgrade(ctx, old, recordedWhere(prefix, home, recorded), c)
+}
+
+const defaultAppDir = "/Applications"
+
+func recordedWhere(prefix, home string, recorded caskroom.Config) cask.Where {
+	w := cask.NewWhere(prefix, defaultAppDir, home)
+	for _, key := range cask.DirKeys {
+		if dir, ok := recorded.Dir(string(key)); ok {
+			w.Dirs[key] = dir
+		}
 	}
-	return u, func() { _ = apps.Close() }, nil
+	w.AppDir = w.Dirs[cask.DirApp]
+	return w
 }
 
 func printCaskHints(e *env, idx *api.CaskIndex, upgrade []outdated.Result, o outdated.CaskOptions) {
@@ -589,22 +574,14 @@ func installReinstalledCask(ctx context.Context, e *env, root *fsx.Root, prefix,
 }
 
 func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask, force bool, trace tracing) error {
-	appDir := caskroom.AppDir(prefix, c.Token)
+	where := recordedWhere(prefix, home, caskroom.ReadConfig(prefix, c.Token))
 	client, err := e.apiClient()
 	if err != nil {
 		return err
 	}
-	in := e.caskInstaller(root, prefix, appDir, home, caskDownloads(client), trace)
-	in.Where = in.Where.WithKeyboardLayoutDir(caskroom.KeyboardLayoutDir(prefix, c.Token))
+	in := e.caskInstaller(root, prefix, where.AppDir, home, caskDownloads(client), trace)
+	in.Where = where
 	e.setTracing(trace)
-	if _, err := os.Stat(appDir); err == nil {
-		apps, err := fsx.Open(appDir, nil)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = apps.Close() }()
-		in.Apps = apps
-	}
 	return in.Uninstall(context.Background(), c.Token, c.Version, force)
 }
 
@@ -647,13 +624,6 @@ func (e *env) checkDependentCasks(named []string, casks, installed []caskroom.Ca
 		return nil
 	}
 	return &uninstall.DependentsError{Kegs: required, Dependents: dependents, Named: named}
-}
-
-func explicit(arg, abs string) string {
-	if arg == "" {
-		return ""
-	}
-	return abs
 }
 
 var languageWord = regexp.MustCompile(`[^ \n"(),]+`)

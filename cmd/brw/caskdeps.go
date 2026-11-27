@@ -15,7 +15,6 @@ import (
 	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/cellar"
 	"github.com/jigsmiths/brw/internal/deps"
-	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/tap"
 )
 
@@ -304,7 +303,7 @@ func installedCaskTokens(prefix string) (map[string]bool, error) {
 }
 
 // satisfyDependencies installs missing casks, then formulae, as brew does, none on request.
-func (e *env) satisfyDependencies(ctx context.Context, prefix, journal string, parent *cask.Installer, appDir, explicitAppDir, tag string, casks *api.CaskIndex, c api.Cask) error {
+func (e *env) satisfyDependencies(ctx context.Context, prefix, journal string, parent *cask.Installer, where cask.Where, config cask.Config, tag string, casks *api.CaskIndex, c api.Cask) error {
 	l := &depLoader{e: e, ctx: ctx, prefix: prefix, tag: tag, casks: casks, autoTap: true}
 	src := l.source(c.Token)
 	g, err := buildGraph(c, src)
@@ -342,7 +341,7 @@ func (e *env) satisfyDependencies(ctx context.Context, prefix, journal string, p
 		if err != nil {
 			return err
 		}
-		if err := installDependencyCask(ctx, parent, appDir, explicitAppDir, dep); err != nil {
+		if err := installDependencyCask(ctx, parent, where, config, dep); err != nil {
 			return err
 		}
 	}
@@ -364,15 +363,9 @@ func (e *env) satisfyDependencies(ctx context.Context, prefix, journal string, p
 	return installFormulae(e, prefix, journal, false, false, r)
 }
 
-func installDependencyCask(ctx context.Context, parent *cask.Installer, appDir, explicitAppDir string, dep api.Cask) error {
-	apps, err := fsx.Open(appDir, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = apps.Close() }()
+func installDependencyCask(ctx context.Context, parent *cask.Installer, where cask.Where, config cask.Config, dep api.Cask) error {
 	in := *parent
-	in.Apps, in.SatisfyDependencies = apps, nil
-	in.Where.AppDir, in.Config.ExplicitAppDir = appDir, explicitAppDir
+	in.SatisfyDependencies, in.Where, in.Config, in.Force = nil, where, config, false
 	return in.InstallAsDependency(ctx, dep)
 }
 

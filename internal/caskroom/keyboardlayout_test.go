@@ -6,13 +6,20 @@ import (
 	"testing"
 )
 
+func keyboardLayoutDir(prefix, token string) string {
+	if d, ok := ReadConfig(prefix, token).Dir("keyboard_layoutdir"); ok {
+		return d
+	}
+	return "/Library/Keyboard Layouts"
+}
+
 func TestKeyboardLayoutDirPrefersTheExplicitOptionThenTheDefault(t *testing.T) {
 	prefix := t.TempDir()
 	meta := filepath.Join(dir(prefix), "layout", ".metadata")
 	if err := os.MkdirAll(meta, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got := KeyboardLayoutDir(prefix, "layout"); got != "/Library/Keyboard Layouts" {
+	if got := keyboardLayoutDir(prefix, "layout"); got != "/Library/Keyboard Layouts" {
 		t.Errorf("without a config = %q", got)
 	}
 	write := func(body string) {
@@ -22,11 +29,11 @@ func TestKeyboardLayoutDirPrefersTheExplicitOptionThenTheDefault(t *testing.T) {
 		}
 	}
 	write(`{"default":{"keyboard_layoutdir":"/Library/Keyboard Layouts"},"explicit":{}}`)
-	if got := KeyboardLayoutDir(prefix, "layout"); got != "/Library/Keyboard Layouts" {
+	if got := keyboardLayoutDir(prefix, "layout"); got != "/Library/Keyboard Layouts" {
 		t.Errorf("default = %q", got)
 	}
 	write(`{"default":{"keyboard_layoutdir":"/Library/Keyboard Layouts"},"explicit":{"keyboard_layoutdir":"/tmp/layouts"}}`)
-	if got := KeyboardLayoutDir(prefix, "layout"); got != "/tmp/layouts" {
+	if got := keyboardLayoutDir(prefix, "layout"); got != "/tmp/layouts" {
 		t.Errorf("explicit = %q", got)
 	}
 }

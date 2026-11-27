@@ -114,7 +114,7 @@ func TestUpgradeSatisfiesDependenciesBeforeTouchingTheOldVersion(t *testing.T) {
 		oldAppThere = readFile(t, app) == "<plist/>"
 		return errors.New("jq failed")
 	}
-	u, err := ti.in.PrepareUpgrade(context.Background(), installedCask(t, ti.prefix), c)
+	u, err := ti.in.PrepareUpgrade(context.Background(), installedCask(t, ti.prefix), ti.in.Where, c)
 	if err != nil {
 		t.Fatalf("preparing should not need the dependencies yet: %v", err)
 	}
