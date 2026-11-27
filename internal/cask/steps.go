@@ -39,7 +39,7 @@ func (in *Installer) stepContext(token, version, staged string) poststep.Context
 	if in.Where.Prefix == "/opt/homebrew" {
 		repository = in.Where.Prefix
 	}
-	policy := poststep.NewSandboxPolicy(in.Fetcher.Dir, filepath.Join(in.Where.Home, "Library/Logs/Homebrew"), repository, func(m string) {
+	policy := poststep.NewSandboxPolicy(in.CacheDir, filepath.Join(in.Where.Home, "Library/Logs/Homebrew"), repository, func(m string) {
 		if !in.warnedSandbox {
 			in.warnf("%s", m)
 			in.warnedSandbox = true

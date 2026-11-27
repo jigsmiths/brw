@@ -106,25 +106,15 @@ func installCasks(e *env, prefix, journal, appDirArg string, dryRun, adopt bool,
 		if err := install.MakeStandardDirs(root, e.host.OS); err != nil {
 			return err
 		}
-		in := &cask.Installer{
-			Root: root, Apps: apps,
-			Where:       cask.NewWhere(prefix, appDir, home),
-			Host:        e.host,
-			Sandbox:     poststep.Sandboxed,
-			Verbose:     trace.verbose,
-			Debug:       trace.debug,
-			Run:         e.sudoRun,
-			FindService: e.findService,
-			Fetcher:     &cask.Fetcher{Dir: filepath.Join(client.CacheDir, "cask-downloads")},
-			Log:         e.out,
-			Warn:        e.err,
-			Now:         time.Now,
-			Version:     version,
-			Adopt:       adopt,
-			RuntimeDeps: e.runtimeDepsFor(context.Background(), prefix, tag, caskIdx, nil),
-			APIPath:     filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json"),
-			Config:      cask.Config{Languages: macLanguages(), ExplicitAppDir: explicit(appDirArg, appDir)},
-		}
+		in := e.caskInstaller(root, prefix, appDir, home, caskDownloads(client), trace)
+		in.Apps = apps
+		in.Fetcher = &cask.Fetcher{Dir: caskDownloads(client)}
+		in.Now = time.Now
+		in.Version = version
+		in.Adopt = adopt
+		in.RuntimeDeps = e.runtimeDepsFor(context.Background(), prefix, tag, caskIdx, nil)
+		in.APIPath = filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json")
+		in.Config = cask.Config{Languages: macLanguages(), ExplicitAppDir: explicit(appDirArg, appDir)}
 		in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
 			return e.satisfyDependencies(ctx, prefix, journal, in, appDir, in.Config.ExplicitAppDir, tag, caskIdx, c)
 		}
@@ -246,7 +236,7 @@ func runCaskUpgrades(e *env, root *fsx.Root, prefix, journal string, trace traci
 	}
 	home, _ := os.UserHomeDir()
 	version, _ := buildInfo()
-	fetcher := &cask.Fetcher{Dir: filepath.Join(client.CacheDir, "cask-downloads")}
+	fetcher := &cask.Fetcher{Dir: caskDownloads(client)}
 	var display *progress.Display
 	if e.tty {
 		display = progress.New(e.out, true)
@@ -310,25 +300,14 @@ func prepareCaskUpgrade(ctx context.Context, e *env, root *fsx.Root, prefix, jou
 	if err != nil {
 		return nil, nil, err
 	}
-	in := &cask.Installer{
-		Root: root, Apps: apps,
-		Where:   cask.NewWhere(prefix, appDir, home),
-		Host:    e.host,
-		Sandbox: poststep.Sandboxed,
-		Fetcher: fetcher,
-		Log:     e.out,
-		Warn:    e.err,
-		Now:     time.Now,
-		Version: version,
-		APIPath: filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json"),
-		Config:  cask.Config{Languages: macLanguages(), ExplicitAppDir: caskroom.ExplicitAppDir(prefix, old.Token)},
-		Verbose: trace.verbose,
-		Debug:   trace.debug,
-		Run:     e.sudoRun,
-
-		FindService: e.findService,
-		RuntimeDeps: e.runtimeDepsFor(ctx, prefix, tag, idx, nil),
-	}
+	in := e.caskInstaller(root, prefix, appDir, home, fetcher.Dir, trace)
+	in.Apps = apps
+	in.Fetcher = fetcher
+	in.Now = time.Now
+	in.Version = version
+	in.APIPath = filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json")
+	in.Config = cask.Config{Languages: macLanguages(), ExplicitAppDir: caskroom.ExplicitAppDir(prefix, old.Token)}
+	in.RuntimeDeps = e.runtimeDepsFor(ctx, prefix, tag, idx, nil)
 	in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
 		return e.satisfyDependencies(ctx, prefix, journal, in, defaultAppDir, "", tag, idx, c)
 	}
@@ -438,16 +417,34 @@ func uninstallCasks(e *env, root *fsx.Root, prefix string, named []string, casks
 	return errors.Join(errs...)
 }
 
+// caskInstaller sets what every cask operation needs, including uninstall, which downloads nothing.
+func (e *env) caskInstaller(root *fsx.Root, prefix, appDir, home, cacheDir string, trace tracing) *cask.Installer {
+	return &cask.Installer{
+		Root:        root,
+		Where:       cask.NewWhere(prefix, appDir, home),
+		Host:        e.host,
+		Sandbox:     poststep.Sandboxed,
+		CacheDir:    cacheDir,
+		Log:         e.out,
+		Warn:        e.err,
+		Verbose:     trace.verbose,
+		Debug:       trace.debug,
+		Run:         e.sudoRun,
+		FindService: e.findService,
+	}
+}
+
+func caskDownloads(client *api.Client) string {
+	return filepath.Join(client.CacheDir, "cask-downloads")
+}
+
 func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask, force bool, trace tracing) error {
 	appDir := caskroom.AppDir(prefix, c.Token)
-	in := &cask.Installer{
-		Root:    root,
-		Where:   cask.NewWhere(prefix, appDir, home),
-		Host:    e.host,
-		Sandbox: poststep.Sandboxed,
-		Log:     e.out, Warn: e.err,
-		Verbose: trace.verbose, Debug: trace.debug, Run: e.sudoRun, FindService: e.findService,
+	client, err := e.apiClient()
+	if err != nil {
+		return err
 	}
+	in := e.caskInstaller(root, prefix, appDir, home, caskDownloads(client), trace)
 	e.setTracing(trace)
 	if _, err := os.Stat(appDir); err == nil {
 		apps, err := fsx.Open(appDir, nil)

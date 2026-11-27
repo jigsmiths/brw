@@ -29,11 +29,13 @@ type Config struct {
 }
 
 type Installer struct {
-	Root        *fsx.Root
-	Apps        *fsx.Root
-	Where       Where
-	Host        platform.Host
-	Fetcher     *Fetcher
+	Root    *fsx.Root
+	Apps    *fsx.Root
+	Where   Where
+	Host    platform.Host
+	Fetcher *Fetcher
+	// CacheDir is the download cache that step sandboxes may write to; unlike Fetcher it is set on every installer.
+	CacheDir    string
 	Log         io.Writer
 	Warn        io.Writer
 	Now         func() time.Time
