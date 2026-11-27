@@ -88,6 +88,75 @@ func TestPlanRefusesWhatBrwCannotInstall(t *testing.T) {
 	}
 }
 
+func TestPlanDockerDesktopPostflightSudoSymlink(t *testing.T) {
+	c := api.Cask{Token: "docker-desktop", Artifacts: raws(t, `[
+		{"app":["Docker.app"],"target":"/Applications/Docker.app"},
+		{"postflight_steps":[{"steps":[{"source":{"path":"{{appdir}}/Docker.app/Contents/Resources/bin/kubectl"},
+			"target":{"path":"/usr/local/bin/kubectl"},"force":true,"uninstall":true,"sudo":"if_needed",
+			"guards":[{"path":"/usr/local/bin/kubectl","condition":"unless_exists","id":"1"}],"type":"symlink"}]}]}]`)}
+	p, err := plan(c, where)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.postflight) != 1 {
+		t.Errorf("postflight = %s", p.postflight)
+	}
+	if got := p.sudoArtifact(); got != "" {
+		t.Errorf("if_needed must not demand sudo up front, got %q", got)
+	}
+}
+
+func TestPlanNamesTheStepsArtifactThatRequiresSudo(t *testing.T) {
+	step := `{"type":"symlink","sudo":true,"source":{"path":"/a"},"target":{"path":"/b"}}`
+	for kind, want := range map[string]string{"preflight_steps": "preflight_steps", "postflight_steps": "postflight_steps"} {
+		c := api.Cask{Token: "x", Artifacts: raws(t, `[{"app":["X.app"]},{"`+kind+`":[{"steps":[`+step+`]}]}]`)}
+		p, err := plan(c, where)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := p.sudoArtifact(); got != want {
+			t.Errorf("%s: sudoArtifact = %q, want %q", kind, got, want)
+		}
+	}
+}
+
+func TestSudoArtifactFollowsBrewsArtifactOrder(t *testing.T) {
+	step := `{"steps":[{"type":"symlink","sudo":true,"source":{"path":"/a"},"target":{"path":"/b"}}]}`
+	for name, tc := range map[string]struct{ artifacts, want string }{
+		"preflight before installer": {`{"postflight_steps":[` + step + `]},{"installer":[{"script":{"executable":"i.sh","sudo":true}}]},{"preflight_steps":[` + step + `]}`, "preflight_steps"},
+		"installer before pkg":       {`{"pkg":["P.pkg"]},{"installer":[{"script":{"executable":"i.sh","sudo":true}}]}`, "installer"},
+		"pkg before postflight":      {`{"postflight_steps":[` + step + `]},{"pkg":["P.pkg"]}`, "pkg"},
+	} {
+		p, err := plan(api.Cask{Token: "x", Artifacts: raws(t, `[`+tc.artifacts+`]`)}, where)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := p.sudoArtifact(); got != tc.want {
+			t.Errorf("%s: sudoArtifact = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
+func TestSudoArtifactCountsEveryStepBrewElevates(t *testing.T) {
+	for step, want := range map[string]string{
+		`{"type":"run","sudo":true,"command":{"path":"/a"}}`:           "postflight_steps",
+		`{"type":"remove","sudo":true,"paths":[{"path":"/a"}]}`:        "postflight_steps",
+		`{"type":"terminate_process","sudo":true,"name":"x"}`:          "postflight_steps",
+		`{"type":"delete_keychain_certificate","name":"x"}`:            "postflight_steps",
+		`{"type":"remove","sudo":"if_needed","paths":[{"path":"/a"}]}`: "",
+		`{"type":"terminate_process","name":"x"}`:                      "",
+	} {
+		c := api.Cask{Token: "x", Artifacts: raws(t, `[{"app":["X.app"]},{"postflight_steps":[{"steps":[`+step+`]}]}]`)}
+		p, err := plan(c, where)
+		if err != nil {
+			t.Fatalf("%s: %v", step, err)
+		}
+		if got := p.sudoArtifact(); got != want {
+			t.Errorf("%s: sudoArtifact = %q, want %q", step, got, want)
+		}
+	}
+}
+
 func TestPlanPkg(t *testing.T) {
 	c := api.Cask{Token: "p", Artifacts: raws(t, `[
 		{"pkg":["Sub/P.pkg",{"choices":[{"choiceIdentifier":"a","choiceAttribute":"selected","attributeSetting":1}]},{"allow_untrusted":true}]},

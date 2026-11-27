@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
@@ -238,10 +239,14 @@ func (in *Installer) chmodAll(path string, perm os.FileMode) error {
 
 func (p installPlan) sudoArtifact() string {
 	switch {
+	case poststep.RequiresSudo(p.preflight):
+		return "preflight_steps"
 	case slices.ContainsFunc(p.installers, func(s installerStep) bool { return s.sudo }):
 		return "installer"
 	case len(p.pkgs) > 0:
 		return "pkg"
+	case poststep.RequiresSudo(p.postflight):
+		return "postflight_steps"
 	}
 	return ""
 }

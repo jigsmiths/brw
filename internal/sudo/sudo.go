@@ -31,6 +31,7 @@ type Command struct {
 	Args           []string
 	Env            []string
 	Input          string
+	Dir            string
 	Privilege      Privilege
 	MustSucceed    bool
 	Stdout, Stderr io.Writer
@@ -118,6 +119,7 @@ func Exec(ctx context.Context, c Command) (Result, error) {
 	Guard(argv[0])
 	Guard(c.Exe)
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = c.Dir
 	cmd.Env = append(os.Environ(), c.Env...)
 	cmd.Env = append(cmd.Env, "COLUMNS="+strconv.Itoa(columns(stdinColumns, tputColumns)))
 	if c.Input != "" {

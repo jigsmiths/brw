@@ -4,10 +4,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
+	"regexp"
+	"slices"
 	"strings"
+
+	"github.com/jigsmiths/brw/internal/sudo"
 )
 
 func (r *runner) setPermissions(s step) error {
@@ -61,17 +67,15 @@ func (r *runner) run(s step) error {
 	for i, a := range s.Args {
 		args[i] = r.expand(a)
 	}
-	cmd := exec.Command(program, args...)
-	cmd.Env = os.Environ()
-	for k, v := range s.Env {
-		cmd.Env = append(cmd.Env, k+"="+r.expand(v))
+	env, err := r.environment(s)
+	if err != nil {
+		return err
 	}
+	var dir, input string
 	if s.Chdir != nil {
-		dir, err := r.resolve(*s.Chdir)
-		if err != nil {
+		if dir, err = r.resolve(*s.Chdir); err != nil {
 			return err
 		}
-		cmd.Dir = dir
 	}
 	if s.StdinPath != nil {
 		in, err := r.resolve(*s.StdinPath)
@@ -82,11 +86,23 @@ func (r *runner) run(s step) error {
 		if err != nil {
 			return err
 		}
-		cmd.Stdin = bytes.NewReader(b)
+		input = string(b)
+	}
+	if s.Sudo == sudoAlways {
+		return r.runWithSudo(s, sudo.Command{Exe: program, Args: args, Env: env, Input: input, Dir: dir})
+	}
+	cmd := exec.Command(program, args...)
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Dir = dir
+	if s.StdinPath != nil {
+		cmd.Stdin = strings.NewReader(input)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
+	err = cmd.Run()
+	if s.PrintStdout && r.c.Log != nil {
+		_, _ = r.c.Log.Write(stdout.Bytes())
+	}
 	if !s.SuppressStderr && r.c.Log != nil {
 		_, _ = r.c.Log.Write(stderr.Bytes())
 	}
@@ -96,6 +112,41 @@ func (r *runner) run(s step) error {
 		}
 		return fmt.Errorf("%s: %w: %s", program, err, strings.TrimSpace(stderr.String()))
 	}
+	return r.captureStdout(s, stdout.String())
+}
+
+var environmentName = regexp.MustCompile(`^[A-Za-z_]\w*$`)
+
+func (r *runner) environment(s step) ([]string, error) {
+	var env []string
+	for _, k := range slices.Sorted(maps.Keys(s.Env)) {
+		if !environmentName.MatchString(k) {
+			return nil, fmt.Errorf("Invalid variable name: %s", k) //nolint:staticcheck // brew's message, shown to the user
+		}
+		env = append(env, k+"="+r.expand(s.Env[k]))
+	}
+	return env, nil
+}
+
+func (r *runner) runWithSudo(s step, c sudo.Command) error {
+	c.Privilege, c.MustSucceed = sudo.Sudo, true
+	if s.PrintStdout {
+		c.Stdout = r.c.Log
+	}
+	if s.SuppressStderr {
+		c.Stderr = io.Discard
+	}
+	res, err := r.sudoCommand(c)
+	if err != nil {
+		if s.AllowFailure && sudo.IsFailure(err) && !sudo.EnvSet("HOMEBREW_NO_SUDO") {
+			return nil
+		}
+		return err
+	}
+	return r.captureStdout(s, res.Stdout)
+}
+
+func (r *runner) captureStdout(s step, stdout string) error {
 	if s.StdoutPath == nil {
 		return nil
 	}
@@ -109,5 +160,5 @@ func (r *runner) run(s step) error {
 	if err := r.removeFile(rel); err != nil {
 		return err
 	}
-	return r.c.Root.WriteFile(rel, stdout.Bytes(), 0o644)
+	return r.c.Root.WriteFile(rel, []byte(stdout), 0o644)
 }

@@ -164,7 +164,7 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 	if err := in.writeCaskfile(c); err != nil {
 		return err
 	}
-	if err := in.runSteps("preflight_steps", c.Token, c.Version, staged, p.preflight); err != nil {
+	if err := in.runSteps(ctx, "preflight_steps", c.Token, c.Version, staged, p.preflight); err != nil {
 		return err
 	}
 	if err := in.runInstallers(ctx, c.Token, staged, p.installers); err != nil {
@@ -204,7 +204,7 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}
-	if err := in.runSteps("postflight_steps", c.Token, c.Version, staged, p.postflight); err != nil {
+	if err := in.runSteps(ctx, "postflight_steps", c.Token, c.Version, staged, p.postflight); err != nil {
 		return err
 	}
 	return in.writeConfig(c)

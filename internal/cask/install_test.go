@@ -275,8 +275,8 @@ func TestInstallRunsFlightStepsAndUninstallUndoesTheirLinks(t *testing.T) {
 
 func TestInstallRefusesStepsBrwCannotRun(t *testing.T) {
 	ti := newTestInstall(t, appTarball)
-	c := ti.cask(t, `[{"binary":["tool"]},{"postflight_steps":[{"steps":[{"type":"terminate_process","name":"x"}]}]}]`)
-	if err := ti.in.Install(context.Background(), c); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "terminate_process") {
+	c := ti.cask(t, `[{"binary":["tool"]},{"postflight_steps":[{"steps":[{"type":"configure_gcc_runtime"}]}]}]`)
+	if err := ti.in.Install(context.Background(), c); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "configure_gcc_runtime") {
 		t.Errorf("err = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(ti.prefix, "Caskroom/app")); err == nil {

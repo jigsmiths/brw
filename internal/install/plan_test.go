@@ -400,7 +400,6 @@ func TestPlanRefusesWhatItCannotInstall(t *testing.T) {
 		"disabled":               {index(t, with(f("old"), "disabled", true)), ErrDisabled, "old"},
 		"an unsupported step":    {index(t, with(f("pi"), "post_install_steps", []any{map[string]any{"type": "gdk_pixbuf_query_loaders"}})), ErrPostInstall, "pi"},
 		"a dependency with one":  {index(t, f("app", "pi"), with(f("pi"), "post_install_steps", []any{map[string]any{"type": "configure_gcc_runtime"}})), ErrPostInstall, "app"},
-		"a step run with sudo":   {index(t, with(f("su"), "post_install_steps", []any{map[string]any{"type": "touch", "sudo": true}})), ErrPostInstall, "su"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
