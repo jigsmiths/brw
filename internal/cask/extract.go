@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -263,9 +264,25 @@ func attachHdiutil(ctx context.Context, file, mnt string) ([]byte, error) {
 var (
 	runTool        = func(name string, args ...string) ([]byte, error) { return exec.Command(name, args...).CombinedOutput() }
 	isMounted      = mounted
-	deviceAttached = func(dev string) bool { _, err := os.Stat("/dev/" + dev); return err == nil }
+	deviceAttached = imageListed
 	pause          = time.Sleep
 )
+
+const (
+	detachTries = 3
+	// Teardown lagged a passing test by more than a second, so allow a few.
+	settleInterval = 250 * time.Millisecond
+	settleTimeout  = 5 * time.Second
+)
+
+// imageListed asks hdiutil, which can still list an image after its /dev node is gone.
+func imageListed(dev string) bool {
+	if out, err := runTool("hdiutil", "info", "-plist"); err == nil {
+		return slices.Contains(plistStrings(out, "dev-entry"), "/dev/"+dev)
+	}
+	_, err := os.Stat("/dev/" + dev)
+	return err == nil
+}
 
 func imageDevice(plist []byte) string {
 	devs := plistStrings(plist, "dev-entry")
@@ -284,24 +301,33 @@ func release(dev string, err error) error {
 	if dev == "" {
 		return err
 	}
-	for try := range 3 {
+	for try := range detachTries {
 		if !deviceAttached(dev) {
 			return nil
 		}
 		args := []string{"detach", "-quiet", "/dev/" + dev}
-		if try == 2 {
+		if try == detachTries-1 {
 			args = []string{"detach", "-quiet", "-force", "/dev/" + dev}
 		}
 		out, derr := runTool("hdiutil", args...)
 		if derr != nil {
 			err = errors.Join(err, fmt.Errorf("hdiutil detach %s: %w: %s", dev, derr, bytes.TrimSpace(out)))
 			pause(time.Second)
+		} else {
+			awaitUnlisted(dev)
 		}
 	}
 	if deviceAttached(dev) {
-		return err
+		return errors.Join(err, fmt.Errorf("the disk image is still attached as %s", dev))
 	}
 	return nil
+}
+
+// awaitUnlisted gives a detach that returned success time to drop the device from hdiutil's listing.
+func awaitUnlisted(dev string) {
+	for waited := time.Duration(0); waited < settleTimeout && deviceAttached(dev); waited += settleInterval {
+		pause(settleInterval)
+	}
 }
 
 func ejectVolume(mount string) error {
