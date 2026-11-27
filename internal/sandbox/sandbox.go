@@ -53,20 +53,26 @@ func expandRealpath(path string) string {
 	}
 }
 
+// allowWrite is Sandbox#allow_write: the profile denies setuid and mode changes everywhere else.
+func (s *Sandbox) allowWrite(k kind, path string) {
+	for _, operation := range []string{"file-write*", "file-write-setugid", "file-write-mode"} {
+		s.add(true, operation, k, path)
+	}
+}
+
 func (s *Sandbox) AllowReadLiteral(path string)   { s.add(true, "file-read*", literal, path) }
-func (s *Sandbox) AllowWriteRegex(pattern string) { s.add(true, "file-write*", regex, pattern) }
+func (s *Sandbox) AllowWriteRegex(pattern string) { s.allowWrite(regex, pattern) }
 func (s *Sandbox) AllowRead(path string)          { s.add(true, "file-read*", subpath, path) }
 func (s *Sandbox) DenyReadPath(path string)       { s.add(false, "file-read*", subpath, path) }
-func (s *Sandbox) AllowWritePath(path string)     { s.add(true, "file-write*", subpath, path) }
+func (s *Sandbox) AllowWritePath(path string)     { s.allowWrite(subpath, path) }
 func (s *Sandbox) DenyWritePath(path string)      { s.add(false, "file-write*", subpath, path) }
 func (s *Sandbox) DenyWriteLiteral(path string)   { s.add(false, "file-write*", literal, path) }
 func (s *Sandbox) DenyAllNetwork()                { s.add(false, "network*", anything, "") }
-func (s *Sandbox) allowWriteRegex(pattern string) { s.add(true, "file-write*", regex, pattern) }
 
 func (s *Sandbox) AllowWriteSystemTemp(homebrewTemp string) {
 	s.AllowWritePath("/private/tmp")
 	s.AllowWritePath("/private/var/tmp")
-	s.allowWriteRegex("^/private/var/folders/[^/]+/[^/]+/[C,T]/")
+	s.AllowWriteRegex("^/private/var/folders/[^/]+/[^/]+/[C,T]/")
 	s.AllowWritePath(homebrewTemp)
 }
 
