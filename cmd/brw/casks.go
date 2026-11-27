@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -445,6 +446,133 @@ func (e *env) caskInstaller(root *fsx.Root, prefix, appDir, home, cacheDir strin
 
 func caskDownloads(client *api.Client) string {
 	return filepath.Join(client.CacheDir, "cask-downloads")
+}
+
+// As brew does, every cask downloads before any is uninstalled, so a failed
+// download leaves the installed one in place.
+func reinstallCasks(e *env, prefix, journal string, dryRun bool, trace tracing, casks []api.Cask) error {
+	e.setTracing(trace)
+	tag, err := platform.Tag(e.host)
+	if err != nil {
+		return err
+	}
+	todo := make([]api.Cask, 0, len(casks))
+	var failed []string
+	for _, c := range casks {
+		c, err := c.ForTag(tag)
+		if err != nil {
+			return err
+		}
+		if _, pinned := caskroom.Pinned(prefix, c.Token); pinned {
+			_, _ = fmt.Fprintf(e.err, "brw: %s is pinned. You must unpin it to reinstall.\n", cmp.Or(c.FullToken, c.Token))
+			failed = append(failed, c.Token)
+			continue
+		}
+		todo = append(todo, c)
+	}
+	if dryRun {
+		var b strings.Builder
+		fmt.Fprintf(&b, "==> Would reinstall %d %s:\n", len(todo), plural(len(todo), "cask", "casks"))
+		for _, c := range todo {
+			fmt.Fprintf(&b, "%s %s\n", c.Token, c.Version)
+		}
+		_, err := fmt.Fprint(e.out, b.String())
+		return err
+	}
+	if len(todo) == 0 {
+		return fmt.Errorf("%d of %d casks could not be reinstalled: %s", len(failed), len(casks), strings.Join(failed, ", "))
+	}
+	ctx := context.Background()
+	client, err := e.apiClient()
+	if err != nil {
+		return err
+	}
+	fetcher := &cask.Fetcher{Dir: caskDownloads(client)}
+	var display *progress.Display
+	if e.tty {
+		display = progress.New(e.out, true)
+		display.Width = func() int { return terminalWidth(os.Stdout) }
+		fetcher.Progress = display.Update
+	}
+	names := make([]string, len(todo))
+	for i, c := range todo {
+		names[i] = cmp.Or(c.FullToken, c.Token)
+	}
+	_, _ = fmt.Fprintf(e.out, "==> Fetching downloads for: %s\n", sentence(names))
+	var ready []api.Cask
+	for _, c := range todo {
+		if _, err := fetcher.Fetch(ctx, c); err != nil {
+			_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
+			failed = append(failed, c.Token)
+			continue
+		}
+		ready = append(ready, c)
+	}
+	if display != nil {
+		display.Close()
+	}
+	installed, err := caskroom.Installed(prefix)
+	if err != nil {
+		return err
+	}
+	caskIdx, err := e.caskIndex(ctx, prefix)
+	if err != nil {
+		return err
+	}
+	home, _ := os.UserHomeDir()
+	version, _ := buildInfo()
+	err = withRoot(prefix, journal, func(root *fsx.Root) error {
+		if err := install.MakeStandardDirs(root, e.host.OS); err != nil {
+			return err
+		}
+		for _, c := range ready {
+			// The folders come from the old install's config, which the uninstall removes.
+			appDir, layoutDir, explicitAppDir := caskroom.AppDir(prefix, c.Token), caskroom.KeyboardLayoutDir(prefix, c.Token), caskroom.ExplicitAppDir(prefix, c.Token)
+			if i := slices.IndexFunc(installed, func(old caskroom.Cask) bool { return old.Token == c.Token }); i >= 0 {
+				if err := uninstallCask(e, root, prefix, home, installed[i], true, trace); err != nil {
+					_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
+					failed = append(failed, c.Token)
+					continue
+				}
+			}
+			if err := installReinstalledCask(ctx, e, root, prefix, journal, home, version, tag, appDir, layoutDir, explicitAppDir, caskIdx, fetcher, trace, c); err != nil {
+				_, _ = fmt.Fprintf(e.err, "brw: %v\n", err)
+				failed = append(failed, c.Token)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%d of %d casks could not be reinstalled: %s", len(failed), len(casks), strings.Join(failed, ", "))
+	}
+	return nil
+}
+
+func installReinstalledCask(ctx context.Context, e *env, root *fsx.Root, prefix, journal, home, version, tag, appDir, layoutDir, explicitAppDir string, caskIdx *api.CaskIndex, fetcher *cask.Fetcher, trace tracing, c api.Cask) error {
+	if err := os.MkdirAll(appDir, 0o755); err != nil { //fsx:allow the applications folder, outside the prefix
+		return err
+	}
+	apps, err := fsx.Open(appDir, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = apps.Close() }()
+	in := e.caskInstaller(root, prefix, appDir, home, fetcher.Dir, trace)
+	in.Apps = apps
+	in.Where = in.Where.WithKeyboardLayoutDir(layoutDir)
+	in.Fetcher = &cask.Fetcher{Dir: fetcher.Dir}
+	in.Now = time.Now
+	in.Version = version
+	in.RuntimeDeps = e.runtimeDepsFor(ctx, prefix, tag, caskIdx, nil)
+	in.APIPath = filepath.Join(brewCache(), "api", "internal", "packages."+tag+".jws.json")
+	in.Config = cask.Config{Languages: macLanguages(), ExplicitAppDir: explicitAppDir}
+	in.SatisfyDependencies = func(ctx context.Context, c api.Cask) error {
+		return e.satisfyDependencies(ctx, prefix, journal, in, appDir, explicitAppDir, tag, caskIdx, c)
+	}
+	return in.Install(ctx, c)
 }
 
 func uninstallCask(e *env, root *fsx.Root, prefix, home string, c caskroom.Cask, force bool, trace tracing) error {

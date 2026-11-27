@@ -105,6 +105,25 @@ func TestConformanceCaskInstall(t *testing.T) {
 	}
 	compareTrees("adopt")
 
+	reinstallSteps := regexp.MustCompile(`(?m)^(==> (Fetching downloads|Uninstalling|Backing|Removing|Unlinking|Purging|Installing|Moving|Linking)|Error|.*successfully).*$`)
+	reinstall := append([]string{"reinstall", "--cask"}, caskInstallSet...)
+	ra := reinstallSteps.FindAllString(normal(brewIn(theirs, reinstall...), theirs, theirApps), -1)
+	rb := reinstallSteps.FindAllString(normal(sh(t, "", brwEnv, bin, append([]string{"reinstall", "--cask", "-prefix", mine}, caskInstallSet...)...), mine, myApps), -1)
+	if d := lineDiff(strings.Join(ra, "\n"), strings.Join(rb, "\n")); len(d) > 0 {
+		t.Errorf("reinstall output differs:\n%s", strings.Join(d, "\n"))
+	}
+	compareTrees("reinstall")
+	for _, token := range caskInstallSet {
+		meta := filepath.Join("Caskroom", token, ".metadata")
+		a := caskMetadata(t, filepath.Join(theirs, meta), theirs, theirApps, home)
+		b := caskMetadata(t, filepath.Join(mine, meta), mine, myApps, filepath.Join(work, "home"), home)
+		for name := range a {
+			if !reflect.DeepEqual(a[name], b[name]) {
+				t.Errorf("reinstall %s %s:\nbrew: %v\nbrw:  %v", token, name, a[name], b[name])
+			}
+		}
+	}
+
 	uninstall := append([]string{"uninstall", "--cask"}, caskInstallSet...)
 	ua := normal(brewIn(theirs, uninstall...), theirs, theirApps)
 	ub := normal(sh(t, "", brwEnv, bin, append([]string{"uninstall", "--cask", "-prefix", mine}, caskInstallSet...)...), mine, myApps)

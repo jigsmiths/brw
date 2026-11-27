@@ -35,6 +35,93 @@ func TestReinstallPoursTheFormulaAgain(t *testing.T) {
 	}
 }
 
+func TestReinstallCaskFetchesThenReplacesTheApp(t *testing.T) {
+	_, e, prefix, apps := installedCasks(t, "app")
+	plist := filepath.Join(apps, "App.app/Contents/Info.plist")
+	if err := os.WriteFile(plist, []byte("damaged"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCmd(t, e, "reinstall", "-prefix", prefix, "app")
+	if err != nil {
+		t.Fatalf("%v\n%s\n%s", err, out, e.err)
+	}
+	fetch, uninstall := strings.Index(out, "==> Fetching downloads for: app\n"), strings.Index(out, "==> Uninstalling Cask app\n")
+	if fetch < 0 || uninstall < fetch {
+		t.Errorf("the download should come before the uninstall:\n%s", out)
+	}
+	for _, want := range []string{"==> Installing Cask app\n", "app was successfully installed!\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if b, _ := os.ReadFile(plist); strings.Contains(string(b), "damaged") {
+		t.Error("the app was not replaced")
+	}
+	if got, _ := os.Readlink(filepath.Join(prefix, "Caskroom/app/1.0/App.app")); got != filepath.Join(apps, "App.app") {
+		t.Errorf("Caskroom link -> %q, want the app in the folder it was installed to", got)
+	}
+}
+
+func TestReinstallCaskKeepsTheAppWhenTheDownloadFails(t *testing.T) {
+	_, e, prefix, apps := installedCasks(t, "app")
+	downloads := filepath.Join(e.client.CacheDir, "cask-downloads")
+	if err := os.RemoveAll(downloads); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(downloads, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCmd(t, e, "reinstall", "-prefix", prefix, "app")
+	if err == nil {
+		t.Fatalf("reinstall succeeded without a download:\n%s", out)
+	}
+	if strings.Contains(out, "Uninstalling") || !exists(t, apps, "App.app/Contents/Info.plist") || !exists(t, prefix, "Caskroom/app/1.0") {
+		t.Errorf("a failed download should leave the cask installed:\n%s", out)
+	}
+}
+
+func TestReinstallRefusesAPinnedCask(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t, "app")
+	pins := filepath.Join(prefix, "var/homebrew/pinned_casks")
+	if err := os.MkdirAll(pins, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(prefix, "Caskroom/app/1.0"), filepath.Join(pins, "app")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCmd(t, e, "reinstall", "-prefix", prefix, "app")
+	if err == nil || strings.Contains(out, "Uninstalling") {
+		t.Errorf("reinstalled a pinned cask: %q, %v", out, err)
+	}
+	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, "app is pinned. You must unpin it to reinstall.\n") {
+		t.Errorf("stderr = %q", w)
+	}
+}
+
+func TestReinstallKindFlags(t *testing.T) {
+	_, e, prefix, _ := installedCasks(t, "app")
+	if out, err := runCmd(t, e, "reinstall", "-prefix", prefix, "--cask", "app"); err != nil || !strings.Contains(out, "app was successfully installed!\n") {
+		t.Errorf("--cask app = %q, %v", out, err)
+	}
+	if _, err := runCmd(t, e, "reinstall", "-prefix", prefix, "--formula", "app"); err == nil {
+		t.Error("--formula reinstalled a cask")
+	}
+	if out, err := runCmd(t, e, "reinstall", "-prefix", prefix, "--cask", "jq"); err == nil || strings.Contains(out, "Pouring") {
+		t.Errorf("--cask reinstalled a formula: %q, %v", out, err)
+	}
+}
+
+func TestReinstallCaskDryRunChangesNothing(t *testing.T) {
+	_, e, prefix, apps := installedCasks(t, "app")
+	out, err := runCmd(t, e, "reinstall", "-n", "-prefix", prefix, "app")
+	if err != nil || out != "==> Would reinstall 1 cask:\napp 1.0\n" {
+		t.Errorf("out = %q, %v", out, err)
+	}
+	if !exists(t, apps, "App.app/Contents/Info.plist") {
+		t.Error("a dry run removed the app")
+	}
+}
+
 func TestReinstallAcceptsVerbose(t *testing.T) {
 	for _, flag := range []string{"-v", "--verbose", "-d", "--debug"} {
 		e, prefix := linkStore(t)
@@ -125,8 +212,11 @@ func TestReinstallNeedsNamesAndKnowsThem(t *testing.T) {
 	}
 	before := tree(t, prefix)
 	_, err := runCmd(t, e, "reinstall", "-prefix", prefix, "app", "nosuchthing")
-	if err == nil || !strings.Contains(err.Error(), `no available formula with the name "nosuchthing"`) || !equal(before, tree(t, prefix)) {
+	if err == nil || !equal(before, tree(t, prefix)) {
 		t.Errorf("a bad name must stop everything: %v", err)
+	}
+	if w := e.err.(*bytes.Buffer).String(); !strings.Contains(w, `no available formula or cask with the name "nosuchthing"`) {
+		t.Errorf("stderr = %q", w)
 	}
 }
 
