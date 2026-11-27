@@ -1,6 +1,7 @@
 package poststep
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -51,8 +52,28 @@ func TestRunWithSudoPassesBrewsCommandOptions(t *testing.T) {
 	if c.Input != "typed" || c.Dir != filepath.Join(f.prefix, "var/work") {
 		t.Errorf("input = %q, dir = %q", c.Input, c.Dir)
 	}
-	if c.Stdout != nil || c.Stderr != nil {
+	if c.Stdout != nil || c.Stderr != io.Writer(&f.log) {
 		t.Errorf("stdout %v and stderr %v: brew prints only stderr by default", c.Stdout, c.Stderr)
+	}
+}
+
+func TestRunWithSudoPrintsStderrToTheErrorStream(t *testing.T) {
+	f := newSudoFixture(t)
+	var errs bytes.Buffer
+	f.ctx.Err = &errs
+	f.mustRun(`[{"type":"run","sudo":true,"command":{"path":"/a"}}]`)
+	if c := f.only(); c.Stderr != io.Writer(&errs) {
+		t.Errorf("stderr = %v, want the error stream", c.Stderr)
+	}
+}
+
+func TestRunWithoutSudoPrintsStderrToTheErrorStream(t *testing.T) {
+	f := newSudoFixture(t)
+	var errs bytes.Buffer
+	f.ctx.Err = &errs
+	f.mustRun(`[{"type":"run","command":{"path":"/bin/sh"},"args":["-c","echo oops >&2"]}]`)
+	if errs.String() != "oops\n" || f.log.String() != "" {
+		t.Errorf("stderr = %q, log = %q", errs.String(), f.log.String())
 	}
 }
 
@@ -80,22 +101,29 @@ func TestRunWithSudoPrintsOutputOnlyWhenAsked(t *testing.T) {
 func TestRunWithSudoAllowFailure(t *testing.T) {
 	f := newSudoFixture(t)
 	t.Setenv("HOMEBREW_NO_SUDO", "")
-	f.stub.err = commandFailure(t)
 	step := func(extra string) string {
 		return `[{"type":"run","sudo":true,"command":{"path":"/a"}` + extra + `}]`
 	}
-	if err := f.run(step(``)); !errors.Is(err, f.stub.err) {
-		t.Errorf("err = %v, want the command failure", err)
-	}
+	f.mustRun(step(``))
 	f.mustRun(step(`,"allow_failure":true`))
+	if got := f.stub.cmds; !got[0].MustSucceed || got[1].MustSucceed {
+		t.Errorf("must_succeed = %t then %t, brew passes must_succeed: allow_failure != true", got[0].MustSucceed, got[1].MustSucceed)
+	}
+	f.stub.failed = true
+	f.mustRun(step(`,"allow_failure":true`))
+	f.stub.err = commandFailure(t)
+	if err := f.run(step(`,"allow_failure":true`)); !errors.Is(err, f.stub.err) {
+		t.Errorf("err = %v, an error the runner returns is not an unsuccessful exit and must propagate", err)
+	}
 }
 
 func TestRunWithSudoAllowFailureStillFailsWhenSudoIsDisabled(t *testing.T) {
 	f := newSudoFixture(t)
 	t.Setenv("HOMEBREW_NO_SUDO", "1")
-	f.stub.err = commandFailure(t)
-	if err := f.run(`[{"type":"run","sudo":true,"allow_failure":true,"command":{"path":"/a"}}]`); err == nil {
-		t.Error("brew raises when sudo is disabled, whatever must_succeed says")
+	f.ctx.Sudo = sudo.Exec
+	err := f.run(`[{"type":"run","sudo":true,"allow_failure":true,"command":{"path":"/a"}}]`)
+	if err == nil || !strings.Contains(err.Error(), "sudo is disabled by HOMEBREW_NO_SUDO") {
+		t.Errorf("err = %v, brew raises when sudo is disabled, whatever must_succeed says", err)
 	}
 }
 
@@ -103,13 +131,12 @@ func TestRunWithSudoWritesStdoutOnlyOnSuccess(t *testing.T) {
 	f := newSudoFixture(t)
 	t.Setenv("HOMEBREW_NO_SUDO", "")
 	step := `[{"type":"run","sudo":true,"allow_failure":true,"command":{"path":"/a"},"stdout_path":{"base":"var","path":"captured/out.txt"}}]`
-	failure := commandFailure(t)
-	f.stub.err = failure
+	f.stub.failed, f.stub.stdout = true, "ignored"
 	f.mustRun(step)
 	if f.exists("var/captured/out.txt") {
 		t.Error("stdout of a failed command was written")
 	}
-	f.stub.err = nil
+	f.stub.failed = false
 	f.stub.stdout = "output\n"
 	f.mustRun(step)
 	if got := f.read("var/captured/out.txt"); got != "output\n" {

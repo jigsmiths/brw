@@ -398,8 +398,8 @@ func TestPlanRefusesWhatItCannotInstall(t *testing.T) {
 	}{
 		"no bottle for the host": {index(t, noBottle), ErrNoBottle, "nobottle"},
 		"disabled":               {index(t, with(f("old"), "disabled", true)), ErrDisabled, "old"},
-		"an unsupported step":    {index(t, with(f("pi"), "post_install_steps", []any{map[string]any{"type": "gdk_pixbuf_query_loaders"}})), ErrPostInstall, "pi"},
-		"a dependency with one":  {index(t, f("app", "pi"), with(f("pi"), "post_install_steps", []any{map[string]any{"type": "configure_gcc_runtime"}})), ErrPostInstall, "app"},
+		"an unsupported step":    {index(t, with(f("pi"), "post_install_steps", []any{map[string]any{"type": "made_up_step"}})), ErrPostInstall, "pi"},
+		"a dependency with one":  {index(t, f("app", "pi"), with(f("pi"), "post_install_steps", []any{map[string]any{"type": "made_up_step"}})), ErrPostInstall, "app"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -508,9 +508,9 @@ func TestPlanAllowsPostInstallStepsItCanRun(t *testing.T) {
 }
 
 func TestPlanNamesTheUnsupportedSteps(t *testing.T) {
-	steps := []any{map[string]any{"type": "touch"}, map[string]any{"type": "gtk_update_icon_cache"}, map[string]any{"type": "gtk_update_icon_cache"}, map[string]any{"type": "configure_php"}}
+	steps := []any{map[string]any{"type": "touch"}, map[string]any{"type": "made_up_a"}, map[string]any{"type": "made_up_a"}, map[string]any{"type": "made_up_b"}}
 	_, err := planner(t, mac, index(t, with(f("pi"), "post_install_steps", steps))).Plan([]string{"pi"})
-	if err == nil || !strings.Contains(err.Error(), "gtk_update_icon_cache, configure_php") || strings.Contains(err.Error(), "touch") {
+	if err == nil || !strings.Contains(err.Error(), "made_up_a, made_up_b") || strings.Contains(err.Error(), "touch") {
 		t.Errorf("error = %v, want the unsupported steps once each and not the supported one", err)
 	}
 }
@@ -619,7 +619,7 @@ func TestPlanUpgradeOrdersDependenciesFirstAndKegOnlyFormulaeBeforeTheRest(t *te
 
 func TestPlanUpgradeOneFailureDoesNotStopTheOthers(t *testing.T) {
 	noBottle := with(f("nobottle"), "bottle", map[string]any{"stable": map[string]any{"files": map[string]any{"x86_64_linux": map[string]any{}}}})
-	idx := index(t, f("good"), noBottle, with(f("pi"), "post_install_steps", []any{map[string]any{"type": "configure_gcc_runtime"}}), f("fine"))
+	idx := index(t, f("good"), noBottle, with(f("pi"), "post_install_steps", []any{map[string]any{"type": "made_up_step"}}), f("fine"))
 	p := upgradePlanner(t, idx, true, keg("good", "0.9"), keg("nobottle", "0.9"), keg("pi", "0.9"), keg("fine", "0.9"))
 	plan, errs := p.PlanUpgrade([]string{"good", "nobottle", "pi", "fine"})
 	if got := names(plan); !slices.Equal(got, []string{"good", "fine"}) {
@@ -792,7 +792,7 @@ func TestPlanUpgradeLocksWhatIsLeftWhenOneFormulaFails(t *testing.T) {
 }
 
 func TestPlanEachInstallsWhatItCanAndReportsTheRest(t *testing.T) {
-	idx := index(t, f("good"), with(f("pi"), "post_install_steps", []any{map[string]any{"type": "configure_clang_system"}}), f("fine"))
+	idx := index(t, f("good"), with(f("pi"), "post_install_steps", []any{map[string]any{"type": "made_up_step"}}), f("fine"))
 	plan, errs := planner(t, mac, idx).PlanEach([]string{"good", "pi", "fine"})
 	if got := names(plan); !slices.Equal(got, []string{"good", "fine"}) {
 		t.Errorf("plan = %v", got)

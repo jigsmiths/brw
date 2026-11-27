@@ -128,6 +128,17 @@ func TestAvailable(t *testing.T) {
 	}
 }
 
+func TestExecReportsAFailedCommandThatNeedNotSucceed(t *testing.T) {
+	res, err := Exec(context.Background(), Command{Exe: "/usr/bin/false"})
+	if err != nil || !res.Failed {
+		t.Errorf("res = %+v, err = %v, want a failed result and no error", res, err)
+	}
+	res, err = Exec(context.Background(), Command{Exe: "/usr/bin/true"})
+	if err != nil || res.Failed {
+		t.Errorf("res = %+v, err = %v, want a successful result", res, err)
+	}
+}
+
 func TestExecRunsInTheGivenDirectory(t *testing.T) {
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

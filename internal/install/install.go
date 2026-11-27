@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -310,9 +311,12 @@ func (in *Installer) finish(it Item, keg string, aliases []string, old *oldKegs)
 		return result
 	}
 	if len(f.PostInstallSteps) > 0 {
+		goos := cmp.Or(in.OS, runtime.GOOS)
+		home, _ := os.UserHomeDir()
 		result.PostInstallErr = poststep.Run(context.Background(), poststep.Context{
 			Root: in.Root, Prefix: in.Prefix, Name: f.Name, Version: f.Versions.Stable, Keg: keg,
-			OS: cmp.Or(in.OS, runtime.GOOS), User: in.User, Log: in.Log,
+			OS: goos, User: in.User, Log: in.Log, Err: poststep.OrDiscard(in.Log),
+			Host: poststep.CurrentHost(goos, home, in.MacVersion), Sandbox: poststep.Unsandboxed,
 		}, f.PostInstallSteps)
 	}
 	if tapDefined && result.PostInstallErr == nil {

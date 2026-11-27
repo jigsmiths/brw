@@ -20,7 +20,7 @@ func raws(t *testing.T, s string) []json.RawMessage {
 	return out
 }
 
-var where = Where{Prefix: "/opt/homebrew", AppDir: "/Applications", Home: "/Users/me"}
+var where = NewWhere("/opt/homebrew", "/Applications", "/Users/me")
 
 func TestPlanVSCode(t *testing.T) {
 	c := api.Cask{Token: "visual-studio-code", Artifacts: raws(t, `[

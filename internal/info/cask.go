@@ -416,7 +416,7 @@ func cmpOr(vals ...string) string {
 }
 
 func (e CaskEnv) placeholders(appDir string) func(string) string {
-	return cask.Placeholders(cask.Where{Prefix: e.Prefix, AppDir: appDir, Home: e.Home})
+	return cask.Placeholders(cask.NewWhere(e.Prefix, appDir, e.Home))
 }
 
 func (e CaskEnv) caskCaveats(c api.Cask, appDir string) string {

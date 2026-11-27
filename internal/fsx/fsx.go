@@ -281,6 +281,18 @@ func (r *Root) Symlink(target, name string) error {
 	if err := r.checkTarget(target, rel); err != nil {
 		return err
 	}
+	return r.symlink(target, rel)
+}
+
+func (r *Root) SymlinkAny(target, name string) error {
+	rel, err := r.rel(name)
+	if err != nil {
+		return err
+	}
+	return r.symlink(target, rel)
+}
+
+func (r *Root) symlink(target, rel string) error {
 	if r.dry {
 		if err := r.mustNotExist(rel); err != nil {
 			return err
