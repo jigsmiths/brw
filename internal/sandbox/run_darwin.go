@@ -91,7 +91,6 @@ func sizeFromTput() (winsize, bool) {
 	return winsize{rows: rows, cols: cols}, true
 }
 
-// terminalSize is the parent's terminal when stdout is one, else what tput says; known is false when neither does.
 func terminalSize() (ws winsize, known bool) {
 	if ws, err := windowSize(os.Stdout); err == nil {
 		return ws, true

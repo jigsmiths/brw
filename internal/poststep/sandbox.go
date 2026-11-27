@@ -109,7 +109,6 @@ func NewSandboxPolicy(prefix, cache, logs, repository string, child []string, st
 	return p
 }
 
-// networkOverride is HOMEBREW_FORMULA_POSTINSTALL_NETWORK: not set, set to allow, or set to anything else.
 type networkOverride int
 
 const (
@@ -505,7 +504,6 @@ func (r *runner) serve(conn net.Conn, raw []json.RawMessage, ph phase, result *c
 	}
 }
 
-// requestOrder is what the parent knows of the privileged steps already run: none, or the last by its index.
 type requestOrder interface {
 	permits(index int) bool
 	after(index int) requestOrder

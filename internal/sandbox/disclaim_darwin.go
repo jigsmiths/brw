@@ -8,8 +8,7 @@ import (
 
 // libSystem is reached the way x/sys/unix and the standard library's syscall package reach it on macOS, without cgo
 // or another module: dynamic imports, assembly trampolines for their addresses, and the runtime's syscall entry points.
-// Only public symbols are imported, so brw always starts. The private
-// responsibility_spawnattrs_setdisclaim is looked up with dlsym when it is needed, as brew's Fiddle code does.
+// The private responsibility_spawnattrs_setdisclaim is looked up with dlsym when needed, as brew's Fiddle code does.
 
 //go:cgo_import_dynamic libc_posix_spawn posix_spawn "/usr/lib/libSystem.B.dylib"
 //go:cgo_import_dynamic libc_posix_spawnattr_init posix_spawnattr_init "/usr/lib/libSystem.B.dylib"
@@ -36,14 +35,12 @@ const (
 	// POSIX_SPAWN_SETEXEC in sys/spawn.h.
 	posixSpawnSetExec = 0x0040
 	// RTLD_DEFAULT in dlfcn.h is ((void *) -2): search every image in the process.
-	rtldDefault = ^uintptr(1)
-	// The second argument of responsibility_spawnattrs_setdisclaim.
+	rtldDefault            = ^uintptr(1)
 	disclaimResponsibility = 1
 
 	disclaimSymbol = "responsibility_spawnattrs_setdisclaim"
 )
 
-// resolveDisclaim finds the private function; it is a variable so a test can make the lookup fail.
 var resolveDisclaim = func() (fn uintptr, found bool) {
 	name, err := syscall.BytePtrFromString(disclaimSymbol)
 	if err != nil {

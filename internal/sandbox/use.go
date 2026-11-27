@@ -22,7 +22,7 @@ const (
 	logSettleDelay      = 100 * time.Millisecond
 	logFooter           = "\nWe use time to filter sandbox log. Therefore, unrelated logs may be recorded.\n"
 	logFileMode         = 0o644
-	accessWrite         = 1 << 1 // W_OK in sys/unistd.h; the standard library has no exported name for it
+	accessWrite         = 1 << 1 // W_OK in sys/unistd.h
 )
 
 type Decision int
