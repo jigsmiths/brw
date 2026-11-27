@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jigsmiths/brw/internal/poststep"
@@ -34,9 +35,21 @@ func (in *Installer) stepContext(token, version, staged string) poststep.Context
 	if in.Host.Arch == "arm64" {
 		arch = "arm"
 	}
+	repository := filepath.Join(in.Where.Prefix, "Homebrew")
+	if in.Where.Prefix == "/opt/homebrew" {
+		repository = in.Where.Prefix
+	}
+	policy := poststep.NewSandboxPolicy(in.CacheDir, filepath.Join(in.Where.Home, "Library/Logs/Homebrew"), repository, func(m string) {
+		if !in.warnedSandbox {
+			in.warnf("%s", m)
+			in.warnedSandbox = true
+		}
+	})
 	return poststep.Context{
+		Sandbox: in.Sandbox, SandboxPolicy: policy,
 		Root: in.Root, Prefix: in.Where.Prefix, Name: token, Version: version, OS: in.Host.OS,
-		User: os.Getenv("USER"), Log: in.Log, Token: token, Staged: staged, Arch: arch, AppDir: in.Where.AppDir,
+		User: os.Getenv("USER"), Log: in.Log, Err: poststep.OrDiscard(in.Warn), Token: token, Staged: staged, Arch: arch, AppDir: in.Where.AppDir,
+		Host: poststep.CurrentHost(in.Host.OS, in.Where.Home, in.Host.MacVersion),
 		Sudo: in.stepRunner(), Remove: in.gainPermissionsRemove,
 	}
 }

@@ -31,7 +31,8 @@ func newFixture(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { _ = root.Close() })
 	f := &fixture{t: t, prefix: prefix}
-	f.ctx = Context{Root: root, Prefix: prefix, Name: "pkg", Version: "1.2.3", Keg: "Cellar/pkg/1.2.3-1", OS: "darwin", User: "tester", Log: &f.log}
+	f.ctx = Context{Root: root, Prefix: prefix, Name: "pkg", Version: "1.2.3", Keg: "Cellar/pkg/1.2.3-1", OS: "darwin", User: "tester", Log: &f.log, Err: &f.log, Sandbox: Unsandboxed,
+		Home: t.TempDir(), Temp: t.TempDir()}
 	f.mkdir("Cellar/pkg/1.2.3-1")
 	return f
 }
@@ -391,32 +392,23 @@ func TestGuardsOnLinux(t *testing.T) {
 	}
 }
 
-func TestNothingIsWrittenOutsideThePrefix(t *testing.T) {
+func TestUnknownBaseIsAnError(t *testing.T) {
 	f := newFixture(t)
-	outside := filepath.Join(t.TempDir(), "outside")
-	for name, step := range map[string]string{
-		"mkdir_p":       `{"type":"mkdir_p","path":{"path":"` + outside + `"}}`,
-		"touch":         `{"type":"touch","path":{"path":"` + outside + `/f"}}`,
-		"symlink":       `{"type":"symlink","force":true,"source":{"base":"var","path":"x"},"target":{"path":"` + outside + `"}}`,
-		"write":         `{"type":"write","content":"x","path":{"path":"` + outside + `"}}`,
-		"remove":        `{"type":"remove","paths":[{"path":"` + outside + `"}]}`,
-		"copy":          `{"type":"copy","source":{"base":"var","path":"x"},"target":{"path":"` + outside + `"}}`,
-		"home base":     `{"type":"touch","path":{"base":"home","path":"x"}}`,
-		"parent climbs": `{"type":"touch","path":{"base":"var","path":"../../escape"}}`,
-		"temp base":     `{"type":"touch","path":{"base":"temp","path":"x"}}`,
-		"relative base": `{"type":"touch","path":{"base":"relative","path":"x"}}`,
-		"unknown base":  `{"type":"touch","path":{"base":"nonsense","path":"x"}}`,
-	} {
-		f.write("var/x", "x", 0o644)
-		if err := f.run("[" + step + "]"); err == nil {
-			t.Errorf("%s: expected an error", name)
+	err := f.run(`[{"type":"touch","path":{"base":"nonsense","path":"x"}}]`)
+	if err == nil || !strings.Contains(err.Error(), "unknown install step base: nonsense") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestRelativePathsAreRelativeToTheWorkingDirectory(t *testing.T) {
+	f := newFixture(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	f.mustRun(`[{"type":"touch","path":{"path":"plain"}},{"type":"touch","path":{"base":"relative","path":"rel"}}]`)
+	for _, name := range []string{"plain", "rel"} {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("%s: %v", name, err)
 		}
-	}
-	if _, err := os.Lstat(outside); err == nil {
-		t.Error("something was made outside the prefix")
-	}
-	if f.exists("../escape") {
-		t.Error("a path with .. escaped")
 	}
 }
 
@@ -430,13 +422,13 @@ func TestUnsupported(t *testing.T) {
 	}
 	got := Unsupported(raw(`[
 		{"type":"mkdir_p","path":{"path":"x"}},
-		{"type":"gdk_pixbuf_query_loaders"},
-		{"type":"configure_gcc_runtime"},
+		{"type":"made_up_step"},
+		{"type":"another_made_up_step"},
 		{"type":"touch","sudo":true,"path":{"path":"b"}},
-		{"type":"gdk_pixbuf_query_loaders"},
+		{"type":"made_up_step"},
 		{"type":"run","command":{"path":"x"}}
 	]`))
-	want := []string{"gdk_pixbuf_query_loaders", "configure_gcc_runtime"}
+	want := []string{"made_up_step", "another_made_up_step"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Unsupported = %v, want %v", got, want)
 	}
@@ -449,7 +441,7 @@ func TestUnsupported(t *testing.T) {
 }
 
 func (f *fixture) runUnsupported() error {
-	return Run(context.Background(), Context{}, []json.RawMessage{json.RawMessage(`{"type":"configure_php"}`)})
+	return Run(context.Background(), Context{}, []json.RawMessage{json.RawMessage(`{"type":"made_up_step"}`)})
 }
 
 func TestSetPermissions(t *testing.T) {
@@ -478,9 +470,6 @@ func TestSetPermissions(t *testing.T) {
 	if mode("Cellar/pkg/1.2.3-1/lib/a/b/two")&0o022 != 0 {
 		t.Error("the recursive change did not reach the files below")
 	}
-	if err := f.run(`[{"type":"set_permissions","permissions":"u+w","paths":[{"path":"/etc/hosts"}]}]`); err == nil {
-		t.Error("changing permissions outside the prefix should be refused")
-	}
 }
 
 func TestRun(t *testing.T) {
@@ -497,8 +486,8 @@ func TestRun(t *testing.T) {
 
 func TestCaskSteps(t *testing.T) {
 	f := newFixture(t)
-	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", Arch: "arm", OS: "darwin", Log: &f.log,
-		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0")}
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", Arch: "arm", OS: "darwin", Log: &f.log, Err: &f.log, Sandbox: Unsandboxed,
+		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0"), Home: t.TempDir(), Temp: t.TempDir()}
 	f.write("Caskroom/tool/2.0/tool", "#!/bin/sh\nprintf '%s' \"$1\" > \"$2/out\"\n", 0o755)
 	f.mustRun(`[
 		{"type":"run","command":{"path":"{{staged_path}}/tool"},"args":["{{token}}-{{name}}-{{version}}-{{arch}}","{{caskroom_path}}"]},
@@ -514,8 +503,7 @@ func TestCaskSteps(t *testing.T) {
 			t.Errorf("%s was not made", p)
 		}
 	}
-	// A formula's bases, and folders outside the prefix, mean nothing here.
-	for _, base := range []string{"bin", "prefix", "var", "appdir", "home"} {
+	for _, base := range []string{"bin", "prefix", "var", "appdir", "nonsense"} {
 		if err := f.run(`[{"type":"touch","path":{"base":"` + base + `","path":"x"}}]`); err == nil {
 			t.Errorf("a cask step with base %s ran", base)
 		}
@@ -524,7 +512,7 @@ func TestCaskSteps(t *testing.T) {
 
 func TestUninstallRemovesOnlyTheLinksMarkedForIt(t *testing.T) {
 	f := newFixture(t)
-	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log,
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log, Err: &f.log, Host: f.ctx.Host, Sandbox: Unsandboxed,
 		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0")}
 	f.write("Caskroom/tool/2.0/tool", "", 0o755)
 	steps := `[
@@ -725,7 +713,7 @@ func TestMain(m *testing.M) {
 func TestCaskStepsExpandAppdirInArguments(t *testing.T) {
 	f := newFixture(t)
 	apps := t.TempDir()
-	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log,
+	f.ctx = Context{Root: f.ctx.Root, Prefix: f.prefix, Token: "tool", Version: "2.0", OS: "darwin", Log: &f.log, Err: &f.log, Host: f.ctx.Host, Sandbox: Unsandboxed,
 		Staged: filepath.Join(f.prefix, "Caskroom/tool/2.0"), AppDir: apps}
 	f.write("Caskroom/tool/2.0/tool", "#!/bin/sh\nprintf '%s' \"$1\" > \"$2/out\"\n", 0o755)
 	f.mustRun(`[{"type":"run","command":{"path":"{{staged_path}}/tool"},"args":["{{appdir}}/Tool.app","{{caskroom_path}}"]}]`)

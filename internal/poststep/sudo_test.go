@@ -18,11 +18,12 @@ type stubSudo struct {
 	removed []string
 	stdout  string
 	err     error
+	failed  bool
 }
 
 func (s *stubSudo) run(_ context.Context, c sudo.Command) (sudo.Result, error) {
 	s.cmds = append(s.cmds, c)
-	return sudo.Result{Stdout: s.stdout}, s.err
+	return sudo.Result{Stdout: s.stdout, Failed: s.failed}, s.err
 }
 
 func (s *stubSudo) remove(_ context.Context, path string) error {
@@ -153,10 +154,11 @@ func TestSymlinkIfNeededUsesSudoInAnUnwritableDirectory(t *testing.T) {
 	f.wantLn("-s", "-f", f.source, f.target())
 }
 
-func TestSymlinkWithSudoFalseStaysInThePrefix(t *testing.T) {
+func TestSymlinkWithSudoFalseLinksDirectlyOutsideThePrefix(t *testing.T) {
 	f := newSudoFixture(t)
-	if err := f.run(f.step(`,"sudo":false`)); err == nil {
-		t.Error("a plain symlink outside the prefix should still be refused")
+	f.mustRun(f.step(`,"sudo":false`))
+	if got, err := os.Readlink(f.target()); err != nil || got != f.source {
+		t.Errorf("link = %q, %v", got, err)
 	}
 	if len(f.stub.cmds) != 0 {
 		t.Errorf("runner got %v", f.stub.cmds)

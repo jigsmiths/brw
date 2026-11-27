@@ -211,7 +211,7 @@ func TestInstallDryRunChangesNothing(t *testing.T) {
 func TestInstallInstallsWhatItCanAndExplainsWhatItRefuses(t *testing.T) {
 	s := newStore(t)
 	s.formula(jqBottle(), nil, nil)
-	s.formula(installtest.Bottle{Name: "pi", Version: "1.0"}, nil, map[string]any{"post_install_steps": []any{map[string]any{"type": "gtk_update_icon_cache"}}})
+	s.formula(installtest.Bottle{Name: "pi", Version: "1.0"}, nil, map[string]any{"post_install_steps": []any{map[string]any{"type": "made_up_step"}}})
 	s.formula(installtest.Bottle{Name: "old", Version: "1.0"}, nil, map[string]any{"disabled": true})
 	e, prefix := s.env()
 	_, err := runCmd(t, e, "install", "-prefix", prefix, "jq", "pi", "old")
@@ -219,7 +219,7 @@ func TestInstallInstallsWhatItCanAndExplainsWhatItRefuses(t *testing.T) {
 		t.Fatalf("error = %v, want one that counts the refused formulae", err)
 	}
 	stderr := e.err.(*bytes.Buffer).String()
-	for _, want := range []string{"pi:", "gtk_update_icon_cache", "old:", "disabled"} {
+	for _, want := range []string{"pi:", "made_up_step", "old:", "disabled"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr does not mention %q: %s", want, stderr)
 		}

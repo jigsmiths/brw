@@ -18,6 +18,7 @@ import (
 	"github.com/jigsmiths/brw/internal/api"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
@@ -28,11 +29,13 @@ type Config struct {
 }
 
 type Installer struct {
-	Root        *fsx.Root
-	Apps        *fsx.Root
-	Where       Where
-	Host        platform.Host
-	Fetcher     *Fetcher
+	Root    *fsx.Root
+	Apps    *fsx.Root
+	Where   Where
+	Host    platform.Host
+	Fetcher *Fetcher
+	// CacheDir is the download cache that step sandboxes may write to; unlike Fetcher it is set on every installer.
+	CacheDir    string
 	Log         io.Writer
 	Warn        io.Writer
 	Now         func() time.Time
@@ -47,6 +50,7 @@ type Installer struct {
 	Debug       bool
 	FindService func(ctx context.Context, label string, privilege sudo.Privilege) (bool, error)
 	Adopt       bool
+	Sandbox     poststep.SandboxMode
 	// RuntimeDeps lists what the receipt records; nil records none.
 	RuntimeDeps func(api.Cask) (RuntimeDependencies, error)
 	// SatisfyDependencies installs what c needs; nil leaves it to the caller, and Install then fails if it is missing.
@@ -177,6 +181,11 @@ func (in *Installer) installArtifacts(ctx context.Context, c api.Cask, p install
 	}
 	for _, m := range p.apps {
 		if err := in.moveApp(ctx, version, m, c.AutoUpdates, undo); err != nil {
+			return fmt.Errorf("%s: %w", c.Token, err)
+		}
+	}
+	for _, m := range p.layouts {
+		if err := in.moveKeyboardLayout(ctx, version, m, undo); err != nil {
 			return fmt.Errorf("%s: %w", c.Token, err)
 		}
 	}

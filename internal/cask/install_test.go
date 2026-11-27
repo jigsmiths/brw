@@ -18,6 +18,7 @@ import (
 	"github.com/jigsmiths/brw/internal/caskroom"
 	"github.com/jigsmiths/brw/internal/fsx"
 	"github.com/jigsmiths/brw/internal/platform"
+	"github.com/jigsmiths/brw/internal/poststep"
 )
 
 type testInstall struct {
@@ -44,17 +45,18 @@ func newTestInstall(t *testing.T, body []byte) *testInstall {
 	srv, hits := server(t, body, nil)
 	out, warn := &bytes.Buffer{}, &bytes.Buffer{}
 	in := &Installer{
-		Warn: warn,
+		Warn: warn, Sandbox: poststep.Unsandboxed,
 		Root: root, Apps: apps,
-		Where:   Where{Prefix: prefix, AppDir: appDir, Home: "/Users/me"},
-		Host:    platform.Host{OS: "darwin", MacVersion: "26.1", Arch: "arm64"},
-		Fetcher: &Fetcher{Dir: t.TempDir()},
-		Log:     out,
-		Now:     func() time.Time { return time.Date(2026, 11, 19, 10, 30, 45, 123e6, time.UTC) },
-		Sleep:   func(time.Duration) {},
-		Version: "0.9.0",
-		APIPath: "/cache/api/internal/packages.arm64_tahoe.jws.json",
-		Config:  Config{Languages: []string{"en-ZA"}, ExplicitAppDir: appDir},
+		Where:    NewWhere(prefix, appDir, "/Users/me"),
+		Host:     platform.Host{OS: "darwin", MacVersion: "26.1", Arch: "arm64"},
+		Fetcher:  &Fetcher{Dir: t.TempDir()},
+		CacheDir: t.TempDir(),
+		Log:      out,
+		Now:      func() time.Time { return time.Date(2026, 11, 19, 10, 30, 45, 123e6, time.UTC) },
+		Sleep:    func(time.Duration) {},
+		Version:  "0.9.0",
+		APIPath:  "/cache/api/internal/packages.arm64_tahoe.jws.json",
+		Config:   Config{Languages: []string{"en-ZA"}, ExplicitAppDir: appDir},
 	}
 	return &testInstall{in: in, prefix: prefix, appDir: appDir, out: out, warn: warn, url: srv.URL + "/App-1.0.tar.gz", hits: hits, body: body}
 }
@@ -273,10 +275,21 @@ func TestInstallRunsFlightStepsAndUninstallUndoesTheirLinks(t *testing.T) {
 	}
 }
 
+func TestUninstallRunsStepsWithoutAFetcher(t *testing.T) {
+	ti := newTestInstall(t, appTarball)
+	if err := ti.in.Install(context.Background(), ti.cask(t, flightSteps)); err != nil {
+		t.Fatal(err)
+	}
+	ti.in.Fetcher = nil
+	if err := ti.in.Uninstall(context.Background(), "app", "1.0", false); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInstallRefusesStepsBrwCannotRun(t *testing.T) {
 	ti := newTestInstall(t, appTarball)
-	c := ti.cask(t, `[{"binary":["tool"]},{"postflight_steps":[{"steps":[{"type":"configure_gcc_runtime"}]}]}]`)
-	if err := ti.in.Install(context.Background(), c); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "configure_gcc_runtime") {
+	c := ti.cask(t, `[{"binary":["tool"]},{"postflight_steps":[{"steps":[{"type":"made_up_step"}]}]}]`)
+	if err := ti.in.Install(context.Background(), c); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "made_up_step") {
 		t.Errorf("err = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(ti.prefix, "Caskroom/app")); err == nil {

@@ -2,7 +2,6 @@ package poststep
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,7 +16,7 @@ const (
 	accessWrite  = 0x2
 )
 
-func (r *runner) symlinkWithSudo(s step) error {
+func (r *runner) symlink(s step) error {
 	if s.Target == nil {
 		return errors.New("the step has no path")
 	}
@@ -79,10 +78,7 @@ func (r *runner) createLink(s step, source, target string) error {
 	if s.Force {
 		_ = r.removeAny(target)
 	}
-	if rel, err := r.inside(target); err == nil {
-		return r.c.Root.Symlink(source, rel)
-	}
-	return os.Symlink(source, target) //fsx:allow brew's File.symlink on a path the step named
+	return r.symlinkAt(source, target)
 }
 
 func (r *runner) sudo(exe string, args ...string) (sudo.Result, error) {
@@ -96,38 +92,4 @@ func (r *runner) sudoCommand(c sudo.Command) (sudo.Result, error) {
 	}
 	c.Secrets = sudo.SensitiveValues()
 	return run(r.ctx, c)
-}
-
-func (r *runner) mkdirAll(abs string) error {
-	if rel, err := r.inside(abs); err == nil {
-		return r.c.Root.MkdirAll(rel, 0o755)
-	}
-	return os.MkdirAll(abs, 0o755) //fsx:allow brew's Pathname#mkpath on a path the step named
-}
-
-func (r *runner) removeAny(abs string) error {
-	fi, err := os.Lstat(abs)
-	if err != nil || fi.IsDir() {
-		return nil
-	}
-	if rel, err := r.inside(abs); err == nil {
-		return r.c.Root.Remove(rel)
-	}
-	return os.Remove(abs) //fsx:allow brew's FileUtils.rm_f on a path the step named
-}
-
-func (r *runner) removeTree(abs string) error {
-	if rel, err := r.inside(abs); err == nil {
-		return r.c.Root.RemoveAll(rel)
-	}
-	return os.RemoveAll(abs) //fsx:allow brew's FileUtils.rm_rf on a path the step named
-}
-
-func (r *runner) readlink(s step, abs string) (string, error) {
-	got, err := os.Readlink(abs)
-	if !errors.Is(err, fs.ErrPermission) || s.Sudo == sudoNever {
-		return got, err
-	}
-	res, err := r.sudo(readlinkPath, "-n", abs)
-	return res.Stdout, err
 }

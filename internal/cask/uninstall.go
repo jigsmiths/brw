@@ -69,9 +69,9 @@ type uninstallStep struct {
 	stagedVersion string
 }
 
-var stepOrder = map[string]int{"uninstall": 0, "app": 1,
-	"binary": 2, "manpage": 2, "bash_completion": 2, "zsh_completion": 2, "fish_completion": 2,
-	"generate_completions_from_executable": 3, "preflight_steps": 4, "postflight_steps": 4}
+var stepOrder = map[string]int{"preflight_steps": 0, "uninstall_preflight_steps": 1, "uninstall": 2, "app": 3, "keyboard_layout": 3,
+	"binary": 4, "manpage": 5, "bash_completion": 6, "zsh_completion": 6, "fish_completion": 6,
+	"generate_completions_from_executable": 7, "postflight_steps": 8, "uninstall_postflight_steps": 9}
 
 // Uninstall refuses, before changing anything, a cask that needs something brw cannot undo yet. force also removes every other version.
 func (in *Installer) Uninstall(ctx context.Context, token, version string, force bool) error {
@@ -116,12 +116,20 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 			if err := in.moveBack(ctx, s.move, force); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
+		case "keyboard_layout":
+			if err := in.moveBackKeyboardLayout(ctx, s.move, force); err != nil {
+				return fmt.Errorf("%s: %w", token, err)
+			}
 		case "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 			if err := in.unlinkBinary(s.move); err != nil {
 				return fmt.Errorf("%s: %w", token, err)
 			}
 		case "generate_completions_from_executable":
 			in.removeCompletions(token, s.generator)
+		case "uninstall_preflight_steps", "uninstall_postflight_steps":
+			if err := in.runSteps(ctx, s.kind, token, s.version, s.stagedVersion, s.steps); err != nil {
+				return err
+			}
 		case "preflight_steps", "postflight_steps":
 			if err := poststep.Uninstall(ctx, in.stepContext(token, s.version, s.stagedVersion), s.steps); err != nil {
 				return fmt.Errorf("%s: %s: %w", token, s.kind, err)
@@ -196,6 +204,11 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if s.stagedVersion, err = in.Root.Abs(filepath.Join("Caskroom", token, version)); err != nil {
 			return s, err
 		}
+	case "keyboard_layout":
+		if s.move, err = readMove(args, kind, in.Where); err != nil {
+			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
+		}
+		s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
 	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
 		if s.move, err = readMove(args, kind, in.Where); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
@@ -217,7 +230,7 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 		if s.generator, err = readGenerator(args); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
 		}
-	case "preflight_steps", "postflight_steps":
+	case "preflight_steps", "postflight_steps", "uninstall_preflight_steps", "uninstall_postflight_steps":
 		if s.steps, err = readSteps(args); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
 		}

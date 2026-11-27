@@ -115,6 +115,23 @@ func TestSymlinkTargetMustStayInside(t *testing.T) {
 	}
 }
 
+func TestSymlinkAnyMayPointOutside(t *testing.T) {
+	r, dir, _ := newRoot(t)
+	outside := t.TempDir()
+	if err := r.SymlinkAny(outside, "bin/x"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.Readlink(filepath.Join(dir, "bin/x")); got != outside {
+		t.Errorf("target = %q", got)
+	}
+	if err := r.SymlinkAny(outside, "bin/x"); !errors.Is(err, ErrExists) {
+		t.Errorf("replace error = %v, want ErrExists", err)
+	}
+	if err := r.SymlinkAny(outside, "../escape"); err == nil {
+		t.Error("a link placed outside the root was accepted")
+	}
+}
+
 func TestRemove(t *testing.T) {
 	r, dir, _ := newRoot(t)
 	outside := t.TempDir()

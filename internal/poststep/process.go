@@ -35,7 +35,7 @@ func (r *runner) privilege(s step) sudo.Privilege {
 }
 
 func (r *runner) printed(c sudo.Command) sudo.Command {
-	c.MustSucceed, c.Stdout = true, r.c.Log
+	c.MustSucceed, c.Stdout, c.Stderr = true, r.c.Log, r.stderr()
 	return c
 }
 

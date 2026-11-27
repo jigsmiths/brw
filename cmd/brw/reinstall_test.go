@@ -146,7 +146,7 @@ func TestReinstallOneFailureDoesNotStopTheOthers(t *testing.T) {
 	}
 	for _, f := range s.formulae {
 		if f["name"] == "bad" {
-			f["post_install_steps"] = []any{map[string]any{"type": "configure_gcc_runtime"}}
+			f["post_install_steps"] = []any{map[string]any{"type": "made_up_step"}}
 		}
 	}
 	e2, _ := s.env()
@@ -160,7 +160,7 @@ func TestReinstallOneFailureDoesNotStopTheOthers(t *testing.T) {
 	if !exists(t, prefix, "Cellar/bad/1.0/bin/bad") || exists(t, prefix, "Cellar/bad/1.0.reinstall") {
 		t.Error("bad is left exactly as it was")
 	}
-	if w := e2.err.(*bytes.Buffer).String(); !strings.Contains(w, "configure_gcc_runtime") {
+	if w := e2.err.(*bytes.Buffer).String(); !strings.Contains(w, "made_up_step") {
 		t.Errorf("stderr = %q", w)
 	}
 }

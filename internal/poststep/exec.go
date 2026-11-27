@@ -8,7 +8,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -26,9 +26,6 @@ func (r *runner) setPermissions(s step) error {
 		for _, p := range matches {
 			if _, err := os.Stat(p); err != nil {
 				continue
-			}
-			if _, err := r.inside(p); err != nil {
-				return err
 			}
 			paths = append(paths, p)
 		}
@@ -91,6 +88,9 @@ func (r *runner) run(s step) error {
 	if s.Sudo == sudoAlways {
 		return r.runWithSudo(s, sudo.Command{Exe: program, Args: args, Env: env, Input: input, Dir: dir})
 	}
+	if ran, err := r.runSandboxed(s, program, args, env, dir, input); ran || err != nil {
+		return err
+	}
 	cmd := exec.Command(program, args...)
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Dir = dir
@@ -103,8 +103,8 @@ func (r *runner) run(s step) error {
 	if s.PrintStdout && r.c.Log != nil {
 		_, _ = r.c.Log.Write(stdout.Bytes())
 	}
-	if !s.SuppressStderr && r.c.Log != nil {
-		_, _ = r.c.Log.Write(stderr.Bytes())
+	if w := r.stderr(); !s.SuppressStderr && w != nil {
+		_, _ = w.Write(stderr.Bytes())
 	}
 	if err != nil {
 		if s.AllowFailure {
@@ -129,36 +129,38 @@ func (r *runner) environment(s step) ([]string, error) {
 }
 
 func (r *runner) runWithSudo(s step, c sudo.Command) error {
-	c.Privilege, c.MustSucceed = sudo.Sudo, true
+	c.Privilege, c.MustSucceed = sudo.Sudo, !s.AllowFailure
 	if s.PrintStdout {
 		c.Stdout = r.c.Log
 	}
+	c.Stderr = r.stderr()
 	if s.SuppressStderr {
 		c.Stderr = io.Discard
 	}
 	res, err := r.sudoCommand(c)
-	if err != nil {
-		if s.AllowFailure && sudo.IsFailure(err) && !sudo.EnvSet("HOMEBREW_NO_SUDO") {
-			return nil
-		}
+	if err != nil || res.Failed {
 		return err
 	}
 	return r.captureStdout(s, res.Stdout)
+}
+
+func (r *runner) stderr() io.Writer {
+	return r.c.Err
 }
 
 func (r *runner) captureStdout(s step, stdout string) error {
 	if s.StdoutPath == nil {
 		return nil
 	}
-	_, rel, err := r.target(s.StdoutPath)
+	abs, err := r.target(s.StdoutPath)
 	if err != nil {
 		return err
 	}
-	if err := r.c.Root.MkdirAll(path.Dir(rel), 0o755); err != nil {
+	if err := r.mkdirAll(filepath.Dir(abs)); err != nil {
 		return err
 	}
-	if err := r.removeFile(rel); err != nil {
+	if err := r.removeAny(abs); err != nil {
 		return err
 	}
-	return r.c.Root.WriteFile(rel, []byte(stdout), 0o644)
+	return r.writeFile(abs, []byte(stdout), fileMode)
 }
