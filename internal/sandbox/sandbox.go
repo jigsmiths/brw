@@ -132,7 +132,6 @@ func realpath(p string) string {
 	return filepath.Clean(p)
 }
 
-// Within reports whether path is dir or below it.
 func Within(dir, path string) bool {
 	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))

@@ -11,7 +11,6 @@ import (
 
 type SandboxMode int
 
-// The zero SandboxMode is no choice at all, and Run refuses it.
 const (
 	Sandboxed SandboxMode = iota + 1
 	Unsandboxed
@@ -25,7 +24,6 @@ type SandboxPolicy struct {
 	Warn       func(message string)
 }
 
-// NewSandboxPolicy checks for sandbox-exec itself; warn hears that it is missing.
 func NewSandboxPolicy(cache, logs, repository string, warn func(message string)) SandboxPolicy {
 	return SandboxPolicy{Cache: cache, Logs: logs, Repository: repository, Available: sandbox.Available, Warn: warn}
 }

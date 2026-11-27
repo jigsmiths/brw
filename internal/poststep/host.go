@@ -16,7 +16,6 @@ type Host struct {
 	GOARCH     string
 }
 
-// OrDiscard is w, or a writer that drops everything when there is none.
 func OrDiscard(w io.Writer) io.Writer {
 	if w == nil {
 		return io.Discard
