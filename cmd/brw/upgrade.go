@@ -32,6 +32,7 @@ func upgradeCommand(e *env, args []string) error {
 	fs.BoolVar(&o.GreedyLatest, "greedy-latest", false, "include unversioned casks")
 	fs.BoolVar(&o.GreedyAutoUpdates, "greedy-auto-updates", false, "include casks that update themselves")
 	fetchHead := fs.Bool("fetch-HEAD", false, "fetch each HEAD formula's repository and upgrade it if there is a newer commit")
+	dirs := caskDirFlags(fs)
 	trace := traceFlags(fs)
 	names, err := parse(fs, args)
 	if err != nil {
@@ -41,6 +42,11 @@ func upgradeCommand(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := dirs.rejectWithFormula(fs, formulaOnly); err != nil {
+		return err
+	}
+	home, _ := os.UserHomeDir()
+	e.caskOpts = dirs.options(fs, home)
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
 		return err

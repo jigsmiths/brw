@@ -165,65 +165,52 @@ func Pinned(prefix, token string) (string, bool) {
 	return filepath.Base(resolved), true
 }
 
-// AppDir is the --appdir stored at install, else the default; like brew, it ignores the environment recorded then.
+// Config is the directory settings recorded in a cask's config.json.
+type Config struct {
+	Default, Env, Explicit map[string]string
+}
+
+// ReadConfig returns what token's config.json recorded, nothing if it is missing or unreadable.
+func ReadConfig(prefix, token string) Config {
+	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
+	if err != nil {
+		return Config{}
+	}
+	var raw struct {
+		Default, Env, Explicit map[string]json.RawMessage
+	}
+	if json.Unmarshal(b, &raw) != nil {
+		return Config{}
+	}
+	strings := func(m map[string]json.RawMessage) map[string]string {
+		out := map[string]string{}
+		for k, v := range m {
+			var s string
+			if json.Unmarshal(v, &s) == nil {
+				out[k] = s
+			}
+		}
+		return out
+	}
+	return Config{Default: strings(raw.Default), Env: strings(raw.Env), Explicit: strings(raw.Explicit)}
+}
+
+// Dir is where the cask's artifacts of key went: the explicit setting, else the environment's, else the default.
+func (c Config) Dir(key string) (string, bool) {
+	for _, m := range []map[string]string{c.Explicit, c.Env, c.Default} {
+		if d, ok := m[key]; ok && d != "" {
+			return d, true
+		}
+	}
+	return "", false
+}
+
+// AppDir is the appdir stored at install, else the default.
 func AppDir(prefix, token string) string {
-	const fallback = "/Applications"
-	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
-	if err != nil {
-		return fallback
+	if d, ok := ReadConfig(prefix, token).Dir("appdir"); ok {
+		return d
 	}
-	var c struct {
-		Explicit, Default struct {
-			AppDir string `json:"appdir"`
-		}
-	}
-	if json.Unmarshal(b, &c) != nil {
-		return fallback
-	}
-	for _, d := range []string{c.Explicit.AppDir, c.Default.AppDir} {
-		if d != "" {
-			return d
-		}
-	}
-	return fallback
-}
-
-func KeyboardLayoutDir(prefix, token string) string {
-	const fallback = "/Library/Keyboard Layouts"
-	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
-	if err != nil {
-		return fallback
-	}
-	var c struct {
-		Explicit, Default struct {
-			KeyboardLayoutDir string `json:"keyboard_layoutdir"`
-		}
-	}
-	if json.Unmarshal(b, &c) != nil {
-		return fallback
-	}
-	for _, d := range []string{c.Explicit.KeyboardLayoutDir, c.Default.KeyboardLayoutDir} {
-		if d != "" {
-			return d
-		}
-	}
-	return fallback
-}
-
-func ExplicitAppDir(prefix, token string) string {
-	b, err := os.ReadFile(filepath.Join(dir(prefix), token, ".metadata", "config.json"))
-	if err != nil {
-		return ""
-	}
-	var c struct {
-		Explicit struct {
-			AppDir string `json:"appdir"`
-		}
-	}
-	if json.Unmarshal(b, &c) != nil {
-		return ""
-	}
-	return c.Explicit.AppDir
+	return "/Applications"
 }
 
 func visible(path string) ([]string, error) {

@@ -29,7 +29,7 @@ type PreparedUpgrade struct {
 func (in *Installer) PrepareUpgrade(ctx context.Context, old caskroom.Cask, c api.Cask) (*PreparedUpgrade, error) {
 	u := &PreparedUpgrade{in: in, old: old, c: c}
 	var err error
-	if u.steps, err = in.readUninstall(old.Token, old.Version); err != nil {
+	if u.steps, err = in.readUninstall(old.Token, old.Version, in.PreviousWhere); err != nil {
 		return nil, err
 	}
 	owned := map[string]bool{}

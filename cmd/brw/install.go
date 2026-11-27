@@ -32,8 +32,7 @@ func installCommand(e *env, args []string) error {
 	var dryRun bool
 	prefixArg, journal := changeFlags(e, fs, &dryRun)
 	kinds := kindFlags(fs)
-	appDir := fs.String("appdir", "", "move apps into this folder instead of /Applications")
-	keyboardLayoutDir := fs.String("keyboard-layoutdir", "", "move keyboard layouts into this folder instead of /Library/Keyboard Layouts")
+	dirs := caskDirFlags(fs)
 	adopt := fs.Bool("adopt", false, "take over apps already in the app folder")
 	head := fs.Bool("HEAD", false, "install a formula's HEAD version, built from its repository")
 	trace := traceFlags(fs)
@@ -42,16 +41,22 @@ func installCommand(e *env, args []string) error {
 		return err
 	}
 	if len(names) == 0 {
-		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--appdir DIR] [--keyboard-layoutdir DIR] [--adopt] [--verbose] [--debug] [--dry-run] NAME [NAME ...]")
+		return errors.New("usage: brw install [--formula|--cask] [--HEAD] [--adopt] [--appdir=DIR] [--keyboard-layoutdir=DIR] [--verbose] [--debug] [--dry-run] NAME [NAME ...]")
 	}
 	formulaOnly, caskOnly, err := kinds()
 	if err != nil {
+		return err
+	}
+	if err := dirs.rejectWithFormula(fs, formulaOnly); err != nil {
 		return err
 	}
 	prefix, err := filepath.Abs(*prefixArg)
 	if err != nil {
 		return err
 	}
+	home, _ := os.UserHomeDir()
+	e.caskOpts = dirs.options(fs, home)
+	e.caskOpts.adopt = *adopt
 	r, err := e.resolve(context.Background(), prefix, names, formulaOnly, caskOnly)
 	if err != nil {
 		return err
@@ -61,7 +66,7 @@ func installCommand(e *env, args []string) error {
 		failures = append(failures, installFormulae(e, prefix, *journal, dryRun, *head, r))
 	}
 	if len(r.casks) > 0 {
-		failures = append(failures, installCasks(e, prefix, *journal, *appDir, *keyboardLayoutDir, dryRun, *adopt, *trace, r.casks))
+		failures = append(failures, installCasks(e, prefix, *journal, dryRun, *trace, r.casks))
 	}
 	return errors.Join(failures...)
 }

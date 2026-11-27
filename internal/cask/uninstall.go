@@ -75,7 +75,7 @@ var stepOrder = map[string]int{"preflight_steps": 0, "uninstall_preflight_steps"
 
 // Uninstall refuses, before changing anything, a cask that needs something brw cannot undo yet. force also removes every other version.
 func (in *Installer) Uninstall(ctx context.Context, token, version string, force bool) error {
-	steps, err := in.readUninstall(token, version)
+	steps, err := in.readUninstall(token, version, in.Where)
 	if err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func (in *Installer) removeArtifacts(ctx context.Context, token string, steps []
 	return nil
 }
 
-func (in *Installer) readUninstall(token, version string) ([]uninstallStep, error) {
+func (in *Installer) readUninstall(token, version string, where Where) ([]uninstallStep, error) {
 	artifacts, err := in.readReceipt(token)
 	if err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ func (in *Installer) readUninstall(token, version string) ([]uninstallStep, erro
 			if kind == "zap" || kind == "installer" {
 				continue
 			}
-			s, err := in.readStep(token, version, kind, args)
+			s, err := in.readStep(token, version, kind, args, where)
 			if err != nil {
 				return nil, err
 			}
@@ -190,7 +190,7 @@ func (in *Installer) readReceipt(token string) ([]map[string]json.RawMessage, er
 	return artifacts, nil
 }
 
-func (in *Installer) readStep(token, version, kind string, args json.RawMessage) (uninstallStep, error) {
+func (in *Installer) readStep(token, version, kind string, args json.RawMessage, where Where) (uninstallStep, error) {
 	s := uninstallStep{kind: kind}
 	var err error
 	switch kind {
@@ -205,12 +205,12 @@ func (in *Installer) readStep(token, version, kind string, args json.RawMessage)
 			return s, err
 		}
 	case "keyboard_layout":
-		if s.move, err = readMove(args, kind, in.Where); err != nil {
+		if s.move, err = readMove(args, kind, where); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
 		}
 		s.move.source = filepath.Join("Caskroom", token, version, s.move.source)
 	case "app", "binary", "manpage", "bash_completion", "zsh_completion", "fish_completion":
-		if s.move, err = readMove(args, kind, in.Where); err != nil {
+		if s.move, err = readMove(args, kind, where); err != nil {
 			return s, fmt.Errorf("%s: %s %s: %w", token, kind, args, err)
 		}
 		if kind != "app" {

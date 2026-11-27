@@ -21,18 +21,16 @@ type Where struct {
 	AppDir string
 	Home   string
 
-	KeyboardLayoutDir string
-}
-
-const DefaultKeyboardLayoutDir = "/Library/Keyboard Layouts"
-
-func (w Where) WithKeyboardLayoutDir(dir string) Where {
-	w.KeyboardLayoutDir = dir
-	return w
+	// Dirs holds every target directory but AppDir; Dir falls back to brew's default for one that is missing.
+	Dirs map[DirKey]string
 }
 
 func NewWhere(prefix, appDir, home string) Where {
-	return Where{Prefix: prefix, AppDir: appDir, Home: home, KeyboardLayoutDir: DefaultKeyboardLayoutDir}
+	w := Where{Prefix: prefix, AppDir: appDir, Home: home, Dirs: map[DirKey]string{}}
+	for _, key := range DirKeys {
+		w.Dirs[key] = DefaultDir(key, home)
+	}
+	return w
 }
 
 func Placeholders(w Where) func(string) string {
@@ -269,7 +267,7 @@ func readMove(args json.RawMessage, kind string, w Where) (move, error) {
 	dir := w.AppDir
 	switch kind {
 	case "keyboard_layout":
-		dir = w.KeyboardLayoutDir
+		dir = w.Dir(DirKeyboard)
 	case "binary":
 		dir = filepath.Join(w.Prefix, "bin")
 	case "manpage":

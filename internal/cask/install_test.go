@@ -47,16 +47,17 @@ func newTestInstall(t *testing.T, body []byte) *testInstall {
 	in := &Installer{
 		Warn: warn, Sandbox: poststep.Unsandboxed,
 		Root: root, Apps: apps,
-		Where:    NewWhere(prefix, appDir, "/Users/me"),
-		Host:     platform.Host{OS: "darwin", MacVersion: "26.1", Arch: "arm64"},
-		Fetcher:  &Fetcher{Dir: t.TempDir()},
-		CacheDir: t.TempDir(),
-		Log:      out,
-		Now:      func() time.Time { return time.Date(2026, 11, 19, 10, 30, 45, 123e6, time.UTC) },
-		Sleep:    func(time.Duration) {},
-		Version:  "0.9.0",
-		APIPath:  "/cache/api/internal/packages.arm64_tahoe.jws.json",
-		Config:   Config{Languages: []string{"en-ZA"}, ExplicitAppDir: appDir},
+		Where:         NewWhere(prefix, appDir, "/Users/me"),
+		PreviousWhere: NewWhere(prefix, appDir, "/Users/me"),
+		Host:          platform.Host{OS: "darwin", MacVersion: "26.1", Arch: "arm64"},
+		Fetcher:       &Fetcher{Dir: t.TempDir()},
+		CacheDir:      t.TempDir(),
+		Log:           out,
+		Now:           func() time.Time { return time.Date(2026, 11, 19, 10, 30, 45, 123e6, time.UTC) },
+		Sleep:         func(time.Duration) {},
+		Version:       "0.9.0",
+		APIPath:       "/cache/api/internal/packages.arm64_tahoe.jws.json",
+		Config:        Config{Languages: []string{"en-ZA"}, Explicit: map[DirKey]string{DirApp: appDir}},
 	}
 	return &testInstall{in: in, prefix: prefix, appDir: appDir, out: out, warn: warn, url: srv.URL + "/App-1.0.tar.gz", hits: hits, body: body}
 }

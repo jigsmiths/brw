@@ -22,22 +22,21 @@ import (
 	"github.com/jigsmiths/brw/internal/sudo"
 )
 
-// Config is what brew records in config.json; env stays empty because brw does not read HOMEBREW_CASK_OPTS.
+// Config is what brew records in config.json: the directories from flags (Explicit) and from HOMEBREW_CASK_OPTS (Env).
 type Config struct {
-	Languages      []string
-	ExplicitAppDir string
-	// ExplicitDirs holds the other directory options the user gave, by brew's key such as keyboard_layoutdir.
-	ExplicitDirs map[string]string
+	Languages []string
+	Explicit  map[DirKey]string
+	Env       map[DirKey]string
 }
 
-const keyboardLayoutKey = "keyboard_layoutdir"
-
 type Installer struct {
-	Root    *fsx.Root
-	Apps    *fsx.Root
-	Where   Where
-	Host    platform.Host
-	Fetcher *Fetcher
+	Root  *fsx.Root
+	Apps  *fsx.Root
+	Where Where
+	// PreviousWhere is where the version being upgraded was installed, which a flag can change for the new one.
+	PreviousWhere Where
+	Host          platform.Host
+	Fetcher       *Fetcher
 	// CacheDir is the download cache that step sandboxes may write to; unlike Fetcher it is set on every installer.
 	CacheDir    string
 	Log         io.Writer
@@ -553,53 +552,21 @@ func (in *Installer) writeMetadata(c api.Cask, name string, data []byte) error {
 
 func (in *Installer) writeConfig(c api.Cask) error {
 	home := in.Where.Home
-	lib := func(p string) string { return filepath.Join(home, "Library", p) }
-	type dirs struct {
-		Languages          []string `json:"languages"`
-		AppDir             string   `json:"appdir"`
-		AppImageDir        string   `json:"appimagedir"`
-		KeyboardLayoutDir  string   `json:"keyboard_layoutdir"`
-		ColorPickerDir     string   `json:"colorpickerdir"`
-		PrefPaneDir        string   `json:"prefpanedir"`
-		QLPluginDir        string   `json:"qlplugindir"`
-		MDImporterDir      string   `json:"mdimporterdir"`
-		DictionaryDir      string   `json:"dictionarydir"`
-		FontDir            string   `json:"fontdir"`
-		ServiceDir         string   `json:"servicedir"`
-		InputMethodDir     string   `json:"input_methoddir"`
-		InternetPluginDir  string   `json:"internet_plugindir"`
-		AudioUnitPluginDir string   `json:"audio_unit_plugindir"`
-		VSTPluginDir       string   `json:"vst_plugindir"`
-		VST3PluginDir      string   `json:"vst3_plugindir"`
-		ScreenSaverDir     string   `json:"screen_saverdir"`
-	}
-	type appDir struct {
-		AppDir            string `json:"appdir,omitempty"`
-		KeyboardLayoutDir string `json:"keyboard_layoutdir,omitempty"`
+	defaults := map[DirKey]string{}
+	for _, key := range DirKeys {
+		defaults[key] = DefaultDir(key, home)
 	}
 	languages := in.Config.Languages
 	if languages == nil {
 		languages = []string{}
 	}
-	b, err := json.Marshal(struct {
-		Default  dirs   `json:"default"`
-		Env      appDir `json:"env"`
-		Explicit appDir `json:"explicit"`
-	}{
-		Default: dirs{
-			Languages: languages, AppDir: "/Applications", AppImageDir: filepath.Join(home, "Applications"),
-			KeyboardLayoutDir: "/Library/Keyboard Layouts", ColorPickerDir: lib("ColorPickers"),
-			PrefPaneDir: lib("PreferencePanes"), QLPluginDir: lib("QuickLook"), MDImporterDir: lib("Spotlight"),
-			DictionaryDir: lib("Dictionaries"), FontDir: lib("Fonts"), ServiceDir: lib("Services"),
-			InputMethodDir: lib("Input Methods"), InternetPluginDir: lib("Internet Plug-Ins"),
-			AudioUnitPluginDir: lib("Audio/Plug-Ins/Components"), VSTPluginDir: lib("Audio/Plug-Ins/VST"),
-			VST3PluginDir: lib("Audio/Plug-Ins/VST3"), ScreenSaverDir: lib("Screen Savers"),
-		},
-		Explicit: appDir{in.Config.ExplicitAppDir, in.Config.ExplicitDirs[keyboardLayoutKey]},
-	})
+	langs, err := json.Marshal(languages)
 	if err != nil {
 		return err
 	}
+	dirs := orderedDirs(defaults)
+	b := slices.Concat([]byte(`{"default":{"languages":`), langs, []byte(`,`), dirs[1:],
+		[]byte(`,"env":`), orderedDirs(in.Config.Env), []byte(`,"explicit":`), orderedDirs(in.Config.Explicit), []byte(`}`))
 	return in.writeMetadata(c, "config.json", b)
 }
 

@@ -71,6 +71,7 @@ type env struct {
 	pull          func(ctx context.Context, t tap.Tap) (changed bool, err error)
 	githubAPI     string
 	confirm       func(action string) bool
+	caskOpts      caskOptions
 
 	launchctl  services.Launchctl
 	uid        int

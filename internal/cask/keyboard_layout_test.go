@@ -20,7 +20,7 @@ func newLayoutInstall(t *testing.T) layoutInstall {
 	t.Helper()
 	l := newSudoLink(t)
 	layouts := t.TempDir()
-	l.ti.in.Where.KeyboardLayoutDir = layouts
+	l.ti.in.Where.Dirs[DirKeyboard] = layouts
 	l.f.handle = map[string]func([]string) ([]byte, error){"/usr/bin/sudo": func([]string) ([]byte, error) { return nil, nil }}
 	return layoutInstall{sudoLink: l, layouts: layouts}
 }
@@ -75,7 +75,7 @@ func TestKeyboardLayoutDirOptionIsRecordedAsExplicit(t *testing.T) {
 	l := newLayoutInstall(t)
 	t.Setenv("HOMEBREW_NO_SUDO", "")
 	t.Setenv("HOMEBREW_SUDO_CHECKED", "1")
-	l.ti.in.Config.ExplicitDirs = map[string]string{keyboardLayoutKey: l.layouts}
+	l.ti.in.Config.Explicit = map[DirKey]string{DirKeyboard: l.layouts}
 	if err := l.installLayout(t); err != nil {
 		t.Fatal(err)
 	}
